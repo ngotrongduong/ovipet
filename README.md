@@ -2,11 +2,19 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.6**
+Current release: **v5.3.7**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.7 Diagnostic Logbook
+
+A persistent privacy-scoped black-box recorder now captures worker lifecycle, Full Sweep passes, egg batch/tab lifecycle, watchdog timeouts, fail-open recovery, runtime/module exceptions and important failure/stopped status messages.
+
+Retention is bounded to the newest **5,000 events / 14 days**. The panel provides **Export Diagnostic Log** and **Clear Diagnostic Log**. Export includes a sanitized snapshot of current worker/sweep/egg/job state so later analysis can reconstruct why automation stopped or stalled.
+
+Focused diagnostic/worker/sweep soak: **20 rounds × 7 files = 140 test-file executions, 0 failures**. Clean package full suite: **54/54 PASS**.
 
 ## v5.3.5
 
@@ -37,5 +45,6 @@ See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative state. 
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Live QA checklist](docs/LIVE_QA_CHECKLIST.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Diagnostic Logbook](docs/DIAGNOSTIC_LOGBOOK.md)
 - [Species Inspector](docs/SPECIES_INSPECTOR.md)
 - [Agent workflow](docs/AGENT_WORKFLOW.md)
