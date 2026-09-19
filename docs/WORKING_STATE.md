@@ -25,7 +25,7 @@ Managed Phase 1 working baseline currently verifies:
 
 - JavaScript syntax: PASS;
 - Node test files: 25/25 PASS;
-- two new lifecycle regression tests cover worker start ACK/timeout and generation-safe Stop;
+- lifecycle regression tests cover worker start ACK/timeout, generation-safe Stop, sender-tab scoping and stale completion;
 - feed dispatch no longer masquerades as confirmed full food state;
 - page-bridge transport DOM is filtered from global refresh churn.
 
@@ -33,20 +33,7 @@ These Phase 1 runtime changes are validated locally but are not yet the GitHub r
 
 ## GitHub repository status
 
-The repository contains the engineering control plane:
-
-- README project hub;
-- ARCHITECTURE.md;
-- this living state file;
-- ROADMAP.md;
-- REFACTOR_MAP.md;
-- TEST_STRATEGY.md;
-- LIVE_QA_CHECKLIST.md;
-- AGENT_SKILL_RESEARCH.md and AGENT_WORKFLOW.md;
-- CONTRIBUTING.md / AGENTS.md / CLAUDE.md;
-- project-specific agents and skills;
-- Issues #1–#7 for implementation phases;
-- reliability-focused PR template.
+The repository contains the engineering control plane: README, architecture/roadmap/refactor/test/live-QA docs, agent workflow/research, contribution rules, project-specific agents/skills, PR template, and Issues #1–#7.
 
 The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 must close before GitHub becomes the authoritative runtime source and before broad modularization begins.
 
@@ -55,6 +42,8 @@ The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 mus
 - explicit workerStarted ACK scoped by owner + generation;
 - bounded worker-start deadline with exact-generation cleanup;
 - stopping state reserves the current generation throughout asynchronous Stop cleanup;
+- Start during stopping is refused instead of being falsely reported as already running;
+- worker phase/completion is scoped by generation + owning worker tab;
 - stale generation completion cannot release a newer claim;
 - feed persists feedDispatchedAt instead of manufacturing foodPercent=100/foodCheckedAt;
 - recent feed dispatch gets a short 10-minute duplicate guard while observed food state remains authoritative;
@@ -68,9 +57,7 @@ Still open:
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
 - runtime/test source must be imported into GitHub and CI must reproduce the suite.
 
-## Current source-of-truth order
-
-When documents disagree, use this order:
+## Source-of-truth order
 
 1. current runtime code and tests;
 2. this WORKING_STATE.md;
