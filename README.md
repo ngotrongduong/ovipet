@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension for OviPets automation and breeding workflows.
 
-Current release: **v5.3.0**
+Current release: **v5.3.1**
 
 ## Engineering objective
 
@@ -21,7 +21,7 @@ Key goals:
 
 See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative current engineering state.
 
-Phases 1–5 and the Phase 6 automated release gates have been validated on the managed local runtime baseline. Manual/live gates remain open.
+Phases 1–5 and Phase 6 automated gates are validated on the managed runtime. Edge live QA produced v5.3.1: Turn Egg is now real-button/UI-only in owned profile tabs; remaining live gates are documented in LIVE_QA_CHECKLIST.md.
 
 The GitHub repository is not yet the authoritative runtime source: Issue #2 remains open until the complete source/test tree is imported and CI reproduces the same results from a clean checkout.
 
