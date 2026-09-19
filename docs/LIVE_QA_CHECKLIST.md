@@ -47,3 +47,10 @@
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
 - [x] full suite 53/53 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
+
+
+## v5.3.6 Watchdog / fail-open
+- [ ] leave one owned egg tab unresolved >60s: it closes and records timeout
+- [ ] leave a batch incomplete >120s: unresolved tabs close and Full Sweep advances
+- [ ] observe a random egg-page/network failure: current friend is skipped safely, worker remains Running
+- [ ] press Stop and confirm no watchdog restarts work
