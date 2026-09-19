@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.5
+Current release baseline: v5.3.6
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
 Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
 
@@ -37,6 +37,16 @@ Phases 1–5 remain validated: hardened worker lifecycle, deterministic domain m
 Live QA found `too-many-leftover-tabs` after Name-the-Species failures accumulated as kept-open leftovers. v5.3.5 removes the fixed 3-attempt stranding path, closes bounded species-UI failures as extension-owned `abandoned` results, and reconciles all older leftover registry entries before admitting a new batch. The safety rule remains: only a tab still on the exact owned OviPets egg page may be auto-closed; navigated-away tabs are only removed from ownership state.
 
 Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file executions, 0 failures. Clean ZIP still passes 53/53.
+
+### v5.3.6 fail-open watchdogs
+
+- Per owned egg tab: 60s deadline => timeout + force-close if no terminal report.
+- Per batch: 120s deadline => unresolved owned tabs force-close and missing results become timeout.
+- Chrome Alarms back the persisted openedAt/startedAt deadlines; eggBatchStatus also enforces them.
+- Full Sweep egg-step errors are fail-open: cleanup + notice + skipRemoval + advance, not Stop.
+- Explicit failed egg results close immediately instead of creating new leftovers.
+- Focused watchdog/sweep soak: 20 rounds × 6 files = 120 executions, 0 failures.
+- Clean ZIP still passes 53/53.
 
 ## Still open
 
