@@ -1,7 +1,7 @@
 # Phase 6 Automated Release Hardening — Checkpoint
 
 Date: 2026-09-19
-Release baseline: v5.3.2
+Release baseline: v5.3.3
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release contract
@@ -16,7 +16,7 @@ A sanitized v5.3.2 ZIP was extracted into a clean directory and reproduced:
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: 51/51 PASS
+- Node tests: 52/52 PASS
 
 ## Edge live QA findings
 
@@ -51,3 +51,10 @@ Do not label the RC production-ready until the required live/manual/repository g
 ## Terminal wrong-answer behavior
 
 Live Edge QA clarified that the Error dialog after a wrong species answer is terminal for that egg. v5.3.2 removes same-tab retry after this condition: negative evidence is recorded, the owned tab reports `exhausted` and closes, and the parent coordinator suppresses that egg for the remainder of the current visit. The focused Egg/Species regression set passed 20 rounds × 8 files = 160 test-file executions with 0 failures.
+
+
+## v5.3.3 Continuous Full Sweep
+
+The friend-sweep worker now remains active after the final queued friend and begins the next pass automatically. The 10-minute per-friend cooldown is retained; when every candidate is still cooling down, the worker waits until the earliest eligible time and then resumes. Durable `cycle`/`waitingUntil` fields make the state visible in the dashboard, and Stop prevents a waiting pass from reopening a friend.
+
+Focused v5.3.3 sweep/egg/worker soak: 20 rounds × 6 files = 120 test-file executions, 0 failures.
