@@ -1,52 +1,37 @@
 # OviPets Hatchery Helper
 
-Chrome Manifest V3 extension for OviPets automation and breeding workflows.
+Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.3**
+Current release: **v5.3.4**
 
 ## Engineering objective
 
-The project prioritizes long-running stability and recoverability, then incremental modularization and measured efficiency improvements.
+The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
 
-Key goals:
+## v5.3.4
 
-- safe/recoverable background automation;
-- no duplicate, stale or cross-tab worker actions;
-- conservative confirmation of game mutations;
-- efficient handling of large pet/friend sets;
-- small modules with regression coverage;
-- explicit live-DOM contracts.
+**Continuous Full Sweep** runs friend passes repeatedly until Stop while preserving the 10-minute per-friend cooldown.
 
-## v5.3.3 continuous Full Sweep
+**Name the Species** now follows the live server behavior captured by Species Inspector:
 
-`Start full sweep` now loops continuously until **Stop**. After the final queued friend, the worker wraps to the first eligible friend and increments a durable pass counter. The existing 10-minute per-friend cooldown is preserved; if every friend is still cooling down, the worker remains active and waits for the earliest eligible friend instead of reporting completion.
+- `The answer is incorrect, please try again.` is retryable. Learn the wrong species, dismiss Error, Turn Egg again on the same egg, and exclude that species.
+- `The egg can no longer be turned.` is terminal. Only then is the extension-owned egg tab closed as exhausted.
 
-The dashboard shows `pass N`, and Stop during a cooldown wait prevents the next pass from opening.
+The Inspector learns from real `pet_turn_egg` success/failed responses and Answer IDs. A strict background image fetcher allows a perceptual challenge-image fingerprint that the solver also consumes, so learned knowledge can transfer across matching visual challenges.
 
-## v5.3.2 species verification
-
-A wrong Name-the-Species Error is terminal for that egg: record the negative answer, close only the extension-owned tab, mark that egg exhausted for the current visit, and continue the batch. The extension must not retry Turn Egg in the same tab after the Error appears.
-
-v5.3.2 also adds a privacy-scoped **Species Inspector**. It can record the verification DOM/image/options, answer outcomes, relevant client-side source hints and narrowly filtered same-origin request/response evidence while the quiz is active. It cannot access private server-side source code. Export the dataset from **Hatchery & Eggs → Export Species JSON** for later analysis.
+The panel includes **Export Species DB** and **Import Species DB**. Backups merge idempotently and can restore knowledge on another computer or after reinstall. Previous full Inspector JSON exports are also accepted; v5.3.4 can mine their trace/network sessions to recover outcomes and Answer IDs even when historical learned-memory fields were empty.
 
 ## Current status
 
-See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative current engineering state.
-
-Phases 1–5 and Phase 6 automated gates are validated on the managed runtime. Edge live QA produced v5.3.1: Turn Egg is now real-button/UI-only in owned profile tabs; remaining live gates are documented in LIVE_QA_CHECKLIST.md.
-
-The GitHub repository is not yet the authoritative runtime source: Issue #2 remains open until the complete source/test tree is imported and CI reproduces the same results from a clean checkout.
+See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative state. GitHub is not yet the runtime source-of-truth until Issue #2 imports the complete runtime/test tree and clean-checkout CI is green.
 
 ## Project docs
 
 - [Working state](docs/WORKING_STATE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture](ARCHITECTURE.md)
-- [Refactor map](docs/REFACTOR_MAP.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Live QA checklist](docs/LIVE_QA_CHECKLIST.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Species Inspector](docs/SPECIES_INSPECTOR.md)
 - [Agent workflow](docs/AGENT_WORKFLOW.md)
-- [Agent/skill research](docs/AGENT_SKILL_RESEARCH.md)
-
-Historical v5.3.0 README/CLAUDE material is retained under docs/archive/ for reference only.
