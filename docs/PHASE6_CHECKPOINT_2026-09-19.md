@@ -1,7 +1,7 @@
 # Phase 6 Automated Release Hardening — Current Checkpoint
 
 Date: 2026-09-20
-Release baseline: v5.3.5
+Release baseline: v5.3.6
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release gate
@@ -57,3 +57,17 @@ v5.3.5:
 - closes only entries still on the exact owned OviPets egg page; navigated-away tabs are never auto-closed.
 
 Verification: 53/53 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
+
+
+## v5.3.6 Fail-open watchdog policy
+
+Full Sweep must continue even when an owned egg tab never reports because of slow/broken network, page-load failures, UI errors or missing status messages.
+
+v5.3.6 adds:
+- 60-second per-tab watchdog;
+- 120-second batch watchdog;
+- persisted deadlines + Chrome Alarms + status-poll enforcement;
+- force-close only for extension-owned egg registry entries;
+- fail-open friend egg errors: cleanup, skipRemoval, advance instead of stopping the sweep.
+
+Verification: 53/53 full suite PASS; focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 53/53 PASS.
