@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phases 1–5 validated locally; Phase 6 automated release hardening is next. Runtime source is not yet mirrored to GitHub.
+Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; manual/live release gates remain. Runtime source is not yet mirrored to GitHub.
 
 ## Goal
 
@@ -17,102 +17,49 @@ Original supplied v5.3.0 snapshot:
 - Node test files: 23/23 PASS;
 - content.js was approximately 3,360 lines.
 
-Current managed working baseline:
+Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 49/49 PASS;
+- release consistency gate: PASS;
+- Node test files: 50/50 PASS;
+- clean extracted RC package reproduces the same gates;
 - content.js: 998 lines;
 - background.js: 165 lines;
-- Phase 1 lifecycle/mutation hardening remains covered;
-- deterministic domain modules own breeding/pet-record rules;
-- named core/DOM adapters replace broad platform coupling;
-- jobs no longer depend on a broad legacy helper bag;
-- all five major long-running feature state machines live under features/;
-- panel/dashboard presentation lives under ui/;
-- background state/database/worker/journal/alert/health responsibilities live under bg/.
+- all major feature state machines live under features/;
+- panel/dashboard live under ui/;
+- background DB/journal/worker/alert/health responsibilities live under bg/.
 
 Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
 
 ## Local implementation already validated
 
 ### Phase 1 — stability
-
-- explicit workerStarted ACK scoped by owner + generation + owning worker tab;
-- bounded start deadline with exact-generation cleanup;
-- generation-safe Stop/release/completion;
-- feed dispatch is not persisted as confirmed full food state;
-- bridge-owned temporary DOM is filtered from refresh scheduling.
+Worker ACK/deadline, generation/tab-safe lifecycle, truthful dispatched-vs-confirmed state and observer filtering.
 
 ### Phase 2 — domain
-
-Extracted:
-
-- domain/colors.js
-- domain/pet-record.js
-- domain/pedigree.js
-- domain/breeding-score.js
-- domain/breeding-plan.js
+Pure color/pet-record/pedigree/breeding scoring/planning modules.
 
 ### Phase 3 — adapters and dependency direction
-
-Extracted:
-
-- core/storage-client.js
-- core/game-bridge.js
-- core/worker-client.js
-- core/scheduler.js
-- core/game-actions.js
-- dom/routes.js
-- dom/profile.js
-- dom/hatchery.js
-- dom/tabs.js
-- dom/overview.js
-- dom/friends.js
-- dom/chat.js
-
-The refresh pipeline is partially route-aware. Jobs receive explicit adapters/domain objects and narrow feature services.
+Core storage/game/worker/scheduler/game-action adapters, route-specific DOM readers and removal of the broad legacy job helper bag.
 
 ### Phase 4 — feature state machines and UI
-
-Extracted:
-
-- features/own-eggs.js
-- features/pet-index.js
-- features/friend-sweep.js
-- features/hatchlings.js
-- features/breeding.js
-- ui/dashboard.js
-- ui/panel.js
-
-content.js is now a small composition/wiring layer plus a limited set of live Edit/profile mutation helpers.
+Own Eggs, Pet Index, Friend Sweep, Hatchlings, Breeding, Dashboard and Panel extracted. content.js is now the composition/wiring layer plus a limited set of live Edit/profile action helpers.
 
 ### Phase 5 — background services and data efficiency
+state-db, command-journal, worker-manager, species-alert and state-health extracted; targeted pet reads added; legacy migration cached; command history bounded. Task rows are bounded by fixed IDs.
 
-Extracted:
-
-- bg/state-db.js
-- bg/command-journal.js
-- bg/worker-manager.js
-- bg/species-alert.js
-- bg/state-health.js
-
-bg/egg-tabs.js remains the owned friend-egg-tab service.
-
-Efficiency/reliability changes:
-
-- one-time legacy migration cached for service-worker lifetime;
-- petDbGetMany/getPetsByIds avoids whole-DB reads in per-pet Pet Index and Breeding execution;
-- command journal has status-aware bounded retention, rate-limited to once per day;
-- task rows are bounded by design because only shared-worker and egg-run fixed IDs are used;
-- fake IndexedDB now covers keyPath/delete behavior for realistic retention tests.
+### Phase 6 — automated release hardening
+Release-version/source consistency, manifest/background import integrity and clean-package verification added. The final RC package reproduces JavaScript syntax PASS, release consistency PASS and 50/50 tests PASS after clean extraction.
 
 ## Still open
 
 - live Name the Species wrong-answer lifecycle;
 - live friend egg dedicated-tab Turn Egg lifecycle;
+- Windows Chrome unpacked-extension smoke;
+- manual worker Start/Stop/reload recovery check;
+- multi-hour soak test;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
-- full runtime/test source must be imported into GitHub and CI must reproduce the suite;
-- Phase 6 automated/manual release gates.
+- full runtime/test source must be imported into GitHub and clean-checkout CI must reproduce the suite.
 
 ## Source-of-truth order
 
@@ -142,12 +89,8 @@ Never restore a retired workflow only because an older document mentions it.
 ## Planned sequence
 
 Phase 0: complete GitHub runtime baseline + reproducible CI.
-Phase 1: stability hardening — validated locally.
-Phase 2: domain extraction — validated locally.
-Phase 3: adapters/DOM/dependency-contract extraction — validated locally.
-Phase 4: feature/UI extraction — validated locally.
-Phase 5: background/data-efficiency extraction — validated locally.
-Phase 6: automated release hardening + required live/manual QA.
+Phases 1–5: validated locally.
+Phase 6: automated gates validated locally; live/manual/repository gates remain.
 
 ## Required update rule
 
