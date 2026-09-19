@@ -21,9 +21,9 @@ Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
 - release consistency gate: PASS;
-- Node test files: 50/50 PASS;
+- Node test files: 51/51 PASS;
 - clean extracted RC package reproduces the same gates;
-- automated regression soak: 20 consecutive full-suite rounds, 1,000 test-file executions, 0 failures;
+- automated regression soak after the Edge live-wiring fix: 20 completed rounds, 1,020 test-file executions, 0 failures;
 - content.js: 998 lines;
 - background.js: 165 lines;
 - worker-tab cleanup now verifies the tab is still an OviPets tab before automatic close;
@@ -59,7 +59,7 @@ These require a real authenticated browser/live environment and are not marked c
 
 - Name the Species wrong-answer lifecycle on current OviPets;
 - friend egg dedicated-tab Turn Egg lifecycle on current OviPets;
-- Windows Chrome unpacked-extension UI/load smoke;
+- Windows Edge unpacked-extension UI/load smoke;
 - manual worker Start/Stop/reload recovery check;
 - multi-hour live-game soak;
 - full runtime/test source imported into GitHub and clean-checkout CI green;
@@ -85,6 +85,7 @@ Never restore a retired workflow only because an older document mentions it.
 - A stale generation must never stop or complete a newer generation.
 - Only tabs created and still owned by the extension may be closed automatically.
 - A worker tab that the user navigates away from OviPets must not be auto-closed.
+- Panel action wiring must not reference undefined shorthand actions; Edge live QA caught and fixed `copyBlacklistCsv` after refactor.
 - Stop must clear durable active state even if the worker tab is already dead.
 - MV3 service-worker memory is disposable; authoritative long-lived state must be persisted.
 - Feature cancellation/state must not be accidentally shared across unrelated jobs.
