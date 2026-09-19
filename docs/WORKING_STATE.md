@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-19
-Current release baseline: v5.3.1
+Current release baseline: v5.3.2
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; authenticated live/manual release gates remain. Runtime source is not yet mirrored to GitHub.
 
@@ -14,7 +14,7 @@ Build an OviPets Chrome Manifest V3 extension that can run long automation sessi
 Original supplied v5.3.0 snapshot:
 
 - JavaScript syntax: PASS;
-- Node test files: 23/23 PASS;
+- Node test files: 52/52 PASS;
 - content.js was approximately 3,360 lines.
 
 Current managed release-candidate baseline:
@@ -52,6 +52,10 @@ state-db, command-journal, worker-manager, species-alert and state-health extrac
 
 ### Phase 6 — automated release hardening
 Release-version/source consistency, manifest/background import integrity, clean-package verification, repeated automated soak and worker-tab ownership-close regression coverage are green.
+
+### v5.3.2 Species learning / terminal Error rule
+
+Edge QA confirmed the wrong-answer Error is terminal for the current egg. The answer is saved as negative evidence, the egg reports `exhausted`, only the extension-owned tab closes, and the parent coordinator will not reopen that egg during the same Hatchery/Friend visit. Species Inspector can export browser-visible DOM/image/options, client-side source hints and narrow same-origin network evidence for later analysis.
 
 ## Still open
 
