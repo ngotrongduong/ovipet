@@ -1,15 +1,15 @@
 # Phase 6 Automated Release Hardening — Current Checkpoint
 
 Date: 2026-09-20
-Release baseline: v5.3.6
+Release baseline: v5.3.7
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release gate
 
 - syntax PASS
 - release consistency PASS
-- clean ZIP: 53/53 tests PASS
-- three consecutive full-suite rounds: 53/53 each
+- clean ZIP: 54/54 tests PASS
+- three consecutive full-suite rounds: 54/54 each
 - focused Egg/Species/DB soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 
 ## Live-driven fixes retained
@@ -56,7 +56,7 @@ v5.3.5:
 - reconciles old leftover registry entries before every new batch;
 - closes only entries still on the exact owned OviPets egg page; navigated-away tabs are never auto-closed.
 
-Verification: 53/53 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
+Verification: 54/54 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
 
 
 ## v5.3.6 Fail-open watchdog policy
@@ -70,4 +70,13 @@ v5.3.6 adds:
 - force-close only for extension-owned egg registry entries;
 - fail-open friend egg errors: cleanup, skipRemoval, advance instead of stopping the sweep.
 
-Verification: 53/53 full suite PASS; focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 53/53 PASS.
+Verification: 54/54 full suite PASS; focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 54/54 PASS.
+
+
+## v5.3.7 Diagnostic Logbook
+
+Long-running automation now has a persistent structured black-box recorder. The newest 5,000 events / 14 days are retained with severity, subsystem, stable event code, timestamp/session/version and sanitized context. Export includes current worker/sweep/egg/job state.
+
+Instrumentation covers service-worker/module/runtime failures, worker lifecycle/lease expiry, Full Sweep transitions, egg batch/tab lifecycle, watchdog timeouts and fail-open recovery. Worker phase logging is deduplicated so one-second polling does not flood the journal.
+
+Verification: full suite 54/54 PASS from clean extracted ZIP; focused diagnostic/worker/sweep soak 20 rounds × 7 files = 140 executions, 0 failures.
