@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-19
-Current release baseline: v5.3.2
+Current release baseline: v5.3.3
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; authenticated live/manual release gates remain. Runtime source is not yet mirrored to GitHub.
 
@@ -56,6 +56,12 @@ Release-version/source consistency, manifest/background import integrity, clean-
 ### v5.3.2 Species learning / terminal Error rule
 
 Edge QA confirmed the wrong-answer Error is terminal for the current egg. The answer is saved as negative evidence, the egg reports `exhausted`, only the extension-owned tab closes, and the parent coordinator will not reopen that egg during the same Hatchery/Friend visit. Species Inspector can export browser-visible DOM/image/options, client-side source hints and narrow same-origin network evidence for later analysis.
+
+### v5.3.3 continuous Full Sweep
+
+Focused sweep/egg/worker soak: 20 rounds × 6 files = 120 test-file executions, 0 failures.
+
+Full Sweep no longer completes after one pass. It keeps the shared worker lease, wraps to the start of the friend queue, increments `owehSweep.cycle`, honors the 10-minute per-friend cooldown, and waits durably when the next pass is not yet eligible. Stop clears the durable active state and prevents any waiting cycle from reopening a friend.
 
 ## Still open
 
