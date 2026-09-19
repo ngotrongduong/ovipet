@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phase 1 hardening + Phase 2 domain extraction + Phase 3 adapter/dependency-contract extraction validated; runtime source not yet mirrored to GitHub
+Current local implementation status: Phase 1–3 validated + Phase 4 own-eggs/pet-index feature extraction validated; runtime source not yet mirrored to GitHub
 
 This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
 
@@ -23,8 +23,8 @@ Original supplied v5.3.0 snapshot:
 Current managed working baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 39/39 PASS;
-- content.js: 2,480 lines;
+- Node test files: 41/41 PASS;
+- content.js: 2,206 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - pure breeding and pet-record rules live in deterministic domain modules;
 - storage/game bridge/worker/scheduler/game-action adapters are separate;
@@ -82,7 +82,7 @@ The one-button jobs receive explicit adapters/domain objects and narrow feature 
 - live friend egg dedicated-tab Turn Egg lifecycle;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
 - full runtime/test source must be imported into GitHub and CI must reproduce the suite;
-- Phase 4 feature-state-machine extraction has not yet been completed.
+- Phase 4 is in progress: Own Egg Run and Pet Index are extracted; Friend Sweep, Hatchlings, Breeding and UI remain.
 
 ## Source-of-truth order
 
