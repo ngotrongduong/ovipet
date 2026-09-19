@@ -1,61 +1,49 @@
 # Live OviPets QA Checklist
 
-Record date, Edge version, extension version and non-sensitive evidence.
-
 ## Edge load/UI
 - [x] unpacked extension loads in Microsoft Edge
-- [x] content script/panel initializes after the `copyBlacklistCsv` wiring fix
+- [x] panel initializes
 - [x] Ninja Please observed working
 - [x] Start database observed scanning/indexing/breeding
-- [x] Full Sweep observed scanning friends and detecting turnable eggs
+- [x] Full Sweep scans friends and detects turnable eggs
 
-## v5.3.2: Name the Species wrong-answer lifecycle
-- [x] prompt observed from a real UI-click Turn Egg tab
-- [x] wrong answer produces separate Error dialog
-- [x] latest live rule confirmed: Error makes that egg non-turnable in that tab
-- [ ] v5.3.2 records the wrong answer then closes the owned tab without retrying
-- [ ] batch continues with other eggs and does not reopen the exhausted egg during the same visit
-- [ ] export Species Inspector JSON after collecting several quiz sessions
+## v5.3.4 Name the Species
+- [x] prompt observed from real UI-click Turn Egg tabs
+- [x] explicit incorrect Error/network response captured
+- [ ] wrong species excluded; Error dismissed; same egg retried; different species selected
+- [ ] later success stored as positive visual mapping
+- [ ] terminal `The egg can no longer be turned` closes only owned tab
+- [ ] batch continues after terminal egg
+- [ ] Export Species DB → clean/new Edge profile → Import restores learned mapping/Answer IDs
 
-## v5.3.2: Friend egg dedicated tab
-- [ ] extension-created tab opens intended egg
-- [ ] real Turn Egg control present
-- [ ] extension clicks the real Turn Egg button
-- [ ] species prompt handled if present
-- [ ] tab remains open until Turn Egg is confirmed complete
-- [ ] extension verifies ownership before closing
+## Friend egg dedicated tab
+- [ ] intended egg opens in extension-owned tab
+- [ ] real Turn Egg control clicked
+- [ ] retryable incorrect attempts remain in the same tab
+- [ ] tab closes only after success or terminal exhaustion
 - [ ] user-opened tabs never close
 
-## Own Hatchery egg flow
-- [ ] own Hatchery opens max 10 egg profile tabs per batch
-- [ ] no hidden `pet_turn_egg` command is used
-- [ ] each owned tab closes only after confirmation
-- [ ] merely browsing a friend's Hatchery does not auto-turn eggs
+## Continuous Full Sweep
+- [ ] pass 1 automatically starts/waits for pass 2
+- [ ] cooldown wait resumes automatically
+- [ ] Stop during cooldown opens no next friend
+- [ ] Stop during active batch starts no new pass
 
 ## Pet catalog/database
-- [x] Update pet catalog navigates/scans all visible enclosures
-- [ ] v5.3.2 final status visibly says `saved X pet(s) to database`
-- [ ] Refresh database health shows non-zero present/catalog counts after the scan
+- [x] enclosure scan observed
+- [ ] final saved-record status observed
+- [ ] database health shows non-zero present/catalog counts
 
 ## Hatchlings
-- [ ] suitable newly hatched pet available
-- [ ] Process hatchlings tested end-to-end
+- [ ] suitable target available
+- [ ] Process Hatchlings tested end-to-end
 
 ## Worker recovery
 - [ ] reload/close worker tab during run
 - [ ] Stop clears durable state
-- [ ] no stuck busy state
-- [ ] no duplicate job
+- [ ] no stuck busy state / duplicate job
 
 ## Soak
-- [x] automated focused Egg/Species soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
+- [x] focused Egg/Species/DB soak: 160/160 file executions PASS
+- [x] full suite 53/53 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
-
-See `docs/LIVE_QA_REPORT_2026-09-19.md` for the detailed findings that produced v5.3.2.
-
-
-## v5.3.3 Continuous Full Sweep
-- [ ] Complete one full friend-list pass and observe automatic start of pass 2.
-- [ ] If pass 1 finishes inside the 10-minute friend cooldown, observe waiting/cooldown status then automatic resume.
-- [ ] Press Stop during a cooldown wait and confirm no next friend opens.
-- [ ] Press Stop during an active friend/egg batch and confirm no new pass begins.
