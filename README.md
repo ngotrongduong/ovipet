@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension for OviPets automation and breeding workflows.
 
-Current release: **v5.3.2**
+Current release: **v5.3.3**
 
 ## Engineering objective
 
@@ -16,6 +16,12 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.3.3 continuous Full Sweep
+
+`Start full sweep` now loops continuously until **Stop**. After the final queued friend, the worker wraps to the first eligible friend and increments a durable pass counter. The existing 10-minute per-friend cooldown is preserved; if every friend is still cooling down, the worker remains active and waits for the earliest eligible friend instead of reporting completion.
+
+The dashboard shows `pass N`, and Stop during a cooldown wait prevents the next pass from opening.
 
 ## v5.3.2 species verification
 
