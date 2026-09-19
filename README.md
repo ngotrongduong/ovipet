@@ -2,14 +2,16 @@
 
 Chrome Manifest V3 extension for OviPets automation and breeding workflows.
 
+Current release: **v5.3.0**
+
 ## Engineering objective
 
-The project is being hardened for long-running reliability first, then incrementally modularized. Current release baseline is v5.3.0.
+The project prioritizes long-running stability and recoverability, then incremental modularization and measured efficiency improvements.
 
 Key goals:
 
 - safe/recoverable background automation;
-- no duplicate, stale, or cross-tab worker actions;
+- no duplicate, stale or cross-tab worker actions;
 - conservative confirmation of game mutations;
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
@@ -17,11 +19,11 @@ Key goals:
 
 ## Current status
 
-Start with [docs/WORKING_STATE.md](docs/WORKING_STATE.md).
+See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative current engineering state.
 
-Repository gate: Phase 0 is still open until the complete runtime/test baseline is imported and CI reproduces the clean suite from GitHub.
+Phases 1–5 and the Phase 6 automated release gates have been validated on the managed local runtime baseline. Manual/live gates remain open.
 
-Runtime hardening: Phase 1 changes have been validated on the managed working baseline with JavaScript syntax PASS and 25/25 Node test files PASS. See [the Phase 1 checkpoint](docs/PHASE1_CHECKPOINT_2026-09-19.md). Broad content.js modularization does not start before the repository baseline and lifecycle gates are closed.
+The GitHub repository is not yet the authoritative runtime source: Issue #2 remains open until the complete source/test tree is imported and CI reproduces the same results from a clean checkout.
 
 ## Project docs
 
@@ -31,13 +33,8 @@ Runtime hardening: Phase 1 changes have been validated on the managed working ba
 - [Refactor map](docs/REFACTOR_MAP.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Live QA checklist](docs/LIVE_QA_CHECKLIST.md)
-- [Phase 1 implementation checkpoint](docs/PHASE1_CHECKPOINT_2026-09-19.md)
-- [Project review](docs/PROJECT_REVIEW_2026-09-19.md)
-- [Agent/skill research](docs/AGENT_SKILL_RESEARCH.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
 - [Agent workflow](docs/AGENT_WORKFLOW.md)
+- [Agent/skill research](docs/AGENT_SKILL_RESEARCH.md)
 
-## Development rules
-
-Read [CLAUDE.md](CLAUDE.md), [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before runtime changes.
-
-The project follows stability-first incremental refactoring: small PRs, behavior-preserving extraction, tests at every boundary, independent high-signal review, and live QA where OviPets DOM behavior cannot be reproduced in CI.
+Historical v5.3.0 README/CLAUDE material is retained under docs/archive/ for reference only.
