@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phases 1–4 validated locally; Phase 5 background/data split is next. Runtime source is not yet mirrored to GitHub.
+Current local implementation status: Phases 1–5 validated locally; Phase 6 automated release hardening is next. Runtime source is not yet mirrored to GitHub.
 
 ## Goal
 
@@ -20,14 +20,16 @@ Original supplied v5.3.0 snapshot:
 Current managed working baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 46/46 PASS;
+- Node test files: 49/49 PASS;
 - content.js: 998 lines;
+- background.js: 165 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - deterministic domain modules own breeding/pet-record rules;
 - named core/DOM adapters replace broad platform coupling;
 - jobs no longer depend on a broad legacy helper bag;
 - all five major long-running feature state machines live under features/;
-- panel/dashboard presentation lives under ui/.
+- panel/dashboard presentation lives under ui/;
+- background state/database/worker/journal/alert/health responsibilities live under bg/.
 
 Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
 
@@ -82,9 +84,27 @@ Extracted:
 - ui/dashboard.js
 - ui/panel.js
 
-content.js is now a much smaller composition/wiring layer plus a limited set of live Edit/profile mutation helpers.
+content.js is now a small composition/wiring layer plus a limited set of live Edit/profile mutation helpers.
 
-A runtime regression found during this extraction (a stale undefined updateBlacklistCount refresh call) was fixed and now has direct regression coverage.
+### Phase 5 — background services and data efficiency
+
+Extracted:
+
+- bg/state-db.js
+- bg/command-journal.js
+- bg/worker-manager.js
+- bg/species-alert.js
+- bg/state-health.js
+
+bg/egg-tabs.js remains the owned friend-egg-tab service.
+
+Efficiency/reliability changes:
+
+- one-time legacy migration cached for service-worker lifetime;
+- petDbGetMany/getPetsByIds avoids whole-DB reads in per-pet Pet Index and Breeding execution;
+- command journal has status-aware bounded retention, rate-limited to once per day;
+- task rows are bounded by design because only shared-worker and egg-run fixed IDs are used;
+- fake IndexedDB now covers keyPath/delete behavior for realistic retention tests.
 
 ## Still open
 
@@ -92,7 +112,7 @@ A runtime regression found during this extraction (a stale undefined updateBlack
 - live friend egg dedicated-tab Turn Egg lifecycle;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
 - full runtime/test source must be imported into GitHub and CI must reproduce the suite;
-- Phase 5 background/service split and data-efficiency work.
+- Phase 6 automated/manual release gates.
 
 ## Source-of-truth order
 
@@ -110,7 +130,7 @@ Never restore a retired workflow only because an older document mentions it.
 - OviPets mutations go through the game's real UI/dispatcher bridge; do not invent direct private API calls.
 - One user button starts one independently observable job.
 - Only one shared worker lease may be active at a time.
-- Every worker lifecycle transition is owner + generation scoped.
+- Every worker lifecycle transition is owner + generation + owning-tab scoped where applicable.
 - A stale generation must never stop or complete a newer generation.
 - Only tabs created and still owned by the extension may be closed automatically.
 - Stop must clear durable active state even if the worker tab is already dead.
@@ -122,12 +142,12 @@ Never restore a retired workflow only because an older document mentions it.
 ## Planned sequence
 
 Phase 0: complete GitHub runtime baseline + reproducible CI.
-Phase 1: finish live verification and merge validated hardening.
+Phase 1: stability hardening — validated locally.
 Phase 2: domain extraction — validated locally.
 Phase 3: adapters/DOM/dependency-contract extraction — validated locally.
 Phase 4: feature/UI extraction — validated locally.
-Phase 5: split background services and improve IndexedDB/query efficiency.
-Phase 6: live QA, soak testing, release hardening.
+Phase 5: background/data-efficiency extraction — validated locally.
+Phase 6: automated release hardening + required live/manual QA.
 
 ## Required update rule
 
