@@ -45,7 +45,7 @@
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] full suite 53/53 passed three consecutive rounds
+- [x] full suite 54/54 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
 
 
@@ -54,3 +54,11 @@
 - [ ] leave a batch incomplete >120s: unresolved tabs close and Full Sweep advances
 - [ ] observe a random egg-page/network failure: current friend is skipped safely, worker remains Running
 - [ ] press Stop and confirm no watchdog restarts work
+
+
+## v5.3.7 Diagnostic Logbook
+- [ ] Run Full Sweep for an extended period, then Export Diagnostic Log.
+- [ ] Confirm chronological worker/sweep/egg events are present.
+- [ ] Observe a watchdog/fail-open event and confirm the reason is recorded.
+- [ ] Stop Full Sweep manually and confirm stop/release events are present.
+- [ ] Clear Diagnostic Log and confirm automation/database state is unchanged.
