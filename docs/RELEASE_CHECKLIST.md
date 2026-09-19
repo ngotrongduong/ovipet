@@ -4,10 +4,10 @@
 
 - [x] JavaScript syntax gate passes on the current local RC.
 - [x] Release consistency gate passes on the current local RC.
-- [x] 50/50 Node test files pass on the current local RC.
+- [x] 51/51 Node test files pass on the current local RC.
 - [x] The sanitized ZIP was extracted cleanly and reproduced all automated gates.
 - [x] Manifest/background import/version/local-file consistency is checked automatically.
-- [x] Automated regression soak completed: 20 consecutive full-suite rounds, 1,000 test-file executions, 0 failures.
+- [x] Automated regression soak completed: 20 consecutive full-suite rounds, 1,020 test-file executions, 0 failures.
 - [x] Worker-tab cleanup regression proves a user-navigated non-OviPets tab is not auto-closed.
 
 ## Architecture/safety review
@@ -21,7 +21,7 @@
 
 - [ ] Name the Species wrong-answer lifecycle verified on current OviPets.
 - [ ] Friend egg dedicated-tab Turn Egg lifecycle verified on current OviPets.
-- [ ] Windows Chrome unpacked-extension load/UI smoke completed.
+- [ ] Windows Edge unpacked-extension load/UI smoke completed.
 - [ ] Start/Stop/reload worker recovery manually checked.
 - [ ] Multi-hour live OviPets soak recorded in LIVE_QA_CHECKLIST.md.
 
