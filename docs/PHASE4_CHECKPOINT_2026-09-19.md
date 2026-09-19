@@ -1,61 +1,66 @@
-# Phase 4 Feature Extraction — Checkpoint B
+# Phase 4 Feature + UI Extraction — Complete Checkpoint
 
 Date: 2026-09-19
 Baseline: validated Phase 3 working tree
-Status: four feature state machines validated locally; GitHub runtime import remains gated by Issue #2.
+Status: Phase 4 complete locally; GitHub runtime import remains gated by Issue #2.
 
 ## Result
 
-content.js is now 1,648 lines, down from 3,407 at the Phase 1 hardened baseline and 2,480 at the final Phase 3 dependency-contract checkpoint.
+content.js is now 998 lines, down from 3,407 at the Phase 1 hardened baseline and 2,480 at the final Phase 3 dependency-contract checkpoint.
 
-Extracted feature state machines:
+Long-running feature state machines now live in:
 
 - features/own-eggs.js
 - features/pet-index.js
 - features/friend-sweep.js
 - features/hatchlings.js
+- features/breeding.js
 
-## Friend Sweep
+Presentation now lives in:
 
-The module now owns:
+- ui/dashboard.js
+- ui/panel.js
 
-- durable sweep cursor/state;
-- cooldown and permanent blacklist policy;
-- Start/Stop/Next/advance worker flow;
-- zero-egg removal timeout/recovery;
-- synchronous finish-step reentrancy guard;
-- worker-owner Next relay behavior;
-- active-sweep-only auto-resume;
-- handoff to jobs/friend-eggs.js.
+## Breeding Campaign
 
-Behavior tests prove a dormant saved queue cannot auto-start consequential sweep/removal behavior and overlapping refreshes cannot double-remove the same friend.
+features/breeding.js owns planning snapshot, optional profile-index handoff, database-direct execution, command-confirmed history and continuation/recovery guards. The fixed planner/domain behavior was not redesigned during extraction.
 
-## Hatchling Processing
+## Panel/UI
 
-The module now owns:
+ui/panel.js now owns:
 
-- explicit-start worker lifecycle;
-- retry timer while eggs/other automation have priority;
-- hatchling record TTL/recheck policy;
-- Hatchery candidate queue;
-- female rename/route progression;
-- durable maleMove phase;
-- Stop/recovery and completion.
+- panel markup and stale-panel replacement;
+- button/action wiring;
+- tooltip and collapse behavior;
+- settings input persistence;
+- egg Start/Stop visual state;
+- naming suggestion rendering;
+- blacklist count rendering;
+- panel visibility.
 
-Live Edit-tab mutations (rename/move enclosure) remain injected through a narrow hatchlingActions service so selector/mutation semantics were not redesigned during extraction.
+ui/dashboard.js owns activity chips, database-health cache, sweep notice presentation and dashboard debounce.
+
+content.js now provides composition/wiring and a smaller set of live-site action helpers instead of owning feature/UI state.
+
+## Regression found during extraction
+
+A real runtime regression was discovered: refresh() still called updateBlacklistCount() after the helper had been removed during the earlier Friend Sweep extraction. Node/source tests did not catch the undefined runtime name.
+
+The fix moved blacklist rendering into ui/panel.js and changed refresh() to call panelModule.updateBlacklistCount(). A new panel behavior/composition test prevents this class of regression from returning.
 
 ## Verification
 
 - JavaScript syntax: PASS
-- Node test files: 43/43 PASS
-- content.js: 1,648 lines
-- Phase 1 lifecycle regressions: PASS
-- Phase 3 dependency-contract regressions: PASS
-- Friend Sweep feature behavior: PASS
-- Hatchling feature behavior: PASS
+- Node test files: 46/46 PASS
+- content.js: 998 lines
+- compact panel UI tests: PASS
+- action wiring tests: PASS
+- panel behavior/composition tests: PASS
+- all Phase 1 lifecycle regressions: PASS
+- all Phase 3 dependency-contract regressions: PASS
 - no storage schema change
 - no page-bridge protocol change
 
 ## Next
 
-Extract Breeding Campaign, then move panel/dashboard presentation out of content.js. UI extraction should happen only after automation state is no longer owned by the UI file.
+Phase 5: split background.js into state DB, command journal, worker manager and species alert services, then improve data efficiency with bounded retention and measured query changes.
