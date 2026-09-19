@@ -9,15 +9,15 @@ Record date, Edge version, extension version and non-sensitive evidence.
 - [x] Start database observed scanning/indexing/breeding
 - [x] Full Sweep observed scanning friends and detecting turnable eggs
 
-## v5.3.1: Name the Species wrong-answer lifecycle
-- [ ] prompt detected from a real UI-click Turn Egg tab
-- [ ] wrong option observable/rejected
-- [ ] wrong option remembered/excluded
-- [ ] another option is attempted on the reused dialog
-- [ ] correct completion observable
-- [ ] no duplicate submission
+## v5.3.2: Name the Species wrong-answer lifecycle
+- [x] prompt observed from a real UI-click Turn Egg tab
+- [x] wrong answer produces separate Error dialog
+- [x] latest live rule confirmed: Error makes that egg non-turnable in that tab
+- [ ] v5.3.2 records the wrong answer then closes the owned tab without retrying
+- [ ] batch continues with other eggs and does not reopen the exhausted egg during the same visit
+- [ ] export Species Inspector JSON after collecting several quiz sessions
 
-## v5.3.1: Friend egg dedicated tab
+## v5.3.2: Friend egg dedicated tab
 - [ ] extension-created tab opens intended egg
 - [ ] real Turn Egg control present
 - [ ] extension clicks the real Turn Egg button
@@ -34,7 +34,7 @@ Record date, Edge version, extension version and non-sensitive evidence.
 
 ## Pet catalog/database
 - [x] Update pet catalog navigates/scans all visible enclosures
-- [ ] v5.3.1 final status visibly says `saved X pet(s) to database`
+- [ ] v5.3.2 final status visibly says `saved X pet(s) to database`
 - [ ] Refresh database health shows non-zero present/catalog counts after the scan
 
 ## Hatchlings
@@ -48,7 +48,7 @@ Record date, Edge version, extension version and non-sensitive evidence.
 - [ ] no duplicate job
 
 ## Soak
-- [x] automated regression soak: 20 rounds × 51 files = 1,020 executions, 0 failures
+- [x] automated focused Egg/Species soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 - [ ] multi-hour live OviPets soak
 
-See `docs/LIVE_QA_REPORT_2026-09-19.md` for the detailed findings that produced v5.3.1.
+See `docs/LIVE_QA_REPORT_2026-09-19.md` for the detailed findings that produced v5.3.2.
