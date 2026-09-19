@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phase 1–3 validated + Phase 4 own-eggs/pet-index feature extraction validated; runtime source not yet mirrored to GitHub
+Current local implementation status: Phase 1–3 validated + Phase 4 Own Eggs, Pet Index, Friend Sweep and Hatchlings extracted; runtime source not yet mirrored to GitHub
 
 This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
 
@@ -11,25 +11,24 @@ This file is the first project document every coding agent should read. Keep it 
 
 Build an OviPets Chrome Manifest V3 extension that can run long automation sessions reliably, recover safely from MV3 service-worker suspension/reloads, avoid duplicate or destructive actions, and remain easy to extend through small modules with strong regression coverage.
 
-## Baseline verification
+## Current verification
 
 Original supplied v5.3.0 snapshot:
 
-- runtime/test JavaScript syntax: PASS;
+- JavaScript syntax: PASS;
 - Node test files: 23/23 PASS;
-- no bundler/build step is required;
 - original content.js was approximately 3,360 lines.
 
 Current managed working baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 41/41 PASS;
-- content.js: 2,206 lines;
+- Node test files: 43/43 PASS;
+- content.js: 1,648 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
-- pure breeding and pet-record rules live in deterministic domain modules;
-- storage/game bridge/worker/scheduler/game-action adapters are separate;
-- route/profile/hatchery/tabs/overview/friends/chat DOM readers are separate;
-- jobs no longer depend on a broad legacy helper bag.
+- deterministic domain modules own breeding/pet-record rules;
+- named core/DOM adapters replace broad platform coupling;
+- jobs no longer depend on a broad legacy helper bag;
+- four long-running feature state machines now live under features/.
 
 Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
 
@@ -53,8 +52,6 @@ Extracted:
 - domain/breeding-score.js
 - domain/breeding-plan.js
 
-Domain planning/metadata time is explicit where needed so tests stay deterministic.
-
 ### Phase 3 — adapters and dependency direction
 
 Extracted:
@@ -72,9 +69,22 @@ Extracted:
 - dom/friends.js
 - dom/chat.js
 
-The refresh pipeline is partially route-aware.
+The refresh pipeline is partially route-aware. Jobs receive explicit adapters/domain objects and narrow feature services.
 
-The one-button jobs receive explicit adapters/domain objects and narrow feature services. A regression test forbids reintroducing the old legacy helper bag.
+### Phase 4 — feature state machines
+
+Extracted:
+
+- features/own-eggs.js
+- features/pet-index.js
+- features/friend-sweep.js
+- features/hatchlings.js
+
+Still in content.js:
+
+- Breeding Campaign state machine;
+- UI panel/dashboard presentation and wiring;
+- a small set of live Edit-tab mutation helpers used by feature adapters.
 
 ## Still open
 
@@ -82,7 +92,7 @@ The one-button jobs receive explicit adapters/domain objects and narrow feature 
 - live friend egg dedicated-tab Turn Egg lifecycle;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
 - full runtime/test source must be imported into GitHub and CI must reproduce the suite;
-- Phase 4 is in progress: Own Egg Run and Pet Index are extracted; Friend Sweep, Hatchlings, Breeding and UI remain.
+- complete Phase 4 by extracting Breeding Campaign and UI.
 
 ## Source-of-truth order
 
@@ -112,10 +122,10 @@ Never restore a retired workflow only because an older document mentions it.
 ## Planned sequence
 
 Phase 0: complete GitHub runtime baseline + reproducible CI.
-Phase 1: finish live verification and merge the validated worker/state hardening.
+Phase 1: finish live verification and merge validated hardening.
 Phase 2: domain extraction — validated locally.
 Phase 3: adapters/DOM/dependency-contract extraction — validated locally.
-Phase 4: extract feature state machines and UI.
+Phase 4: complete Breeding + UI extraction.
 Phase 5: split background services and improve IndexedDB/query efficiency.
 Phase 6: live QA, soak testing, release hardening.
 
