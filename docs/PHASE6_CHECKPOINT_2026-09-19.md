@@ -16,7 +16,7 @@ A sanitized release-candidate ZIP was created outside the source tree, extracted
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node test files: 50/50 PASS
+- Node test files: 51/51 PASS
 
 The package is rebuilt after code/doc changes and the checksum is recorded externally in the release handoff/Issue #7 so the archive does not contain a self-referential checksum.
 
@@ -34,11 +34,17 @@ See docs/AUTOMATED_SOAK_REPORT_2026-09-19.md.
 
 A worker-tab ownership gap was found and fixed: Stop/health cleanup still clears the durable lease, but automatic tab close now verifies the target tab is still on OviPets. If the user navigates the extension-created worker tab to another site, it is left open. Regression coverage locks this invariant.
 
+## Edge live-load finding
+
+Real Microsoft Edge QA exposed a startup `ReferenceError` because `copyBlacklistCsv` remained in `uiPanelActions` after its function had been removed during refactoring. The function was restored and a new `content-ui-action-wiring` regression test now fails if a shorthand panel action is undefined.
+
+The Edge-ready RC passes 51/51 tests and a fresh 20-round soak (1,020 test-file executions, 0 failures).
+
 ## Browser smoke attempts
 
 Linux Chromium/headless and Xvfb launch attempts did not expose a reliable extension service-worker DevTools target. These attempts are recorded as inconclusive, not PASS or FAIL.
 
-Windows Chrome unpacked-extension smoke therefore remains a manual gate. The RC includes scripts/windows-release-smoke.ps1 and docs/WINDOWS_QA.md.
+Windows Edge unpacked-extension smoke therefore remains a manual gate. The RC includes scripts/windows-release-smoke.ps1 and docs/WINDOWS_QA.md.
 
 ## Remaining release gates
 
