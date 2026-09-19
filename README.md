@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension for OviPets automation and breeding workflows.
 
-Current release: **v5.3.1**
+Current release: **v5.3.2**
 
 ## Engineering objective
 
@@ -16,6 +16,12 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.3.2 species verification
+
+A wrong Name-the-Species Error is terminal for that egg: record the negative answer, close only the extension-owned tab, mark that egg exhausted for the current visit, and continue the batch. The extension must not retry Turn Egg in the same tab after the Error appears.
+
+v5.3.2 also adds a privacy-scoped **Species Inspector**. It can record the verification DOM/image/options, answer outcomes, relevant client-side source hints and narrowly filtered same-origin request/response evidence while the quiz is active. It cannot access private server-side source code. Export the dataset from **Hatchery & Eggs → Export Species JSON** for later analysis.
 
 ## Current status
 
