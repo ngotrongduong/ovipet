@@ -3,9 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phase 1–3 validated + Phase 4 Own Eggs, Pet Index, Friend Sweep and Hatchlings extracted; runtime source not yet mirrored to GitHub
-
-This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
+Current local implementation status: Phases 1–4 validated locally; Phase 5 background/data split is next. Runtime source is not yet mirrored to GitHub.
 
 ## Goal
 
@@ -17,18 +15,19 @@ Original supplied v5.3.0 snapshot:
 
 - JavaScript syntax: PASS;
 - Node test files: 23/23 PASS;
-- original content.js was approximately 3,360 lines.
+- content.js was approximately 3,360 lines.
 
 Current managed working baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 43/43 PASS;
-- content.js: 1,648 lines;
+- Node test files: 46/46 PASS;
+- content.js: 998 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - deterministic domain modules own breeding/pet-record rules;
 - named core/DOM adapters replace broad platform coupling;
 - jobs no longer depend on a broad legacy helper bag;
-- four long-running feature state machines now live under features/.
+- all five major long-running feature state machines live under features/;
+- panel/dashboard presentation lives under ui/.
 
 Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
 
@@ -71,7 +70,7 @@ Extracted:
 
 The refresh pipeline is partially route-aware. Jobs receive explicit adapters/domain objects and narrow feature services.
 
-### Phase 4 — feature state machines
+### Phase 4 — feature state machines and UI
 
 Extracted:
 
@@ -79,12 +78,13 @@ Extracted:
 - features/pet-index.js
 - features/friend-sweep.js
 - features/hatchlings.js
+- features/breeding.js
+- ui/dashboard.js
+- ui/panel.js
 
-Still in content.js:
+content.js is now a much smaller composition/wiring layer plus a limited set of live Edit/profile mutation helpers.
 
-- Breeding Campaign state machine;
-- UI panel/dashboard presentation and wiring;
-- a small set of live Edit-tab mutation helpers used by feature adapters.
+A runtime regression found during this extraction (a stale undefined updateBlacklistCount refresh call) was fixed and now has direct regression coverage.
 
 ## Still open
 
@@ -92,7 +92,7 @@ Still in content.js:
 - live friend egg dedicated-tab Turn Egg lifecycle;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
 - full runtime/test source must be imported into GitHub and CI must reproduce the suite;
-- complete Phase 4 by extracting Breeding Campaign and UI.
+- Phase 5 background/service split and data-efficiency work.
 
 ## Source-of-truth order
 
@@ -125,7 +125,7 @@ Phase 0: complete GitHub runtime baseline + reproducible CI.
 Phase 1: finish live verification and merge validated hardening.
 Phase 2: domain extraction — validated locally.
 Phase 3: adapters/DOM/dependency-contract extraction — validated locally.
-Phase 4: complete Breeding + UI extraction.
+Phase 4: feature/UI extraction — validated locally.
 Phase 5: split background services and improve IndexedDB/query efficiency.
 Phase 6: live QA, soak testing, release hardening.
 
