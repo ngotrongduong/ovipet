@@ -52,3 +52,10 @@ Record date, Edge version, extension version and non-sensitive evidence.
 - [ ] multi-hour live OviPets soak
 
 See `docs/LIVE_QA_REPORT_2026-09-19.md` for the detailed findings that produced v5.3.2.
+
+
+## v5.3.3 Continuous Full Sweep
+- [ ] Complete one full friend-list pass and observe automatic start of pass 2.
+- [ ] If pass 1 finishes inside the 10-minute friend cooldown, observe waiting/cooldown status then automatic resume.
+- [ ] Press Stop during a cooldown wait and confirm no next friend opens.
+- [ ] Press Stop during an active friend/egg batch and confirm no new pass begins.
