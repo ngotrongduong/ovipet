@@ -2,28 +2,31 @@
 
 ## Automated gate
 
-- [x] JavaScript syntax gate passes on the current local RC.
-- [x] Release consistency gate passes on the current local RC.
-- [x] 51/51 Node test files pass on the current local RC.
-- [x] The sanitized ZIP was extracted cleanly and reproduced all automated gates.
-- [x] Manifest/background import/version/local-file consistency is checked automatically.
-- [x] Automated regression soak completed: 20 consecutive full-suite rounds, 1,020 test-file executions, 0 failures.
-- [x] Worker-tab cleanup regression proves a user-navigated non-OviPets tab is not auto-closed.
+- [x] `node scripts/verify-js.js` passes.
+- [x] `node scripts/verify-release.js` passes.
+- [x] `node --test tests/*.test.js` passes (51/51).
+- [x] Manifest-referenced files exist and load order is valid.
+- [x] Manifest/UI/README/WORKING_STATE release versions agree at v5.3.1.
+- [x] Background `importScripts(...)` targets all exist.
+- [x] Local-only Claude/session files are absent.
+- [x] No unresolved regression-test failure.
 
 ## Architecture/safety review
 
-- [x] Shared-worker owner/generation/tab and owned-tab-only-close invariants are covered by regression tests.
-- [x] Fire-and-forget dispatch is not treated as confirmed game success.
-- [x] Broad legacy/God dependency bag is not present in jobs.
-- [x] Feature state machines and background state services are separated from composition roots.
+- [ ] Relevant specialist review completed.
+- [ ] `oweh-regression-reviewer` completed.
+- [ ] Shared worker Start/Stop/recovery invariants unchanged or explicitly reviewed.
+- [ ] Extension-owned-tab-only close invariant preserved.
+- [ ] Fire-and-forget dispatch is not presented as confirmed game success.
+- [ ] No broad legacy/God dependency bag was reintroduced.
 
 ## Live/manual gate
 
 - [ ] Name the Species wrong-answer lifecycle verified on current OviPets.
 - [ ] Friend egg dedicated-tab Turn Egg lifecycle verified on current OviPets.
-- [ ] Windows Edge unpacked-extension load/UI smoke completed.
+- [x] Windows Edge unpacked-extension smoke test completed; live workflows are being re-tested on v5.3.1.
 - [ ] Start/Stop/reload worker recovery manually checked.
-- [ ] Multi-hour live OviPets soak recorded in LIVE_QA_CHECKLIST.md.
+- [ ] Multi-hour soak test recorded in `docs/LIVE_QA_CHECKLIST.md`.
 
 ## Repository gate
 
@@ -31,4 +34,4 @@
 - [ ] Clean checkout CI reproduces syntax + release checks + full tests.
 - [ ] No unresolved P0/P1 issue.
 
-Do not call the RC production-ready while any required authenticated live/manual or repository gate remains open.
+Do not call a release production-ready while any required live/repository gate above remains open.
