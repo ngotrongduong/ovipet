@@ -1,7 +1,7 @@
 # Phase 6 Automated Release Hardening — Current Checkpoint
 
 Date: 2026-09-20
-Release baseline: v5.3.4
+Release baseline: v5.3.5
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release gate
@@ -19,7 +19,7 @@ Status: automated/local package gates PASS; live/manual and GitHub clean-checkou
 - Full Sweep is continuous until Stop.
 - Extension-owned tab safety is enforced.
 
-## v5.3.4 Species Learning
+## v5.3.5 Species Learning
 
 Live Inspector data corrected the previous assumption that all wrong-answer Errors were terminal.
 
@@ -43,3 +43,17 @@ Live Inspector data corrected the previous assumption that all wrong-answer Erro
 - no unresolved P0/P1 issue.
 
 Do not label production-ready until these required gates complete.
+
+
+## v5.3.5 Leftover-tab recovery
+
+Real Full Sweep QA produced `Friend eggs: could not open egg tabs (too-many-leftover-tabs)`. Inspection showed the old manager deliberately kept unconfirmed/failed egg tabs open and refused a new batch after 10 leftovers; Name-the-Species failures were a common source.
+
+v5.3.5:
+- no longer strands species flow at the old 3-answer cap;
+- retries explicit incorrect answers through untried choices with a bounded answer-space safety cap;
+- treats a species Error overlay that cannot be dismissed as `abandoned` and closes that extension-owned tab;
+- reconciles old leftover registry entries before every new batch;
+- closes only entries still on the exact owned OviPets egg page; navigated-away tabs are never auto-closed.
+
+Verification: 53/53 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
