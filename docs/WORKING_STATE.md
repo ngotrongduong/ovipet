@@ -2,7 +2,8 @@
 
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
-Current engineering phase: Phase 1 — stability hardening
+Current repository phase: Phase 0 — baseline import/CI bootstrap
+Next runtime phase: Phase 1 — stability hardening
 
 This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
 
@@ -12,11 +13,30 @@ Build an OviPets Chrome Manifest V3 extension that can run long automation sessi
 
 ## Baseline verification
 
-- Runtime JavaScript syntax check: PASS.
-- Existing Node test files: 23/23 PASS on the supplied v5.3.0 snapshot.
-- No bundler/build step is required.
-- Main technical debt: content.js is approximately 3,360 lines and owns too many responsibilities.
-- Secondary concentration point: background.js is approximately 730 lines.
+The supplied v5.3.0 snapshot has been independently rechecked:
+
+- runtime/test JavaScript files syntax-checked: 41 files, 0 failures;
+- existing Node test files: 23/23 PASS;
+- no bundler/build step is required;
+- main technical debt: content.js is approximately 3,360 lines and owns too many responsibilities;
+- secondary concentration point: background.js is approximately 730 lines.
+
+## GitHub repository status
+
+The repository now contains the engineering control plane:
+
+- README project hub;
+- ARCHITECTURE.md;
+- this living state file;
+- ROADMAP.md;
+- REFACTOR_MAP.md;
+- TEST_STRATEGY.md;
+- LIVE_QA_CHECKLIST.md;
+- CONTRIBUTING.md / AGENTS.md / CLAUDE.md;
+- project-specific agents and skills;
+- Issues #1–#7 for implementation phases.
+
+The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 is the gate that must close before runtime refactor work is performed from GitHub.
 
 ## Current source-of-truth order
 
@@ -31,7 +51,7 @@ When documents disagree, use this order:
 
 Never restore a retired workflow only because an older document mentions it.
 
-## Current P1 work
+## Next runtime work after Phase 0
 
 1. Add explicit shared-worker start acknowledgement scoped by owner + generation.
 2. Add a bounded start deadline and deterministic cleanup on missing ACK.
@@ -54,8 +74,9 @@ Never restore a retired workflow only because an older document mentions it.
 - Feature cancellation/state must not be accidentally shared across unrelated jobs.
 - Refactors are behavior-preserving unless the PR explicitly says otherwise.
 
-## Next planned sequence
+## Planned sequence
 
+Phase 0: complete GitHub runtime baseline + reproducible CI.
 Phase 1: worker/state hardening.
 Phase 2: extract pure breeding/domain modules.
 Phase 3: extract storage, game bridge, worker client and DOM adapters.
@@ -67,4 +88,4 @@ See ROADMAP.md for gates and acceptance criteria.
 
 ## Required update rule
 
-Every merged PR that changes architecture, persistent state, worker lifecycle, automation semantics, or the active phase must update this file in the same PR.
+Every merged PR that changes architecture, persistent state, worker lifecycle, automation semantics, repository phase, or runtime phase must update this file in the same PR.
