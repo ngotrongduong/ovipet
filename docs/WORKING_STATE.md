@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; manual/live release gates remain. Runtime source is not yet mirrored to GitHub.
+Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; authenticated live/manual release gates remain. Runtime source is not yet mirrored to GitHub.
 
 ## Goal
 
@@ -23,8 +23,10 @@ Current managed release-candidate baseline:
 - release consistency gate: PASS;
 - Node test files: 50/50 PASS;
 - clean extracted RC package reproduces the same gates;
+- automated regression soak: 20 consecutive full-suite rounds, 1,000 test-file executions, 0 failures;
 - content.js: 998 lines;
 - background.js: 165 lines;
+- worker-tab cleanup now verifies the tab is still an OviPets tab before automatic close;
 - all major feature state machines live under features/;
 - panel/dashboard live under ui/;
 - background DB/journal/worker/alert/health responsibilities live under bg/.
@@ -49,17 +51,19 @@ Own Eggs, Pet Index, Friend Sweep, Hatchlings, Breeding, Dashboard and Panel ext
 state-db, command-journal, worker-manager, species-alert and state-health extracted; targeted pet reads added; legacy migration cached; command history bounded. Task rows are bounded by fixed IDs.
 
 ### Phase 6 — automated release hardening
-Release-version/source consistency, manifest/background import integrity and clean-package verification added. The final RC package reproduces JavaScript syntax PASS, release consistency PASS and 50/50 tests PASS after clean extraction.
+Release-version/source consistency, manifest/background import integrity, clean-package verification, repeated automated soak and worker-tab ownership-close regression coverage are green.
 
 ## Still open
 
-- live Name the Species wrong-answer lifecycle;
-- live friend egg dedicated-tab Turn Egg lifecycle;
-- Windows Chrome unpacked-extension smoke;
+These require a real authenticated browser/live environment and are not marked complete without evidence:
+
+- Name the Species wrong-answer lifecycle on current OviPets;
+- friend egg dedicated-tab Turn Egg lifecycle on current OviPets;
+- Windows Chrome unpacked-extension UI/load smoke;
 - manual worker Start/Stop/reload recovery check;
-- multi-hour soak test;
-- friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
-- full runtime/test source must be imported into GitHub and clean-checkout CI must reproduce the suite.
+- multi-hour live-game soak;
+- full runtime/test source imported into GitHub and clean-checkout CI green;
+- friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed.
 
 ## Source-of-truth order
 
@@ -80,6 +84,7 @@ Never restore a retired workflow only because an older document mentions it.
 - Every worker lifecycle transition is owner + generation + owning-tab scoped where applicable.
 - A stale generation must never stop or complete a newer generation.
 - Only tabs created and still owned by the extension may be closed automatically.
+- A worker tab that the user navigates away from OviPets must not be auto-closed.
 - Stop must clear durable active state even if the worker tab is already dead.
 - MV3 service-worker memory is disposable; authoritative long-lived state must be persisted.
 - Feature cancellation/state must not be accidentally shared across unrelated jobs.
