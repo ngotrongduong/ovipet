@@ -1,60 +1,45 @@
-# Phase 6 Automated Release Hardening — Checkpoint
+# Phase 6 Automated Release Hardening — Current Checkpoint
 
-Date: 2026-09-19
-Release baseline: v5.3.3
+Date: 2026-09-20
+Release baseline: v5.3.4
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
-## Automated release contract
+## Automated release gate
 
-Added `scripts/verify-release.js` and a regression test for it.
+- syntax PASS
+- release consistency PASS
+- clean ZIP: 53/53 tests PASS
+- three consecutive full-suite rounds: 53/53 each
+- focused Egg/Species/DB soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 
-The gate verifies Manifest V3, release-version agreement, manifest/background/offscreen file integrity and absence of local-only Claude/session files. The CI workflow runs syntax, release consistency and the full suite.
+## Live-driven fixes retained
 
-## Clean-package verification
+- Microsoft Edge is the primary Windows test browser.
+- Turn Egg uses real UI tabs rather than the hidden extension command bridge.
+- Full Sweep is continuous until Stop.
+- Extension-owned tab safety is enforced.
 
-A sanitized v5.3.2 ZIP was extracted into a clean directory and reproduced:
+## v5.3.4 Species Learning
 
-- JavaScript syntax: PASS
-- release consistency: PASS
-- Node tests: 52/52 PASS
+Live Inspector data corrected the previous assumption that all wrong-answer Errors were terminal.
 
-## Edge live QA findings
+- `The answer is incorrect, please try again.` is retryable.
+- `The egg can no longer be turned.` is terminal.
+- Negative learning comes only from explicit incorrect evidence.
+- Inspector learns from network success/failed results and Answer IDs.
+- Guarded challenge-image fetching provides a perceptual fingerprint that the solver reuses.
+- Export/Import Species DB makes learned data portable.
+- Old Inspector exports can be mined during import to recover trace outcomes/Answer IDs.
+- Import is idempotent.
 
-Microsoft Edge live testing confirmed Ninja Please, pet-catalog navigation, Start database indexing/breeding, friend scanning and detection of turnable friend eggs.
+## Remaining gates
 
-It also exposed two Turn Egg defects in the previous build: friend egg tabs opened but hidden `pet_turn_egg` dispatch did not complete reliably, and merely browsing a friend's Hatchery could trigger background egg turning.
-
-v5.3.2 removes `pet_turn_egg` from both the page-bridge whitelist and game-bridge client. Own and friend Turn Egg flows now use batches of at most 10 extension-owned profile tabs; each tab clicks the real visible button, resolves Name the Species if present, confirms the button is gone, and only then reports success/permits close. Own-egg auto-start is restricted to the user's own Hatchery.
-
-The Name the Species module also handles rejection when OviPets reuses the same dialog node: after the rejection settle window it records the answer as wrong, re-arms the watcher and tries another eligible answer.
-
-## Automated soak
-
-After the redesign: 20 completed rounds × 51 test files = 1,020 test-file executions, 0 failures.
-
-## Browser/manual status
-
-Microsoft Edge unpacked-extension load/UI smoke has passed on the real Windows machine. Remaining live gates are the v5.3.2 real-button friend egg flow, Name the Species wrong-answer lifecycle, worker recovery and multi-hour live-game soak.
-
-## Remaining release blockers/gates
-
-- live Name the Species wrong-answer lifecycle;
-- live friend egg dedicated-tab Turn Egg lifecycle;
-- manual Start/Stop/reload recovery check;
-- multi-hour soak test;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green;
+- live retryable incorrect → different second guess;
+- live terminal exhaustion → owned tab closes/batch continues;
+- DB export/import restore in a clean profile;
+- worker reload/Stop recovery;
+- multi-hour live soak;
+- runtime source import + clean-checkout GitHub CI;
 - no unresolved P0/P1 issue.
 
-Do not label the RC production-ready until the required live/manual/repository gates are complete.
-
-
-## Terminal wrong-answer behavior
-
-Live Edge QA clarified that the Error dialog after a wrong species answer is terminal for that egg. v5.3.2 removes same-tab retry after this condition: negative evidence is recorded, the owned tab reports `exhausted` and closes, and the parent coordinator suppresses that egg for the remainder of the current visit. The focused Egg/Species regression set passed 20 rounds × 8 files = 160 test-file executions with 0 failures.
-
-
-## v5.3.3 Continuous Full Sweep
-
-The friend-sweep worker now remains active after the final queued friend and begins the next pass automatically. The 10-minute per-friend cooldown is retained; when every candidate is still cooling down, the worker waits until the earliest eligible time and then resumes. Durable `cycle`/`waitingUntil` fields make the state visible in the dashboard, and Stop prevents a waiting pass from reopening a friend.
-
-Focused v5.3.3 sweep/egg/worker soak: 20 rounds × 6 files = 120 test-file executions, 0 failures.
+Do not label production-ready until these required gates complete.
