@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phase 1 hardening + Phase 2 domain extraction + Phase 3 adapter checkpoint validated; runtime source not yet mirrored to GitHub
+Current local implementation status: Phase 1 hardening + Phase 2 domain extraction + Phase 3 adapter/dependency-contract extraction validated; runtime source not yet mirrored to GitHub
 
 This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
 
@@ -18,44 +18,71 @@ Original supplied v5.3.0 snapshot:
 - runtime/test JavaScript syntax: PASS;
 - Node test files: 23/23 PASS;
 - no bundler/build step is required;
-- main technical debt: content.js is approximately 3,360 lines and owns too many responsibilities;
-- secondary concentration point: background.js is approximately 730 lines.
+- original content.js was approximately 3,360 lines.
 
-Managed Phase 1 working baseline currently verifies:
+Current managed working baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 31/31 PASS;
-- lifecycle regression tests cover worker start ACK/timeout, generation-safe Stop, sender-tab scoping and stale completion;\n- pure breeding domain is extracted into four deterministic modules;\n- content.js reduced from 3,407 to 2,796 lines through domain/core/route extraction;
-- feed dispatch no longer masquerades as confirmed full food state;
-- page-bridge transport DOM is filtered from global refresh churn.
+- Node test files: 39/39 PASS;
+- content.js: 2,480 lines;
+- Phase 1 lifecycle/mutation hardening remains covered;
+- pure breeding and pet-record rules live in deterministic domain modules;
+- storage/game bridge/worker/scheduler/game-action adapters are separate;
+- route/profile/hatchery/tabs/overview/friends/chat DOM readers are separate;
+- jobs no longer depend on a broad legacy helper bag.
 
-These Phase 1 runtime changes are validated locally but are not yet the GitHub runtime baseline. Issue #2 remains the repository gate.
+Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
 
-## GitHub repository status
+## Local implementation already validated
 
-The repository contains the engineering control plane: README, architecture/roadmap/refactor/test/live-QA docs, agent workflow/research, contribution rules, project-specific agents/skills, PR template, and Issues #1–#7.
+### Phase 1 — stability
 
-The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 must close before GitHub becomes the authoritative runtime source and before broad modularization begins.
+- explicit workerStarted ACK scoped by owner + generation + owning worker tab;
+- bounded start deadline with exact-generation cleanup;
+- generation-safe Stop/release/completion;
+- feed dispatch is not persisted as confirmed full food state;
+- bridge-owned temporary DOM is filtered from refresh scheduling.
 
-## Local implementation already validated\n\n### Phase 1 stability
+### Phase 2 — domain
 
-- explicit workerStarted ACK scoped by owner + generation;
-- bounded worker-start deadline with exact-generation cleanup;
-- stopping state reserves the current generation throughout asynchronous Stop cleanup;
-- Start during stopping is refused instead of being falsely reported as already running;
-- worker phase/completion is scoped by generation + owning worker tab;
-- stale generation completion cannot release a newer claim;
-- feed persists feedDispatchedAt instead of manufacturing foodPercent=100/foodCheckedAt;
-- recent feed dispatch gets a short 10-minute duplicate guard while observed food state remains authoritative;
-- temporary page-bridge forms are marked as extension-owned;
-- mutation batches consisting only of bridge-owned DOM are ignored by global refresh scheduling.
+Extracted:
 
-### Phase 2 modularization\n\n- extracted domain/colors.js, domain/pedigree.js, domain/breeding-score.js and domain/breeding-plan.js;\n- added behavioral domain tests and manifest-integrity test;\n- planner time is explicit via options.now;\n- no worker/storage/DOM/game-command behavior changed.\n\n### Phase 3 adapter checkpoint\n\n- core/storage-client.js, core/game-bridge.js and core/worker-client.js extracted;\n- dom/routes.js extracted;\n- jobs keep the existing helper contract while implementation moves behind named adapters;\n- live selector-heavy DOM readers remain in content.js pending fixture-backed contracts.\n\nStill open:
+- domain/colors.js
+- domain/pet-record.js
+- domain/pedigree.js
+- domain/breeding-score.js
+- domain/breeding-plan.js
+
+Domain planning/metadata time is explicit where needed so tests stay deterministic.
+
+### Phase 3 — adapters and dependency direction
+
+Extracted:
+
+- core/storage-client.js
+- core/game-bridge.js
+- core/worker-client.js
+- core/scheduler.js
+- core/game-actions.js
+- dom/routes.js
+- dom/profile.js
+- dom/hatchery.js
+- dom/tabs.js
+- dom/overview.js
+- dom/friends.js
+- dom/chat.js
+
+The refresh pipeline is partially route-aware.
+
+The one-button jobs receive explicit adapters/domain objects and narrow feature services. A regression test forbids reintroducing the old legacy helper bag.
+
+## Still open
 
 - live Name the Species wrong-answer lifecycle;
 - live friend egg dedicated-tab Turn Egg lifecycle;
 - friend-request state remains intentionally "dispatched" unless a reliable confirmation signal is observed;
-- runtime/test source must be imported into GitHub and CI must reproduce the suite.
+- full runtime/test source must be imported into GitHub and CI must reproduce the suite;
+- Phase 4 feature-state-machine extraction has not yet been completed.
 
 ## Source-of-truth order
 
@@ -86,13 +113,11 @@ Never restore a retired workflow only because an older document mentions it.
 
 Phase 0: complete GitHub runtime baseline + reproducible CI.
 Phase 1: finish live verification and merge the validated worker/state hardening.
-Phase 2: extract pure breeding/domain modules.
-Phase 3: extract storage, game bridge, worker client and DOM adapters.
+Phase 2: domain extraction — validated locally.
+Phase 3: adapters/DOM/dependency-contract extraction — validated locally.
 Phase 4: extract feature state machines and UI.
 Phase 5: split background services and improve IndexedDB/query efficiency.
 Phase 6: live QA, soak testing, release hardening.
-
-See ROADMAP.md for gates and acceptance criteria.
 
 ## Required update rule
 
