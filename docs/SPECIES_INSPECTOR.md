@@ -1,13 +1,40 @@
 # Name the Species — Inspector / Learning Dataset
 
-Release: v5.3.2
+Release: v5.3.4
 
-The inspector exists to discover whether OviPets exposes useful answer identity on the browser side and to build a progressively better image/species memory. It can observe only information delivered to the browser; it cannot read private server-side source code.
+## Purpose
 
-While Turn Egg / Name the Species is active it records the verification dialog, image URL/attributes, perceptual fingerprint, small thumbnail, option text, selected answer/outcome, terminal Error snapshot, OviPets script URLs, matching client-side global function/value hints, and narrowly filtered same-origin XHR/fetch evidence. Unrelated query/body fields are redacted and unrelated response bodies are omitted.
+The Inspector observes only browser-delivered Name-the-Species data and builds reusable image/species knowledge. It cannot read private server-side source code.
 
-It does not record cookies, authorization headers, passwords, chat, general browsing history, unrelated response bodies, or cross-origin traffic.
+It records the quiz dialog, challenge image sources/fingerprint/thumbnail, option text + Answer IDs, selected answer/outcome, relevant Error dialogs, selected client-side source hints, and narrowly filtered same-origin quiz XHR/fetch evidence. It does not record cookies, auth headers, passwords, chat, general browsing history or unrelated response bodies.
 
-Live rule: when `The answer is incorrect, please try again.` appears, record the submitted species as wrong, mark the session terminal, do not Turn Egg again in that tab, report the egg as `exhausted`, close only that extension-owned tab, and do not reopen that egg during the same visit.
+## Live outcome rules
 
-Use **Hatchery & Eggs → Export Species JSON** to download the dataset. Upload that JSON for analysis of stable asset IDs, recurring fingerprints, source hints, network fields, and correct/wrong mappings. **Clear Inspector** removes trace sessions while keeping learned answer memory.
+1. `The answer is incorrect, please try again.` is **retryable**. Store that species as wrong for the current visual identity, dismiss Error, Turn Egg again on the same egg and exclude that species.
+2. `The egg can no longer be turned.` is **terminal**. Report exhausted, close only the extension-owned tab and continue the batch.
+
+Timeout/silence/navigation/choosing another option are not proof that an answer was wrong.
+
+## Learning identity
+
+The solver and Inspector share:
+
+- perceptual challenge-image fingerprint;
+- canonical image source;
+- question-key fallback.
+
+The image is served from `app.ovipets.com`. A strict background service may fetch only `/img/pet/<id>/credit-challenge`, letting the content script compute a visual fingerprint without weakening the page bridge.
+
+The real `pet_turn_egg` response is authoritative: success adds a positive vote; explicit incorrect failure adds negative evidence. Answer IDs are learned from options/network requests.
+
+## Portable backup
+
+- **Export Species JSON** — full trace + learning data for analysis.
+- **Export Species DB** — compact portable learned database.
+- **Import Species DB** — merges compact DB backups or older full Inspector exports.
+
+Import is idempotent: reimporting the same file does not multiply votes. It merges instead of replacing.
+
+For older Inspector exports whose learned-memory fields are empty, v5.3.4 mines stored trace/network sessions to reconstruct recoverable positive/negative mappings and Answer IDs. This preserves early experimental data.
+
+**Clear Inspector** removes trace sessions while retaining learned memory.
