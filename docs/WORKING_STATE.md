@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-19
-Current release baseline: v5.3.0
+Current release baseline: v5.3.1
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; authenticated live/manual release gates remain. Runtime source is not yet mirrored to GitHub.
 
@@ -90,6 +90,7 @@ Never restore a retired workflow only because an older document mentions it.
 - MV3 service-worker memory is disposable; authoritative long-lived state must be persisted.
 - Feature cancellation/state must not be accidentally shared across unrelated jobs.
 - Command dispatch is not the same as confirmed game mutation.
+- Turn Egg is UI-only: `pet_turn_egg` must never be dispatched through the page bridge or game-bridge client.
 - Refactors are behavior-preserving unless the PR explicitly says otherwise.
 
 ## Planned sequence
