@@ -3,7 +3,7 @@
 Last updated: 2026-09-19
 Current release baseline: v5.3.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current runtime hardening status: Phase 1 implementation validated on managed local baseline; not yet mirrored to GitHub runtime source
+Current local implementation status: Phase 1 hardening + Phase 2 pure-domain extraction validated; runtime source not yet mirrored to GitHub
 
 This file is the first project document every coding agent should read. Keep it short, current, and factual. Historical decisions belong in CHANGELOG or topic docs.
 
@@ -24,8 +24,8 @@ Original supplied v5.3.0 snapshot:
 Managed Phase 1 working baseline currently verifies:
 
 - JavaScript syntax: PASS;
-- Node test files: 25/25 PASS;
-- lifecycle regression tests cover worker start ACK/timeout, generation-safe Stop, sender-tab scoping and stale completion;
+- Node test files: 27/27 PASS;
+- lifecycle regression tests cover worker start ACK/timeout, generation-safe Stop, sender-tab scoping and stale completion;\n- pure breeding domain is extracted into four deterministic modules;\n- content.js reduced from 3,407 to 3,003 lines;
 - feed dispatch no longer masquerades as confirmed full food state;
 - page-bridge transport DOM is filtered from global refresh churn.
 
@@ -37,7 +37,7 @@ The repository contains the engineering control plane: README, architecture/road
 
 The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 must close before GitHub becomes the authoritative runtime source and before broad modularization begins.
 
-## Phase 1 work already validated locally
+## Local implementation already validated\n\n### Phase 1 stability
 
 - explicit workerStarted ACK scoped by owner + generation;
 - bounded worker-start deadline with exact-generation cleanup;
@@ -50,7 +50,7 @@ The complete runtime/test snapshot is not yet mirrored into GitHub. Issue #2 mus
 - temporary page-bridge forms are marked as extension-owned;
 - mutation batches consisting only of bridge-owned DOM are ignored by global refresh scheduling.
 
-Still open:
+### Phase 2 modularization\n\n- extracted domain/colors.js, domain/pedigree.js, domain/breeding-score.js and domain/breeding-plan.js;\n- added behavioral domain tests and manifest-integrity test;\n- planner time is explicit via options.now;\n- no worker/storage/DOM/game-command behavior changed.\n\nStill open:
 
 - live Name the Species wrong-answer lifecycle;
 - live friend egg dedicated-tab Turn Egg lifecycle;
