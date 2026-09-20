@@ -88,6 +88,8 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 
 ## Still open
 
+- Ninja Please expansion (Issue #8): scan both `Ninja please` and `Ads post`, merge unique user IDs active in the rolling last 24 hours, and exclude any ID already present in persistent friend-request dispatched/sent history. Runtime implementation is pending because the current v5.3.11 runtime/test tree is still local and not yet imported to GitHub.
+
 - live v5.3.11 incorrect → different second guess on the same egg;
 - live terminal no-longer-turnable → owned tab closes and batch continues;
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
