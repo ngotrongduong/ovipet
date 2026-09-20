@@ -1,15 +1,15 @@
 # Phase 6 Automated Release Hardening — Current Checkpoint
 
 Date: 2026-09-20
-Release baseline: v5.3.10
+Release baseline: v5.3.11
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release gate
 
 - syntax PASS
 - release consistency PASS
-- clean ZIP: 57/57 tests PASS
-- three consecutive full-suite rounds: 57/57 each
+- clean ZIP: 58/58 tests PASS
+- current v5.3.11 full-suite gate: 58/58 PASS
 - focused Egg/Species/DB soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 
 ## Live-driven fixes retained
@@ -103,3 +103,12 @@ Verification: syntax PASS, release consistency PASS, full suite 57/57 PASS, focu
 A live v5.3.9 diagnostic export captured an orphaned sweep: after child-tab timeouts the coordinator later disappeared, protected recovery failed, the worker row was released, but `owehSweep.active` remained true. v5.3.10 auto-replaces a missing protected coordinator and also reclaims a fresh generation whenever health checks find an active sweep with no live worker. Durable cycle/index is preserved.
 
 Verification: syntax PASS, release consistency PASS, full suite 57/57 PASS, focused 20 × 7 = 140 executions with 0 failures, clean ZIP 57/57 PASS.
+
+
+## v5.3.11 Fast Sweep throughput
+
+Full Sweep now snapshots a friend's turnable egg queue once and drains it through consecutive batches before one final Hatchery verification. Adaptive concurrency uses levels 10 → 12 → 15, promoting after five clean full batches and stepping down when timeouts/system failures occur. Egg-tab stagger is 175ms, successful child close delay 250ms, batch completion is pushed event-first with a 2s polling fallback, and Name-the-Species fixed waits are replaced by condition-based OK readiness where possible.
+
+The 60s per-tab watchdog, 120s batch watchdog, 10-minute friend cooldown, protected/self-healing coordinator, Species learning and Diagnostic Logbook are preserved.
+
+Verification: syntax PASS, release consistency PASS, full suite 58/58 PASS, focused Fast Sweep/worker/egg/species soak 20 × 8 = 160 executions with 0 failures, clean-extracted ZIP 58/58 PASS.
