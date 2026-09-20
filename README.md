@@ -2,11 +2,25 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.11**
+Current release: **v5.3.12**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.12 Ninja + Ads friend discovery
+
+The standalone Ninja friend-discovery scan now reads both OviPets profile posts on `#!/OviPets`: **Ninja please** and **Ads post**.
+
+- Both posts are scanned independently over the rolling last 24 hours.
+- Candidates are merged globally by stable OviPets User ID.
+- Duplicate IDs across/repeated within either post are queued once, keeping the newest qualifying comment.
+- Existing `owehFriendRequestHistory` remains the single global do-not-resend history for both sources.
+- Existing self/no-request/history filters remain in place.
+- A missing source is fail-soft; the other source is still scanned.
+- Scan remains separate from **Send friend requests** and performs no friend-request mutation itself.
+
+Validated v5.3.12 artifact: full suite **59/59 PASS**, focused Ninja/chat soak **40/40 PASS**, clean-extracted ZIP **59/59 PASS**. SHA-256: `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`.
 
 ## v5.3.11 Fast Sweep + Lightweight Tabs
 
