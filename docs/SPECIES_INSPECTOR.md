@@ -48,3 +48,8 @@ As of v5.3.11, Species Inspector remains compatible with Continuous Full Sweep, 
 ## Fast Sweep integration
 
 v5.3.11 reduces the fixed delay between selecting a species and confirming it: after selecting an option, the solver waits for the actual OK control to become usable (bounded readiness wait) and then confirms. Retryable incorrect answers still require explicit server/Error evidence before negative learning. The 60-second egg-tab watchdog remains unchanged.
+
+
+## v5.3.11 lightweight sweep tabs
+
+Fast Sweep-owned tabs may block normal image/media/font resources to reduce memory/network load. Name-the-Species learning remains functional because the challenge source URL is still present in the DOM and the guarded background species-image service fetches the challenge asset directly for fingerprinting.
