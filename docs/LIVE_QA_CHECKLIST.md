@@ -45,7 +45,7 @@
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] full suite 54/54 passed three consecutive rounds
+- [x] full suite 55/55 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
 
 
@@ -56,9 +56,16 @@
 - [ ] press Stop and confirm no watchdog restarts work
 
 
-## v5.3.7 Diagnostic Logbook
+## v5.3.8 Diagnostic Logbook
 - [ ] Run Full Sweep for an extended period, then Export Diagnostic Log.
 - [ ] Confirm chronological worker/sweep/egg events are present.
 - [ ] Observe a watchdog/fail-open event and confirm the reason is recorded.
 - [ ] Stop Full Sweep manually and confirm stop/release events are present.
 - [ ] Clear Diagnostic Log and confirm automation/database state is unchanged.
+
+
+## v5.3.8 Protected coordinator
+- [ ] Let Full Sweep hit a slow/stuck friend/egg batch and confirm the coordinator tab remains open.
+- [ ] If recovery occurs, confirm Diagnostic Log contains `worker.lease-expired` then `worker.protected-recovery` and/or `worker.protected-reload`.
+- [ ] Confirm recovery resumes the same pass/friend cursor, not pass 1.
+- [ ] Press Stop and confirm the coordinator tab then closes normally.
