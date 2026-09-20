@@ -2,11 +2,19 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.9**
+Current release: **v5.3.10**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.10 Self-healing Full Sweep coordinator
+
+Diagnostic Logbook live data captured an orphaned-sweep state: `owehSweep.active=true` remained persisted after the protected coordinator tab disappeared and the shared-worker row was released. The UI therefore looked active while no worker existed to advance the friend cursor.
+
+v5.3.10 automatically replaces/reclaims the sweep coordinator. Missing protected tabs are replaced and sent `recoverSharedWorker`; if the worker row is already stopped while the sweep is still active, the next health check claims a fresh generation, creates a new coordinator, and resumes from the durable cycle/index. The dashboard shows `recovering` instead of `this tab` while no live worker exists, and stale sweep timeout notices expire after 15 seconds.
+
+Verification: full suite 57/57 PASS; focused self-healing soak 20 rounds × 7 files = 140 executions, 0 failures.
 
 ## v5.3.9 Extension reload soft-shutdown
 
