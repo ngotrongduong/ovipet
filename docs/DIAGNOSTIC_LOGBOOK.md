@@ -25,3 +25,8 @@ If the dashboard shows an automation as running but no work advances, export the
 ## v5.3.11 Fast Sweep speed state
 
 Diagnostic exports include `owehEggTabConcurrency` and `owehEggSpeedProfile` so throughput incidents can be correlated with the current adaptive level/clean-batch streak. Fast Sweep also avoids classifying ordinary progress text containing `0 timeout` / `0 failed` as warning events, reducing log/storage noise.
+
+
+## v5.3.11 segmented storage
+
+New diagnostic events are stored in a fixed ring of 200-entry chunks rather than rewriting the whole retained timeline on every event. Existing v1 log data remains readable/exportable and the public JSON format/5,000-event/14-day retention contract is unchanged. This reduces long-run storage I/O and service-worker pressure during fast sweeps.
