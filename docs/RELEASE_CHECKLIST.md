@@ -4,9 +4,9 @@
 
 - [x] JavaScript syntax PASS.
 - [x] Release consistency PASS.
-- [x] Full Node suite **58/58 PASS**.
-- [x] Clean-extracted ZIP reproduces 58/58.
-- [x] Current v5.3.11 full-suite gate passes 58/58.
+- [x] Full Node suite **59/59 PASS**.
+- [x] Clean-extracted ZIP reproduces 59/59.
+- [x] Current v5.3.11 full-suite gate passes 59/59.
 - [x] Focused Egg/Species/DB soak: 20 × 8 = 160 test-file executions, 0 failures.
 - [x] Continuous Full Sweep wrap/cooldown/Stop semantics covered.
 - [x] Species DB export/import, idempotent merge and old Inspector trace recovery covered.
@@ -42,6 +42,11 @@
 - [x] 175ms egg-tab stagger and reduced condition-based species waits covered.
 - [x] 130-egg adaptive regression covered.
 - [x] Focused Fast Sweep soak: 20 × 8 = 160 executions, 0 failures.
+- [x] Sweep-created coordinator/egg tabs use tab-scoped resource blocking for image/media/font only.
+- [x] Species challenge fingerprinting still works through guarded background image fetch.
+- [x] Lightweight rules are removed with owned-tab lifecycle cleanup.
+- [x] Adaptive speed backs off on sustained slow batch latency, not only explicit failures/timeouts.
+- [x] Diagnostic Logbook uses segmented 200-entry ring chunks instead of rewriting the entire retained log on every event.
 
 ## Live/manual
 
