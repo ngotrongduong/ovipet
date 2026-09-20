@@ -45,7 +45,7 @@
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] full suite 55/55 passed three consecutive rounds
+- [x] full suite 56/56 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
 
 
@@ -69,3 +69,9 @@
 - [ ] If recovery occurs, confirm Diagnostic Log contains `worker.lease-expired` then `worker.protected-recovery` and/or `worker.protected-reload`.
 - [ ] Confirm recovery resumes the same pass/friend cursor, not pass 1.
 - [ ] Press Stop and confirm the coordinator tab then closes normally.
+
+
+## v5.3.9 Extension reload
+- [ ] Reload extension from `edge://extensions` while an OviPets tab is open; console must not spam `Extension context invalidated`.
+- [ ] Refresh the OviPets page once and confirm panel reports v5.3.9 and functions normally.
+- [ ] Confirm Diagnostic Log contains no self-generated invalidation/rejection loop.
