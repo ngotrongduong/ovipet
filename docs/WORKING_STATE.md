@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.11
+Current release baseline: v5.3.12
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
 Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
 
@@ -86,9 +86,18 @@ Full Sweep coordinator/egg tabs now use tab-scoped DNR session rules to block on
 
 Adaptive speed now includes latency pressure: repeated batches >=35s back off one concurrency level, while any >=50s batch backs off immediately even without an explicit timeout. Diagnostic Logbook persistence is segmented into 200-entry ring chunks instead of whole-log rewrites on every event, preserving the 5,000-event/14-day export contract while reducing long-run storage/service-worker pressure.
 
+### v5.3.12 Ninja + Ads friend discovery
+
+- Runtime integration completed against the user-supplied v5.3.11 Fast Sweep + Lightweight Tabs source.
+- Target post order is irrelevant; both sources use the same 24-hour cutoff and global sent-history.
+- Duplicate IDs across both posts are queued once using the newest qualifying comment.
+- Existing `owehChatQueue` / `owehFriendRequestHistory` schemas are preserved.
+- Scan remains read-only with respect to friend-request mutation.
+- Automated verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Ninja/chat soak 40/40 PASS, clean-extracted ZIP 59/59 PASS.
+
 ## Still open
 
-- Ninja Please expansion (Issue #8): dual-chat candidate policy and 13 regression cases are merged on `main` via PR #9. It scans `Ninja please` + `Ads post`, merges unique user IDs active in the rolling last 24 hours, excludes IDs in global persistent friend-request dispatched/sent history, and fails soft per source. Wiring into the live v5.3.11 Ninja Scan job remains pending because the current runtime/test tree is still local and not yet imported to GitHub.
+- Ninja + Ads expansion (Issue #8): implemented in the supplied v5.3.11 runtime and released locally as v5.3.12. The runtime scans `Ninja please` + `Ads post`, merges/deduplicates by stable User ID over the rolling last 24 hours, keeps the newest duplicate, excludes IDs in global `owehFriendRequestHistory`, and fails soft per source. Full suite 59/59 PASS; focused Ninja/chat soak 40/40 PASS; clean ZIP 59/59 PASS. Artifact SHA-256 `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`. Complete runtime-tree import/CI is still tracked by Issue #2.
 
 - live v5.3.11 incorrect → different second guess on the same egg;
 - live terminal no-longer-turnable → owned tab closes and batch continues;
