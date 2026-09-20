@@ -2,11 +2,27 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.8**
+Current release: **v5.3.9**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.9 Extension reload soft-shutdown
+
+Reloading an unpacked Edge/Chromium extension invalidates the old content-script context still attached to already-open OviPets tabs. A direct `chrome.runtime.sendMessage(...)` can throw synchronously before the callback/lastError path runs.
+
+v5.3.9 handles this as an expected shutdown condition:
+- synchronous runtime-message throws are caught;
+- once invalidated, the old content script stops calling runtime/storage APIs;
+- storage reads return fallbacks/defaults and writes become no-ops;
+- worker/species/relay sends use the same guarded runtime client;
+- Diagnostic Log calls no longer create recursive `Uncaught (in promise)` noise;
+- the stale heartbeat timer self-stops after invalidation is detected.
+
+After pressing **Reload** in `edge://extensions`, refresh already-open OviPets pages once so Edge injects the new content scripts.
+
+Verification: full suite **56/56 PASS**; focused invalidation/worker/diagnostic soak **20 × 6 = 120 executions, 0 failures**.
 
 ## v5.3.8 Protected Full Sweep Coordinator
 
