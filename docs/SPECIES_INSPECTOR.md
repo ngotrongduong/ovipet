@@ -1,6 +1,6 @@
 # Name the Species — Inspector / Learning Dataset
 
-Release: v5.3.4
+Current release compatibility: v5.3.10
 
 ## Purpose
 
@@ -35,6 +35,11 @@ The real `pet_turn_egg` response is authoritative: success adds a positive vote;
 
 Import is idempotent: reimporting the same file does not multiply votes. It merges instead of replacing.
 
-For older Inspector exports whose learned-memory fields are empty, v5.3.4 mines stored trace/network sessions to reconstruct recoverable positive/negative mappings and Answer IDs. This preserves early experimental data.
+For older Inspector exports whose learned-memory fields are empty, v5.3.10 continues to mine stored trace/network sessions to reconstruct recoverable positive/negative mappings and Answer IDs. This preserves early experimental data.
 
 **Clear Inspector** removes trace sessions while retaining learned memory.
+
+
+## Current integration status
+
+As of v5.3.10, Species Inspector remains compatible with Continuous Full Sweep, 60s per-egg watchdogs, 120s batch watchdogs, protected/self-healing sweep coordinator recovery, portable Species DB import/export, and the Diagnostic Logbook. Species learning data is preserved independently from diagnostic-log retention.
