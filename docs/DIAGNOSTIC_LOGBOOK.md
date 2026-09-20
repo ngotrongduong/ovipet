@@ -1,6 +1,6 @@
 # Diagnostic Logbook / Black Box Recorder
 
-Current release compatibility: v5.3.10
+Current release compatibility: v5.3.11
 
 The Diagnostic Logbook is a persistent structured event timeline for explaining why long-running automation stopped, stalled, timed out, restarted or skipped work.
 
@@ -19,4 +19,9 @@ When reporting an unexplained stop, export the Diagnostic Log before clearing/re
 
 Current Full Sweep diagnostics also cover protected/self-healing coordinator recovery. Important events to look for include lease expiry, protected recovery/reload/replacement attempts, orphaned-sweep reclaim, egg-tab watchdog timeout, batch forced-continue, worker release, and resumed sweep cursor state.
 
-If the dashboard shows an automation as running but no work advances, export the Diagnostic Log before manually restarting when possible. The v5.3.10 snapshot includes enough worker/sweep/egg state to distinguish a live worker from an orphaned persisted sweep.
+If the dashboard shows an automation as running but no work advances, export the Diagnostic Log before manually restarting when possible. The v5.3.11 snapshot includes enough worker/sweep/egg state to distinguish a live worker from an orphaned persisted sweep.
+
+
+## v5.3.11 Fast Sweep speed state
+
+Diagnostic exports include `owehEggTabConcurrency` and `owehEggSpeedProfile` so throughput incidents can be correlated with the current adaptive level/clean-batch streak. Fast Sweep also avoids classifying ordinary progress text containing `0 timeout` / `0 failed` as warning events, reducing log/storage noise.
