@@ -75,3 +75,11 @@
 - [ ] Reload extension from `edge://extensions` while an OviPets tab is open; console must not spam `Extension context invalidated`.
 - [ ] Refresh the OviPets page once and confirm panel reports v5.3.9 and functions normally.
 - [ ] Confirm Diagnostic Log contains no self-generated invalidation/rejection loop.
+
+
+## v5.3.10 Orphan auto-recovery
+- [ ] Observe/force a coordinator disappearance during Full Sweep; replacement coordinator appears automatically.
+- [ ] Dashboard briefly shows `recovering`, then returns to `background`.
+- [ ] Recovery resumes the same pass/friend cursor, not pass 1.
+- [ ] Diagnostic Log contains `worker.protected-replacement-*` or `worker.orphan-recovery-*`.
+- [ ] Old batch-timeout notice disappears after about 15 seconds.
