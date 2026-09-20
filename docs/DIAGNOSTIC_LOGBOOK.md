@@ -1,6 +1,6 @@
 # Diagnostic Logbook / Black Box Recorder
 
-Release: v5.3.7
+Current release compatibility: v5.3.10
 
 The Diagnostic Logbook is a persistent structured event timeline for explaining why long-running automation stopped, stalled, timed out, restarted or skipped work.
 
@@ -13,3 +13,10 @@ Each event contains timestamp, severity, subsystem, stable event code, service-w
 Sensitive-looking keys such as cookies, authorization, passwords, secrets, tokens, HTML, and raw request/response bodies are redacted.
 
 When reporting an unexplained stop, export the Diagnostic Log before clearing/restarting if possible and provide the JSON for analysis.
+
+
+## v5.3.10 recovery events
+
+Current Full Sweep diagnostics also cover protected/self-healing coordinator recovery. Important events to look for include lease expiry, protected recovery/reload/replacement attempts, orphaned-sweep reclaim, egg-tab watchdog timeout, batch forced-continue, worker release, and resumed sweep cursor state.
+
+If the dashboard shows an automation as running but no work advances, export the Diagnostic Log before manually restarting when possible. The v5.3.10 snapshot includes enough worker/sweep/egg state to distinguish a live worker from an orphaned persisted sweep.
