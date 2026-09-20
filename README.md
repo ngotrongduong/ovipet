@@ -2,11 +2,25 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.13**
+Current release: **v5.3.14**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.14 Breeding male diversity
+
+Breeding Campaign now treats very similar Body 1 males as an eligible pool instead of letting a tiny Body 1 edge repeatedly collapse the program onto one ancestor line.
+
+- Two males are Body-1 near-equivalent when they have the same exact target-endpoint mask (`FF`/`00`) and every remaining non-exact Body 1 RGB channel differs by at most **15 points**.
+- Example: `FF FF FA` and `FF FF FC` stay eligible together instead of always letting `FC` win before other traits are considered.
+- Inside that pool, Body 2, Scales, Extra 1 and Extra 2 are measured separately against target. Each male's secondary score is the **single lowest slot distance**, not a sum or average.
+- Therefore `[20, 14, 40, 25]` scores **14**; an equivalent male whose best secondary slot is **12** wins.
+- Equal secondary scores fall back to the existing recent-male-use and lineage-use tie-breaks, then the normal pair-purity comparator.
+- Different endpoint masks or >15-point remaining Body 1 differences keep the strict legacy Body 1 ranking.
+- Near-equivalent alternatives are retained even if the normal shortlist cut would otherwise drop one.
+
+Verification: full suite **59/59 PASS**; focused breeding/planner soak **20 rounds × 6 files = 120 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `a124923cddfdac4e2dbef7c575dc4fb6bfb6213a1093bda2d88894869c44b863`.
 
 ## v5.3.13 Own Hatchery Turn + Hatch
 
