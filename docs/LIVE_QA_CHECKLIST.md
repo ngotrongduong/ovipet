@@ -47,7 +47,7 @@ Current release: **v5.3.11**
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] current v5.3.11 full suite 58/58 PASS
+- [x] current v5.3.11 full suite 59/59 PASS
 - [ ] multi-hour live OviPets soak
 
 
@@ -94,3 +94,7 @@ Current release: **v5.3.11**
 - [ ] Confirm only one final Hatchery reload/verification after the captured queue drains.
 - [ ] Compare elapsed time for a large-egg friend against v5.3.10 behavior.
 - [ ] Confirm 60s tab watchdog, 120s batch watchdog and self-healing coordinator still recover normally.
+- [ ] In DevTools Network on a sweep-owned egg tab, confirm normal pet images/fonts/media are blocked while HTML/JS/XHR continue.
+- [ ] Confirm Name-the-Species still learns/fingerprints when the page challenge image itself is not rendered.
+- [ ] Run a long sweep and compare Edge RAM growth against v5.3.10; confirm tabs stay responsive longer.
+- [ ] If batch latency rises above ~35–50s, confirm adaptive concurrency backs off from 15 → 12 → 10 as needed.
