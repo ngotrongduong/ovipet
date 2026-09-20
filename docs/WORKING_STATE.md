@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.10
+Current release baseline: v5.3.11
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
 Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
 
@@ -9,9 +9,9 @@ Current local implementation status: Phases 1–5 plus current Phase 6 automated
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: **57/57 PASS**
-- clean-extracted ZIP reproduces 57/57
-- three consecutive full-suite rounds: 57/57 each
+- Node tests: **58/58 PASS**
+- clean-extracted ZIP reproduces 58/58
+- current full-suite release gate: 58/58 PASS
 - focused Egg/Species/DB soak: **20 rounds × 8 files = 160 test-file executions, 0 failures**
 - local-only Claude/session files absent from release package
 
@@ -74,9 +74,17 @@ v5.3.10 makes that state self-healing: replace a missing protected coordinator i
 
 Focused self-healing soak: 20 × 7 = 140 executions, 0 failures. Full clean suite: 57/57 PASS.
 
+### v5.3.11 Fast Sweep
+
+Friend egg processing now captures a durable per-friend egg queue and drains it through consecutive adaptive batches instead of reloading/rescanning the Hatchery after every batch. Concurrency starts at 10, promotes to 12 then 15 after five clean full batches at each level, and steps down on timeout/system failure. Background pushes batch progress/completion events directly to the coordinator; a 2-second poll remains as recovery fallback.
+
+Performance tuning also reduces egg-tab stagger to 175ms, successful child close delay to 250ms, stable empty-Hatchery detection to about 750ms, and Name-the-Species fixed waits to condition-based confirmation. Existing 60s/120s watchdogs, 10-minute friend cooldown and self-healing coordinator are unchanged.
+
+Regression: 130 eggs drain as `10,10,10,10,10,12,12,12,12,12,15,5` with one final Hatchery reload. Focused soak: 20 × 8 = 160 executions, 0 failures. Full clean suite: 58/58 PASS.
+
 ## Still open
 
-- live v5.3.7 incorrect → different second guess on the same egg;
+- live v5.3.11 incorrect → different second guess on the same egg;
 - live terminal no-longer-turnable → owned tab closes and batch continues;
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
