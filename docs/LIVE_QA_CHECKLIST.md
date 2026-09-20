@@ -1,5 +1,7 @@
 # Live OviPets QA Checklist
 
+Current release: **v5.3.10**
+
 ## Edge load/UI
 - [x] unpacked extension loads in Microsoft Edge
 - [x] panel initializes
@@ -45,7 +47,7 @@
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] full suite 56/56 passed three consecutive rounds
+- [x] full suite 57/57 passed three consecutive rounds
 - [ ] multi-hour live OviPets soak
 
 
