@@ -4,9 +4,9 @@
 
 - [x] JavaScript syntax PASS.
 - [x] Release consistency PASS.
-- [x] Full Node suite **55/55 PASS**.
-- [x] Clean-extracted ZIP reproduces 55/55.
-- [x] Three consecutive full-suite rounds pass 55/55.
+- [x] Full Node suite **56/56 PASS**.
+- [x] Clean-extracted ZIP reproduces 56/56.
+- [x] Three consecutive full-suite rounds pass 56/56.
 - [x] Focused Egg/Species/DB soak: 20 × 8 = 160 test-file executions, 0 failures.
 - [x] Continuous Full Sweep wrap/cooldown/Stop semantics covered.
 - [x] Species DB export/import, idempotent merge and old Inspector trace recovery covered.
@@ -14,7 +14,7 @@
 - [x] Explicit incorrect evidence is required for negative species learning.
 
 - [x] Leftover-tab reconciliation regression covered; 10 stale Name-the-Species leftovers no longer block a new batch.
-- [x] Focused v5.3.8 egg/sweep/species soak: 20 × 6 = 120 executions, 0 failures.
+- [x] Focused v5.3.9 egg/sweep/species soak: 20 × 6 = 120 executions, 0 failures.
 
 - [x] 60-second per-tab watchdog regression covered.
 - [x] 120-second batch watchdog regression covered.
@@ -31,13 +31,18 @@
 - [x] Egg cleanup refuses coordinator-tab closure even with corrupted registry state.
 - [x] Focused coordinator/sweep/egg/diagnostic soak: 140/140 executions PASS.
 
+- [x] Extension-context invalidation soft-shutdown regression covered.
+- [x] Old content scripts stop runtime/storage calls after Edge extension Reload.
+- [x] Worker/species/relay messages use guarded runtimeRequest.
+- [x] Focused invalidation/worker/diagnostic soak: 120/120 executions PASS.
+
 ## Live/manual
 
 - [x] Microsoft Edge unpacked extension loads and panel works.
 - [x] Ninja Please, database indexing/breeding and friend scanning observed working.
-- [ ] v5.3.8 retryable incorrect → same egg retries with a different species.
+- [ ] v5.3.9 retryable incorrect → same egg retries with a different species.
 - [ ] terminal `The egg can no longer be turned` → only owned tab closes and batch continues.
-- [ ] Friend egg dedicated-tab lifecycle rechecked on v5.3.8.
+- [ ] Friend egg dedicated-tab lifecycle rechecked on v5.3.9.
 - [ ] Export Species DB → clean/new Edge profile → Import restores learned knowledge.
 - [ ] Export a real Diagnostic Log after an extended Full Sweep and inspect the timeline.
 - [ ] Start/Stop/reload worker recovery.
