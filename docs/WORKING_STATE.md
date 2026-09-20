@@ -9,9 +9,9 @@ Current local implementation status: Phases 1–5 plus current Phase 6 automated
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: **58/58 PASS**
-- clean-extracted ZIP reproduces 58/58
-- current full-suite release gate: 58/58 PASS
+- Node tests: **59/59 PASS**
+- clean-extracted ZIP reproduces 59/59
+- current full-suite release gate: 59/59 PASS
 - focused Egg/Species/DB soak: **20 rounds × 8 files = 160 test-file executions, 0 failures**
 - local-only Claude/session files absent from release package
 
@@ -80,7 +80,11 @@ Friend egg processing now captures a durable per-friend egg queue and drains it 
 
 Performance tuning also reduces egg-tab stagger to 175ms, successful child close delay to 250ms, stable empty-Hatchery detection to about 750ms, and Name-the-Species fixed waits to condition-based confirmation. Existing 60s/120s watchdogs, 10-minute friend cooldown and self-healing coordinator are unchanged.
 
-Regression: 130 eggs drain as `10,10,10,10,10,12,12,12,12,12,15,5` with one final Hatchery reload. Focused soak: 20 × 8 = 160 executions, 0 failures. Full clean suite: 58/58 PASS.
+Regression: 130 eggs drain as `10,10,10,10,10,12,12,12,12,12,15,5` with one final Hatchery reload. Focused soak: 20 × 8 = 160 executions, 0 failures. Full clean suite: 59/59 PASS.
+
+Full Sweep coordinator/egg tabs now use tab-scoped DNR session rules to block only image/media/font resources; scripts, DOM, CSS and network APIs needed by automation remain loaded. Species fingerprinting bypasses page image rendering through the guarded background challenge-image fetcher. Lightweight rules are removed with owned-tab cleanup.
+
+Adaptive speed now includes latency pressure: repeated batches >=35s back off one concurrency level, while any >=50s batch backs off immediately even without an explicit timeout. Diagnostic Logbook persistence is segmented into 200-entry ring chunks instead of whole-log rewrites on every event, preserving the 5,000-event/14-day export contract while reducing long-run storage/service-worker pressure.
 
 ## Still open
 
