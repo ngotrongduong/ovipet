@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.12
+Current release baseline: v5.3.13
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
-Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
+Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.13 adds guarded direct Hatch Egg dispatch for the user's own Hatchery while preserving UI-tab Turn Egg/species handling. Live/manual gates remain.
 
 ## Current verification
 
@@ -95,6 +95,17 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Scan remains read-only with respect to friend-request mutation.
 - Automated verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Ninja/chat soak 40/40 PASS, clean-extracted ZIP 59/59 PASS.
 
+### v5.3.13 own-Hatchery Turn + Hatch
+
+- `Turn / Hatch available eggs` detects both `Turn Egg` and `Hatch Egg` states in the user's own Hatchery.
+- Hatch-ready own eggs dispatch the exact OviPets UI command `pet_turn_egg` directly from Hatchery, avoiding a profile-tab round trip.
+- The direct path is guarded twice: isolated-world code exposes only `sendOwnHatchCommand()`, while the MAIN-world bridge requires `purpose=own-hatch`, an own-Hatchery route, and a visible matching `img[title="Hatch Egg"]` PetID.
+- Generic/hidden Turn Egg remains blocked. Turnable eggs still use extension-owned profile tabs and the real button so Name the Species remains observable and safe.
+- Friend Hatcheries cannot use the direct hatch route.
+- Hatch dispatch is bounded/paced (up to 50 per pass, 100 ms apart), then the Hatchery reloads once to verify current state.
+- Automated verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused own-Hatchery/bridge soak 20 × 7 = 140 executions, 0 failures, clean-extracted final ZIP 59/59 PASS.
+- Final v5.3.13 ZIP SHA-256: `c34b741e5f9880c2e25c45975a7f574b89d66051d8952ce5d38e300142435dd4`.
+
 ## Still open
 
 - Ninja + Ads expansion (Issue #8): implemented in the supplied v5.3.11 runtime and released locally as v5.3.12. The runtime scans `Ninja please` + `Ads post`, merges/deduplicates by stable User ID over the rolling last 24 hours, keeps the newest duplicate, excludes IDs in global `owehFriendRequestHistory`, and fails soft per source. Full suite 59/59 PASS; focused Ninja/chat soak 40/40 PASS; clean ZIP 59/59 PASS. Artifact SHA-256 `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`. Complete runtime-tree import/CI is still tracked by Issue #2.
@@ -104,7 +115,7 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
 - multi-hour live-game soak;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green;
+- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.13-runtime-import`);
 - friend-request state remains intentionally `dispatched` unless a reliable confirmation signal is observed.
 
 ## Invariants
