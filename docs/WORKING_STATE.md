@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-09-20
-Current release baseline: v5.3.13
+Last updated: 2026-09-21
+Current release baseline: v5.3.14
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
-Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.13 adds guarded direct Hatch Egg dispatch for the user's own Hatchery while preserving UI-tab Turn Egg/species handling. Live/manual gates remain.
+Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.14 adds near-equivalent Body 1 male pooling plus secondary-slot target tie-breaking to reduce repeated ancestry in Breeding Campaign. Live/manual gates remain.
 
 ## Current verification
 
@@ -106,6 +106,18 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Automated verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused own-Hatchery/bridge soak 20 × 7 = 140 executions, 0 failures, clean-extracted final ZIP 59/59 PASS.
 - Final v5.3.13 ZIP SHA-256: `c34b741e5f9880c2e25c45975a7f574b89d66051d8952ce5d38e300142435dd4`.
 
+### v5.3.14 breeding male diversity
+
+- Start from the normal best male for each female, then form a near-equivalent Body 1 pool around that baseline.
+- Equivalent males require the same exact Body 1 target-endpoint mask and every remaining non-exact Body 1 RGB channel within 15 points.
+- Within the pool, score Body 2 / Scales / Extra 1 / Extra 2 separately and use the minimum slot distance for each male. Example: `20 / 14 / 40 / 25` becomes 14.
+- Lower best-secondary distance wins. Equal secondary scores fall back to recent male usage, lineage usage, then the existing pair-purity comparator.
+- Near-equivalent alternatives remain eligible beyond the ordinary shortlist cut.
+- Queue diagnostics record `maleSecondaryBestDistance`, `maleSecondaryBestKey`, and `maleBody1EquivalentPoolSize`.
+- Existing same-species, owned/present, cooldown and ancestor-overlap safety filters are unchanged.
+- Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused breeding/planner soak 20 × 6 = 120 executions, 0 failures, clean-extracted ZIP 59/59 PASS.
+- Final ZIP SHA-256: `a124923cddfdac4e2dbef7c575dc4fb6bfb6213a1093bda2d88894869c44b863`.
+
 ## Still open
 
 - Ninja + Ads expansion (Issue #8): implemented in the supplied v5.3.11 runtime and released locally as v5.3.12. The runtime scans `Ninja please` + `Ads post`, merges/deduplicates by stable User ID over the rolling last 24 hours, keeps the newest duplicate, excludes IDs in global `owehFriendRequestHistory`, and fails soft per source. Full suite 59/59 PASS; focused Ninja/chat soak 40/40 PASS; clean ZIP 59/59 PASS. Artifact SHA-256 `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`. Complete runtime-tree import/CI is still tracked by Issue #2.
@@ -115,7 +127,7 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
 - multi-hour live-game soak;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.13-runtime-import`);
+- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.14-runtime-import`);
 - friend-request state remains intentionally `dispatched` unless a reliable confirmation signal is observed.
 
 ## Invariants
