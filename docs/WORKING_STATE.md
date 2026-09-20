@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.9
+Current release baseline: v5.3.10
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
 Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
 
@@ -9,9 +9,9 @@ Current local implementation status: Phases 1–5 plus current Phase 6 automated
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: **56/56 PASS**
-- clean-extracted ZIP reproduces 56/56
-- three consecutive full-suite rounds: 56/56 each
+- Node tests: **57/57 PASS**
+- clean-extracted ZIP reproduces 57/57
+- three consecutive full-suite rounds: 57/57 each
 - focused Egg/Species/DB soak: **20 rounds × 8 files = 160 test-file executions, 0 failures**
 - local-only Claude/session files absent from release package
 
@@ -36,7 +36,7 @@ Phases 1–5 remain validated: hardened worker lifecycle, deterministic domain m
 
 Live QA found `too-many-leftover-tabs` after Name-the-Species failures accumulated as kept-open leftovers. v5.3.5 removes the fixed 3-attempt stranding path, closes bounded species-UI failures as extension-owned `abandoned` results, and reconciles all older leftover registry entries before admitting a new batch. The safety rule remains: only a tab still on the exact owned OviPets egg page may be auto-closed; navigated-away tabs are only removed from ownership state.
 
-Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file executions, 0 failures. Clean ZIP still passes 56/56.
+Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file executions, 0 failures. Clean ZIP still passes 57/57.
 
 ### v5.3.6 fail-open watchdogs
 
@@ -46,25 +46,33 @@ Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file execu
 - Full Sweep egg-step errors are fail-open: cleanup + notice + skipRemoval + advance, not Stop.
 - Explicit failed egg results close immediately instead of creating new leftovers.
 - Focused watchdog/sweep soak: 20 rounds × 6 files = 120 executions, 0 failures.
-- Clean ZIP still passes 56/56.
+- Clean ZIP still passes 57/57.
 
 ### v5.3.7 Diagnostic Logbook
 
 A durable ring buffer records the newest **5,000 events / 14 days** in `chrome.storage.local`. High-value events include module/runtime exceptions, worker claim/start/phase/stop/release/lease expiry, sweep pass/wait/advance, egg batch/tab result and watchdog timeout, forced fail-open recovery, and critical status alerts. Export includes a sanitized worker/sweep/egg/job snapshot.
 
-Focused diagnostic/worker/sweep soak: 20 rounds × 7 files = 140 test-file executions, 0 failures. Clean ZIP full suite: 56/56 PASS.
+Focused diagnostic/worker/sweep soak: 20 rounds × 7 files = 140 test-file executions, 0 failures. Clean ZIP full suite: 57/57 PASS.
 
 ### v5.3.8 protected coordinator recovery
 
 Live QA found that a stalled Full Sweep could lose its coordinator because the old health path closed `ownerTabId` after the 45-second shared-worker lease expired. For owner `sweep`, lease expiry is now recoverable: revive the lease, send a recovery command, and reload the same tab in place if its content script does not respond. Recovery keeps the durable pass/cursor. Egg cleanup also refuses to close any tab whose id equals `coordinatorTabId`.
 
-Focused recovery soak: 20 rounds × 7 files = 140 executions, 0 failures. Full suite: 56/56 PASS.
+Focused recovery soak: 20 rounds × 7 files = 140 executions, 0 failures. Full suite: 57/57 PASS.
 
 ### v5.3.9 extension-context reload hardening
 
 Edge live console showed `Extension context invalidated` after reloading the unpacked extension while an OviPets tab remained open. The old isolated-world content script could synchronously throw before `chrome.runtime.lastError` was reachable. v5.3.9 centralizes soft shutdown in `core/storage-client.js`: runtime/storage calls catch invalidation, mark the old context dead, stop future API calls, return safe fallbacks/no-op writes, and stop the old heartbeat loop. Worker/species/relay sends now use the same guarded runtime client.
 
-Focused invalidation/worker/diagnostic soak: 20 rounds × 6 files = 120 executions, 0 failures. Full clean suite: 56/56 PASS.
+Focused invalidation/worker/diagnostic soak: 20 rounds × 6 files = 120 executions, 0 failures. Full clean suite: 57/57 PASS.
+
+### v5.3.10 orphaned-sweep auto-recovery
+
+Live diagnostics showed the real stop condition: the sweep cursor remained active at 29/213 while `owehWorker=null`. After two egg-tab timeouts, the coordinator later lost its lease; protected recovery could not communicate/reload it; the next health check found the tab missing and released the worker row. No replacement was created.
+
+v5.3.10 makes that state self-healing: replace a missing protected coordinator immediately when possible, and reclaim any persisted active sweep with no live worker on subsequent health checks. Recovery preserves cycle/index. Dashboard reports `recovering` during the gap.
+
+Focused self-healing soak: 20 × 7 = 140 executions, 0 failures. Full clean suite: 57/57 PASS.
 
 ## Still open
 
