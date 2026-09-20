@@ -8,8 +8,8 @@ Status: automated/local package gates PASS; live/manual and GitHub clean-checkou
 
 - syntax PASS
 - release consistency PASS
-- clean ZIP: 58/58 tests PASS
-- current v5.3.11 full-suite gate: 58/58 PASS
+- clean ZIP: 59/59 tests PASS
+- current v5.3.11 full-suite gate: 59/59 PASS
 - focused Egg/Species/DB soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 
 ## Live-driven fixes retained
@@ -111,4 +111,6 @@ Full Sweep now snapshots a friend's turnable egg queue once and drains it throug
 
 The 60s per-tab watchdog, 120s batch watchdog, 10-minute friend cooldown, protected/self-healing coordinator, Species learning and Diagnostic Logbook are preserved.
 
-Verification: syntax PASS, release consistency PASS, full suite 58/58 PASS, focused Fast Sweep/worker/egg/species soak 20 × 8 = 160 executions with 0 failures, clean-extracted ZIP 58/58 PASS.
+Long-run memory audit added tab-scoped lightweight resource rules (block image/media/font only on extension-owned sweep tabs), latency-aware adaptive backoff, and segmented Diagnostic Logbook storage (200-entry chunks instead of whole-log rewrites). Species visual fingerprinting continues through the guarded background fetcher even when page images are blocked.
+
+Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Fast Sweep/lightweight/recovery soak 20 × 8 = 160 executions with 0 failures, clean-extracted ZIP 59/59 PASS.
