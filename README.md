@@ -2,11 +2,27 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.10**
+Current release: **v5.3.11**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.11 Fast Sweep
+
+Full Sweep now prioritizes throughput without weakening watchdog/recovery safety.
+
+- Snapshot a friend's turnable egg queue once, then drain consecutive batches without reloading the Hatchery after every 10 eggs.
+- Adaptive egg concurrency starts at 10, promotes to 12 and then 15 after clean batches, and steps down when timeout/system failures appear.
+- Egg-tab stagger is 175ms (was 400ms); successful child tabs close after 250ms.
+- Batch completion is event-driven from background to coordinator, with a 2s polling fallback.
+- One final Hatchery reload/verification occurs after the captured queue is drained.
+- Name-the-Species waits for the real OK button to become usable instead of a fixed page-load delay; retry delay is reduced while explicit server outcome rules remain unchanged.
+- 60s per-tab and 120s per-batch watchdogs, protected/self-healing coordinator, 10-minute friend cooldown, Species DB and Diagnostic Logbook remain intact.
+
+Regression includes a 130-egg scenario with adaptive batch sizes `10,10,10,10,10,12,12,12,12,12,15,5` and only one final Hatchery reload.
+
+Verification: full suite **58/58 PASS**; focused Fast Sweep/worker/egg/species soak **20 rounds × 8 files = 160 executions, 0 failures**; clean-extracted ZIP **58/58 PASS**.
 
 ## v5.3.10 Self-healing Full Sweep coordinator
 
