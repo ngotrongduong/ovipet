@@ -1,6 +1,6 @@
 # Name the Species — Inspector / Learning Dataset
 
-Current release compatibility: v5.3.10
+Current release compatibility: v5.3.11
 
 ## Purpose
 
@@ -42,4 +42,9 @@ For older Inspector exports whose learned-memory fields are empty, v5.3.10 conti
 
 ## Current integration status
 
-As of v5.3.10, Species Inspector remains compatible with Continuous Full Sweep, 60s per-egg watchdogs, 120s batch watchdogs, protected/self-healing sweep coordinator recovery, portable Species DB import/export, and the Diagnostic Logbook. Species learning data is preserved independently from diagnostic-log retention.
+As of v5.3.11, Species Inspector remains compatible with Continuous Full Sweep, 60s per-egg watchdogs, 120s batch watchdogs, protected/self-healing sweep coordinator recovery, portable Species DB import/export, and the Diagnostic Logbook. Species learning data is preserved independently from diagnostic-log retention.
+
+
+## Fast Sweep integration
+
+v5.3.11 reduces the fixed delay between selecting a species and confirming it: after selecting an option, the solver waits for the actual OK control to become usable (bounded readiness wait) and then confirms. Retryable incorrect answers still require explicit server/Error evidence before negative learning. The 60-second egg-tab watchdog remains unchanged.
