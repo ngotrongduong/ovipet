@@ -1,6 +1,6 @@
 # Live OviPets QA Checklist
 
-Current release: **v5.3.10**
+Current release: **v5.3.11**
 
 ## Edge load/UI
 - [x] unpacked extension loads in Microsoft Edge
@@ -47,7 +47,7 @@ Current release: **v5.3.10**
 
 ## Soak
 - [x] focused Egg/Species/DB soak: 160/160 file executions PASS
-- [x] full suite 57/57 passed three consecutive rounds
+- [x] current v5.3.11 full suite 58/58 PASS
 - [ ] multi-hour live OviPets soak
 
 
@@ -85,3 +85,12 @@ Current release: **v5.3.10**
 - [ ] Recovery resumes the same pass/friend cursor, not pass 1.
 - [ ] Diagnostic Log contains `worker.protected-replacement-*` or `worker.orphan-recovery-*`.
 - [ ] Old batch-timeout notice disappears after about 15 seconds.
+
+
+## v5.3.11 Fast Sweep
+- [ ] On a friend with many turnable eggs, observe consecutive batches without a Hatchery reload between every batch.
+- [ ] Observe concurrency begin at 10 and promote toward 12/15 after sustained clean batches.
+- [ ] Confirm timeout/system failure lowers concurrency but remaining queued eggs continue.
+- [ ] Confirm only one final Hatchery reload/verification after the captured queue drains.
+- [ ] Compare elapsed time for a large-egg friend against v5.3.10 behavior.
+- [ ] Confirm 60s tab watchdog, 120s batch watchdog and self-healing coordinator still recover normally.
