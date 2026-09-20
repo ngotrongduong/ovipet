@@ -1,15 +1,15 @@
 # Phase 6 Automated Release Hardening — Current Checkpoint
 
 Date: 2026-09-20
-Release baseline: v5.3.8
+Release baseline: v5.3.9
 Status: automated/local package gates PASS; live/manual and GitHub clean-checkout gates remain open.
 
 ## Automated release gate
 
 - syntax PASS
 - release consistency PASS
-- clean ZIP: 55/55 tests PASS
-- three consecutive full-suite rounds: 55/55 each
+- clean ZIP: 56/56 tests PASS
+- three consecutive full-suite rounds: 56/56 each
 - focused Egg/Species/DB soak: 20 rounds × 8 files = 160 test-file executions, 0 failures
 
 ## Live-driven fixes retained
@@ -56,7 +56,7 @@ v5.3.5:
 - reconciles old leftover registry entries before every new batch;
 - closes only entries still on the exact owned OviPets egg page; navigated-away tabs are never auto-closed.
 
-Verification: 55/55 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
+Verification: 56/56 full tests PASS, focused 20 × 6 = 120 executions with 0 failures, clean ZIP PASS.
 
 
 ## v5.3.6 Fail-open watchdog policy
@@ -70,7 +70,7 @@ v5.3.6 adds:
 - force-close only for extension-owned egg registry entries;
 - fail-open friend egg errors: cleanup, skipRemoval, advance instead of stopping the sweep.
 
-Verification: 55/55 full suite PASS; focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 55/55 PASS.
+Verification: 56/56 full suite PASS; focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 56/56 PASS.
 
 
 ## v5.3.7 Diagnostic Logbook
@@ -79,11 +79,20 @@ Long-running automation now has a persistent structured black-box recorder. The 
 
 Instrumentation covers service-worker/module/runtime failures, worker lifecycle/lease expiry, Full Sweep transitions, egg batch/tab lifecycle, watchdog timeouts and fail-open recovery. Worker phase logging is deduplicated so one-second polling does not flood the journal.
 
-Verification: full suite 55/55 PASS from clean extracted ZIP; focused diagnostic/worker/sweep soak 20 rounds × 7 files = 140 executions, 0 failures.
+Verification: full suite 56/56 PASS from clean extracted ZIP; focused diagnostic/worker/sweep soak 20 rounds × 7 files = 140 executions, 0 failures.
 
 
 ## v5.3.8 Protected Full Sweep coordinator
 
 Live QA identified a coordinator-lifecycle bug: when the shared-worker heartbeat lease expired, the health watchdog treated the worker as dead and could close the Full Sweep tab. v5.3.8 changes the sweep owner to a protected recovery policy: revive the same generation/tab lease, send recovery, reload the same coordinator in place if needed, and preserve the durable pass/index. Egg-tab cleanup also hard-blocks coordinator-tab closure.
 
-Verification: full suite 55/55 PASS; focused worker/sweep/egg/diagnostic soak 20 × 7 = 140 executions with 0 failures; clean-extracted ZIP 55/55 PASS.
+Verification: full suite 56/56 PASS; focused worker/sweep/egg/diagnostic soak 20 × 7 = 140 executions with 0 failures; clean-extracted ZIP 56/56 PASS.
+
+
+## v5.3.9 Extension-context invalidation recovery
+
+Reloading an unpacked Edge extension invalidates already-injected content-script contexts. Direct runtime messaging may throw synchronously with `Extension context invalidated`, bypassing callback-only error handling and producing repeated unhandled Promise errors through diagnostic/status calls.
+
+v5.3.9 catches that condition at the shared runtime/storage client, marks the old context dead, returns safe fallbacks/no-op writes, stops its heartbeat loop, and routes worker/species/relay messages through the same guarded path.
+
+Verification: syntax PASS, release consistency PASS, full suite 56/56 PASS, focused 20 × 6 = 120 executions with 0 failures; clean extracted ZIP 56/56 PASS.
