@@ -4,9 +4,9 @@
 
 - [x] JavaScript syntax PASS.
 - [x] Release consistency PASS.
-- [x] Full Node suite **56/56 PASS**.
-- [x] Clean-extracted ZIP reproduces 56/56.
-- [x] Three consecutive full-suite rounds pass 56/56.
+- [x] Full Node suite **57/57 PASS**.
+- [x] Clean-extracted ZIP reproduces 57/57.
+- [x] Three consecutive full-suite rounds pass 57/57.
 - [x] Focused Egg/Species/DB soak: 20 × 8 = 160 test-file executions, 0 failures.
 - [x] Continuous Full Sweep wrap/cooldown/Stop semantics covered.
 - [x] Species DB export/import, idempotent merge and old Inspector trace recovery covered.
@@ -14,7 +14,7 @@
 - [x] Explicit incorrect evidence is required for negative species learning.
 
 - [x] Leftover-tab reconciliation regression covered; 10 stale Name-the-Species leftovers no longer block a new batch.
-- [x] Focused v5.3.9 egg/sweep/species soak: 20 × 6 = 120 executions, 0 failures.
+- [x] Focused v5.3.10 egg/sweep/species soak: 20 × 6 = 120 executions, 0 failures.
 
 - [x] 60-second per-tab watchdog regression covered.
 - [x] 120-second batch watchdog regression covered.
@@ -40,9 +40,9 @@
 
 - [x] Microsoft Edge unpacked extension loads and panel works.
 - [x] Ninja Please, database indexing/breeding and friend scanning observed working.
-- [ ] v5.3.9 retryable incorrect → same egg retries with a different species.
+- [ ] v5.3.10 retryable incorrect → same egg retries with a different species.
 - [ ] terminal `The egg can no longer be turned` → only owned tab closes and batch continues.
-- [ ] Friend egg dedicated-tab lifecycle rechecked on v5.3.9.
+- [ ] Friend egg dedicated-tab lifecycle rechecked on v5.3.10.
 - [ ] Export Species DB → clean/new Edge profile → Import restores learned knowledge.
 - [ ] Export a real Diagnostic Log after an extended Full Sweep and inspect the timeline.
 - [ ] Start/Stop/reload worker recovery.
