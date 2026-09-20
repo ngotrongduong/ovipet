@@ -2,11 +2,24 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.12**
+Current release: **v5.3.13**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.13 Own Hatchery Turn + Hatch
+
+**Turn / Hatch available eggs** now handles both actionable egg states in the user's own Hatchery while keeping friend-egg safety unchanged.
+
+- Hatchery cards with the green **Hatch Egg** action are detected separately from normal **Turn Egg** cards.
+- Hatch-ready own eggs use the exact OviPets UI dispatcher command `pet_turn_egg` with `PetID=<id>` directly from Hatchery, avoiding a profile-tab round trip.
+- This direct path is deliberately narrow: the MAIN-world bridge accepts it only when the current page is the user's own Hatchery, the request purpose is `own-hatch`, and the exact PetID currently has a visible `Hatch Egg` icon.
+- Generic `pet_turn_egg` bridge calls remain blocked. Normal Turn Egg still opens extension-owned profile tabs so Name the Species can be observed and resolved before the tab closes.
+- Friend Hatcheries never use the direct hatch path.
+- Hatch commands are paced at 100 ms in bounded batches, followed by one Hatchery reload/recheck.
+
+Verification: full suite **59/59 PASS**; focused own-Hatchery/bridge soak **20 rounds × 7 files = 140 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `c34b741e5f9880c2e25c45975a7f574b89d66051d8952ce5d38e300142435dd4`.
 
 ## v5.3.12 Ninja + Ads friend discovery
 
