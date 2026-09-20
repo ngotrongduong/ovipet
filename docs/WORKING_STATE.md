@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-20
-Current release baseline: v5.3.7
+Current release baseline: v5.3.8
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
 Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; live/manual gates remain.
 
@@ -9,9 +9,9 @@ Current local implementation status: Phases 1–5 plus current Phase 6 automated
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: **54/54 PASS**
-- clean-extracted ZIP reproduces 54/54
-- three consecutive full-suite rounds: 54/54 each
+- Node tests: **55/55 PASS**
+- clean-extracted ZIP reproduces 55/55
+- three consecutive full-suite rounds: 55/55 each
 - focused Egg/Species/DB soak: **20 rounds × 8 files = 160 test-file executions, 0 failures**
 - local-only Claude/session files absent from release package
 
@@ -36,7 +36,7 @@ Phases 1–5 remain validated: hardened worker lifecycle, deterministic domain m
 
 Live QA found `too-many-leftover-tabs` after Name-the-Species failures accumulated as kept-open leftovers. v5.3.5 removes the fixed 3-attempt stranding path, closes bounded species-UI failures as extension-owned `abandoned` results, and reconciles all older leftover registry entries before admitting a new batch. The safety rule remains: only a tab still on the exact owned OviPets egg page may be auto-closed; navigated-away tabs are only removed from ownership state.
 
-Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file executions, 0 failures. Clean ZIP still passes 54/54.
+Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file executions, 0 failures. Clean ZIP still passes 55/55.
 
 ### v5.3.6 fail-open watchdogs
 
@@ -46,13 +46,19 @@ Focused regression: 20 rounds × 6 egg/sweep/species files = 120 test-file execu
 - Full Sweep egg-step errors are fail-open: cleanup + notice + skipRemoval + advance, not Stop.
 - Explicit failed egg results close immediately instead of creating new leftovers.
 - Focused watchdog/sweep soak: 20 rounds × 6 files = 120 executions, 0 failures.
-- Clean ZIP still passes 54/54.
+- Clean ZIP still passes 55/55.
 
 ### v5.3.7 Diagnostic Logbook
 
 A durable ring buffer records the newest **5,000 events / 14 days** in `chrome.storage.local`. High-value events include module/runtime exceptions, worker claim/start/phase/stop/release/lease expiry, sweep pass/wait/advance, egg batch/tab result and watchdog timeout, forced fail-open recovery, and critical status alerts. Export includes a sanitized worker/sweep/egg/job snapshot.
 
-Focused diagnostic/worker/sweep soak: 20 rounds × 7 files = 140 test-file executions, 0 failures. Clean ZIP full suite: 54/54 PASS.
+Focused diagnostic/worker/sweep soak: 20 rounds × 7 files = 140 test-file executions, 0 failures. Clean ZIP full suite: 55/55 PASS.
+
+### v5.3.8 protected coordinator recovery
+
+Live QA found that a stalled Full Sweep could lose its coordinator because the old health path closed `ownerTabId` after the 45-second shared-worker lease expired. For owner `sweep`, lease expiry is now recoverable: revive the lease, send a recovery command, and reload the same tab in place if its content script does not respond. Recovery keeps the durable pass/cursor. Egg cleanup also refuses to close any tab whose id equals `coordinatorTabId`.
+
+Focused recovery soak: 20 rounds × 7 files = 140 executions, 0 failures. Full suite: 55/55 PASS.
 
 ## Still open
 
