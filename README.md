@@ -2,11 +2,27 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.14**
+Current release: **v5.3.15**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.15 Same-FF target-improvement breeding strategy
+
+Breeding Campaign now offers a second, independent strategy for improving a color line toward the fixed target without trying to combine different Body 1 FF pairs.
+
+- **Pure-line campaign** remains unchanged and continues to seek complementary Body 1 FF pairs.
+- **Same-FF target campaign** scans the complete enclosure snapshot, considers every owned/present female that is off cooldown and has complete color data, and evaluates all off-cooldown owned males of the same species across all enclosures.
+- A male is eligible only when his exact Body 1 target-FF mask matches the female's mask. This keeps the pair on the same FF line instead of deliberately adding a different FF pair.
+- Females with no exact Body 1 FF pair remain unpaired in this strategy.
+- Related pairs are excluded with the existing pedigree/ancestor-overlap guard.
+- Among safe same-FF males, Body 2, Scales, Extra 1 and Extra 2 are measured independently against target. The male's primary score is the **single lowest** of those four distances.
+- Example: secondary distances `20 / 14 / 40 / 25` score **14**; a safe same-FF male whose best slot is **12** wins.
+- Equal best-slot scores prefer lower recent male usage, then lower lineage usage, then lower total secondary distance.
+- The strategy does not use the normal male shortlist: every safe same-FF male for that female is considered.
+
+Verification: full suite **59/59 PASS**; focused Same-FF breeding soak **20 rounds × 6 files = 120 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`.
 
 ## v5.3.14 Breeding male diversity
 
