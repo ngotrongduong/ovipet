@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-21
-Current release baseline: v5.3.14
+Current release baseline: v5.3.15
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
-Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.14 adds near-equivalent Body 1 male pooling plus secondary-slot target tie-breaking to reduce repeated ancestry in Breeding Campaign. Live/manual gates remain.
+Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.15 adds an independent Same-FF target-improvement breeding strategy that keeps each female on her existing Body 1 FF line and selects the best safe male by secondary-color target proximity. Live/manual gates remain.
 
 ## Current verification
 
@@ -118,6 +118,21 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused breeding/planner soak 20 × 6 = 120 executions, 0 failures, clean-extracted ZIP 59/59 PASS.
 - Final ZIP SHA-256: `a124923cddfdac4e2dbef7c575dc4fb6bfb6213a1093bda2d88894869c44b863`.
 
+### v5.3.15 Same-FF target-improvement breeding
+
+- Breeding UI now exposes two explicit starts: **Pure-line campaign** and **Same-FF target campaign**.
+- Same-FF strategy scans the full enclosure snapshot and considers every complete, owned, present, off-cooldown female regardless of enclosure.
+- For each female, all complete, owned, present, off-cooldown males of the same species are considered across all enclosures.
+- Candidate male must have the exact same Body 1 target-endpoint mask as the female; for the current white Body 1 target this means the same FF pair/set.
+- Ancestor overlap remains a hard exclusion.
+- Male selection is not pure-line driven: Body 2 / Scales / Extra 1 / Extra 2 are scored separately and the lowest slot distance is the primary selector.
+- Equal primary scores prefer lower recent male use, then lower lineage use, then lower total secondary distance.
+- Females with no exact Body 1 FF mask remain unpaired rather than being diverted to a different line.
+- Strategy is persisted through campaign/start/index-resume state so a long profile-index handoff cannot silently switch strategy.
+- Breed history records the strategy used for each confirmed pair.
+- Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Same-FF breeding soak 20 × 6 = 120 executions, 0 failures, clean-extracted ZIP 59/59 PASS.
+- Final ZIP SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`.
+
 ## Still open
 
 - Ninja + Ads expansion (Issue #8): implemented in the supplied v5.3.11 runtime and released locally as v5.3.12. The runtime scans `Ninja please` + `Ads post`, merges/deduplicates by stable User ID over the rolling last 24 hours, keeps the newest duplicate, excludes IDs in global `owehFriendRequestHistory`, and fails soft per source. Full suite 59/59 PASS; focused Ninja/chat soak 40/40 PASS; clean ZIP 59/59 PASS. Artifact SHA-256 `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`. Complete runtime-tree import/CI is still tracked by Issue #2.
@@ -127,7 +142,7 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
 - multi-hour live-game soak;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.14-runtime-import`);
+- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.15-runtime-import`);
 - friend-request state remains intentionally `dispatched` unless a reliable confirmation signal is observed.
 
 ## Invariants
