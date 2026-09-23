@@ -567,7 +567,9 @@
       pet.parentIds = [...(previous.parentIds || [])];
     }
     pets[pet.id] = { ...(previous || {}), ...pet };
-    await storageSet({ owehPets: pets });
+    // petDbMerge upserts per record: write only this pet, so a stale copy of the rest of the
+    // database cannot overwrite what a worker tab saved meanwhile.
+    await storageSet({ owehPets: { [pet.id]: pets[pet.id] } });
     const suggestion = suggestedPetName(pet);
     const suffix = suggestion ? ` — suggested name: ${suggestion}` : "";
     setStatus(`Saved ${pet.name} (${Object.keys(pets).length} pets indexed)${suffix}`);
