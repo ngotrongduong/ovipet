@@ -2,11 +2,26 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.15**
+Current release: **v5.3.16**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.16 Pedigree Guard + male fallback
+
+Live v5.3.15 breeding exposed a pedigree-cache race: the Pedigree tab is lazy-loaded, but indexing previously waited a fixed 350 ms and could cache an empty ancestor list as complete. v5.3.16 makes pedigree safety fail-closed and adds server-rejection fallback.
+
+- `pedigreeVerified=true` is set only after the actual lazy Pedigree ancestor payload exists and its ancestor-ID signature is stable for 300 ms.
+- Pet database schema metadata is bumped to **4**, forcing legacy v5.3.15 rows through a one-time pedigree refresh before breeding.
+- Unknown/partial pedigree is never treated as unrelated. Direct ancestors and shared ancestors are hard exclusions.
+- Both Pure-line and Same-FF planners retain the full ordered safe-male list for each female.
+- Runtime re-checks pedigree immediately before each direct breed command.
+- OviPets `Unable to breed pets.` is detected immediately, dismissed, returned as `unable-to-breed-pets`, and that female retries with her next safe male instead of being skipped.
+- Legacy `command-timeout` also falls through to the next male as a compatibility safety net.
+- Campaign execution format is now `database-direct-v2`; old in-progress campaigns stop safely and must be restarted after upgrade.
+
+Verification: full suite **59/59 PASS**; focused pedigree/breeding soak **20 rounds × 7 files = 140 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `d4fa19b3a8fc6caca656350aeca0b78078e54bf6639890d3a49e3d203d9d4860`.
 
 ## v5.3.15 Same-FF target-improvement breeding strategy
 
