@@ -752,11 +752,15 @@
     const found = new Map();
     const enclosureIds = {};
     const previousSnapshots = await storageGet("owehEnclosureSnapshots", {});
+    const previousEnclosureIds = await storageGet("owehEnclosureIds", {});
     const nextSnapshots = {};
     let reusedEnclosures = 0;
+    let skippedEnclosures = 0;
     await waitForOverviewShell(Math.max(10000, pageLoadDelayMs * 6));
     const tabs = overviewEnclosureTabs();
     const tabCount = Math.max(tabs.length, 1);
+    // Fewer tabs than the last full scan means OviPets has not mounted every enclosure yet.
+    let partial = tabs.length < Object.keys(previousEnclosureIds || {}).length;
     for (let index = 0; index < tabCount; index += 1) {
       const currentTabs = overviewEnclosureTabs();
       const tab = currentTabs[index];
@@ -764,6 +768,13 @@
         tab.querySelector("a")?.click();
         const end = Date.now() + 10000;
         while (Date.now() < end && !isTabActive(overviewEnclosureTabs()[index])) await sleep(150);
+        if (!isTabActive(overviewEnclosureTabs()[index])) {
+          // The previous enclosure's cards are still on screen; reading them now would file
+          // those pets under this enclosure. Skip it and report the scan as partial.
+          partial = true;
+          skippedEnclosures += 1;
+          continue;
+        }
       }
       await waitForOverviewCards();
       await waitForStableValue(overviewSignature, Math.max(5000, pageLoadDelayMs * 4));
@@ -791,10 +802,12 @@
     // A scan that saw no pet at all (Overview not mounted) must not overwrite the saved
     // enclosure ids/snapshots or reconcile breed commands against an empty catalog.
     if (!found.size) return [];
+    // A partial scan only adds to what the last full scan knew; it never drops an enclosure.
+    const scanned = tabCount - skippedEnclosures;
     await storageSet({
-      owehEnclosureIds: enclosureIds,
-      owehEnclosureSnapshots: nextSnapshots,
-      owehEnclosureScanStats: { scanned: tabCount, reused: reusedEnclosures, changed: tabCount - reusedEnclosures, at: Date.now() }
+      owehEnclosureIds: partial ? { ...previousEnclosureIds, ...enclosureIds } : enclosureIds,
+      owehEnclosureSnapshots: partial ? { ...previousSnapshots, ...nextSnapshots } : nextSnapshots,
+      owehEnclosureScanStats: { scanned, skipped: skippedEnclosures, reused: reusedEnclosures, changed: scanned - reusedEnclosures, partial, at: Date.now() }
     });
     const catalog = [...found.values()];
     await runtimeRequest({ type: "reconcileBreedCommands", catalog });

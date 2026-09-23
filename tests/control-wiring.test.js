@@ -76,6 +76,12 @@ if (!source.includes("const orphanedJob = workerClient.getOwner() == null && Boo
 if (!source.includes("if (!found.size) return [];")) {
   throw new Error("An empty Overview scan must not overwrite saved enclosure ids");
 }
+// An enclosure tab that never activates still shows the previous enclosure's cards; the scan
+// must skip it, flag itself partial and merge (not overwrite) the saved enclosure ids.
+if (!source.includes("skippedEnclosures += 1;")
+  || !source.includes("owehEnclosureIds: partial ? { ...previousEnclosureIds, ...enclosureIds } : enclosureIds")) {
+  throw new Error("A partial Overview scan must be flagged and must not drop saved enclosures");
+}
 if (!panelSource.includes("existing?.dataset.owehInstance === PANEL_INSTANCE")
   || !panelSource.includes("existing?.remove()")) {
   throw new Error("Stale-panel recovery is missing");

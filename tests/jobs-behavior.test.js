@@ -232,6 +232,24 @@ const HOUR = 60 * 60 * 1000;
     assert.ok(env.log.statuses.some(text => text.includes("only part of the enclosures loaded")));
   }
 
+  // A scan that skipped an enclosure tab (it never activated) reports partial even when the
+  // merged enclosure-id count is unchanged.
+  {
+    let env;
+    env = setup({
+      owehEnclosureIds: { A: "1", B: "2" },
+      owehPets: { 7: { id: "7", owned: true, present: true, name: "in skipped enclosure" } }
+    }, {
+      collectAllOverviewPets: async () => {
+        env.store.owehEnclosureScanStats = { partial: true };
+        return [{ id: "1", name: "seen", usr: "77", enclosure: "A", enclosureId: 1 }];
+      }
+    });
+    await env.start("catalog");
+    assert.equal(env.store.owehPets["7"].present, true);
+    assert.ok(env.log.statuses.some(text => text.includes("only part of the enclosures loaded")));
+  }
+
   // Stop pressed while the profile job was still reading the database must not leave an
   // active owehPetIndex behind.
   {

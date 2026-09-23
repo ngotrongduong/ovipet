@@ -69,6 +69,13 @@ OWEH.register("feature-breeding", helpers => {
         reportWorkerDone();
         return;
       }
+      // Fail closed on a partial scan: pets in unscanned enclosures would be marked absent and
+      // left out of pairing, so the plan would be built from part of the stock.
+      if (!resumeFromIndex && (await storageGet("owehEnclosureScanStats", null))?.partial === true) {
+        setStatus("Breeding cancelled: not every enclosure loaded during the scan, so no plan was built — nothing was bred. Try again.");
+        reportWorkerDone();
+        return;
+      }
 
       const nextOwnUserId = catalog.find(pet => pet.usr)?.usr || breedingActions.getOwnUserId();
       breedingActions.setOwnUserId(nextOwnUserId);

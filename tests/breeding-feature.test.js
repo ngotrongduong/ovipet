@@ -17,7 +17,8 @@ function setup({
   missingIds = [],
   plan = null,
   breedResult = { ok: true },
-  hatchlingActive = false
+  hatchlingActive = false,
+  scanPartial = false
 } = {}) {
   const clock = { now: 1_000_000 };
   const scheduled = [];
@@ -105,7 +106,11 @@ function setup({
     settings: { getDelayMs: () => 0 },
     breedingActions: {
       readHatchlingRun: async () => clone(store.owehHatchlingRun),
-      collectAllOverviewPets: async () => { log.catalogScans += 1; return clone(catalog); },
+      collectAllOverviewPets: async () => {
+        log.catalogScans += 1;
+        store.owehEnclosureScanStats = { partial: scanPartial };
+        return clone(catalog);
+      },
       getOwnUserId: () => ownUserId,
       setOwnUserId: id => { if (id) ownUserId = id; }
     }
@@ -154,6 +159,21 @@ function setup({
     assert.equal(env.store.owehPetScanQueue[0].id, "10");
     assert.equal(env.log.navigations.at(-1), "?usr=77&pet=10");
     assert.ok(env.log.phases.some(text => text === "indexing 0/1"));
+  }
+
+  // A partial enclosure scan fails closed: no pet is marked absent and no plan is built.
+  {
+    const catalog = [{ id: "10", usr: "77", name: "F", modified: "m1" }];
+    const env = setup({
+      overview: true, catalog, scanPartial: true,
+      pets: { "30": { id: "30", owned: true, present: true, name: "in an unscanned enclosure" } }
+    });
+    await env.api.startWorker(9, false, "pure-line");
+    assert.equal(env.store.owehPets["30"].present, true);
+    assert.equal(env.store.owehBreedCampaign.active, false);
+    assert.equal(env.log.planOptions.length, 0);
+    assert.equal(env.log.done, 1);
+    assert.ok(env.log.status.at(-1).includes("not every enclosure loaded"));
   }
 
   // Direct execution confirms the command before marking the female on cooldown and recording

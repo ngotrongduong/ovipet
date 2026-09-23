@@ -47,10 +47,11 @@ OWEH.register("job-catalog", helpers => {
           lastSeenAt: Date.now()
         };
       }
-      // Fewer enclosures than last time means the scan was partial: pets in the unscanned ones
-      // are unknown, not gone, so nobody is marked absent on a partial scan.
+      // A partial scan (an enclosure tab never activated, or fewer enclosures than last time):
+      // pets in the unscanned ones are unknown, not gone, so nobody is marked absent.
       const scannedEnclosureCount = Object.keys(await storageGet("owehEnclosureIds", {})).length;
-      const partialScan = scannedEnclosureCount < knownEnclosureCount;
+      const scanStats = await storageGet("owehEnclosureScanStats", null);
+      const partialScan = scanStats?.partial === true || scannedEnclosureCount < knownEnclosureCount;
       if (!partialScan) {
         for (const pet of Object.values(pets)) {
           if (pet?.owned && pet.id && !visibleIds.has(pet.id)) pet.present = false;
