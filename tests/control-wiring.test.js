@@ -81,4 +81,10 @@ if (!panelSource.includes("existing?.dataset.owehInstance === PANEL_INSTANCE")
   throw new Error("Stale-panel recovery is missing");
 }
 
+// A worker tab closes right after reporting done; its final status must reach the other tabs.
+if (!source.includes("owehSweepNotice: { text: lastStatusText, at: Date.now() }")
+  || !source.includes("releaseFinishedWorker();")) {
+  throw new Error("Worker completion status must be published before the worker tab is released");
+}
+
 console.log(`control wiring tests passed (${bindings.length} actions)`);

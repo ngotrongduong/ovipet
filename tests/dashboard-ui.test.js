@@ -99,6 +99,36 @@ function setup() {
     assert.equal(env.meta.textContent, "Database: 1/2 profiles · 1 enclosures");
   }
 
+  // Breeding planning holds the breed lease before the campaign record is active; the panel
+  // must not read "Idle" during the full-enclosure scan.
+  {
+    const env = setup();
+    env.state.owehWorker = { owner: "breed", phase: "running", leaseUntil: env.clock.now + 30_000 };
+    await env.api.update();
+    assert.equal(env.api.getJobCount(), 1);
+    assert.equal(env.header.textContent, "1 active");
+    assert.ok(env.jobs.children[0].textContent.includes("Breeding · planning"));
+  }
+
+  // Once the campaign is active (or planning hands off to the pet index), only one chip shows.
+  {
+    const env = setup();
+    env.state.owehWorker = { owner: "breed", phase: "breeding 0/3", leaseUntil: env.clock.now + 30_000 };
+    env.state.owehBreedCampaign = { active: true, femaleIndex: 0, bredCount: 0, strategy: "pure-line" };
+    env.state.owehBreedQueue = [{}, {}, {}];
+    await env.api.update();
+    assert.equal(env.api.getJobCount(), 1);
+    assert.ok(!env.jobs.children[0].textContent.includes("planning"));
+
+    const indexing = setup();
+    indexing.state.owehWorker = { owner: "breed", phase: "indexing 0/1", leaseUntil: indexing.clock.now + 30_000 };
+    indexing.state.owehPetIndex = { active: true, breedPlanning: true, index: 0 };
+    indexing.state.owehPetScanQueue = [{}];
+    await indexing.api.update();
+    assert.equal(indexing.api.getJobCount(), 1);
+    assert.ok(indexing.jobs.children[0].textContent.includes("Pet index"));
+  }
+
   // An expired lease must not keep the UI stuck in a false busy state.
   {
     const env = setup();

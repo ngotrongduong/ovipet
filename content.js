@@ -28,7 +28,7 @@
   const workerClient = OWEH.core.workerClient;
   const {
     claimTask, releaseTask, isWorkerOwner, requestClaimWorker, requestReleaseWorker,
-    reportWorkerPhase, reportWorkerDone
+    reportWorkerPhase, reportWorkerDone: releaseFinishedWorker
   } = workerClient;
   if (!OWEH.core?.scheduler) {
     console.error("[OviPets Helper] core/scheduler.js did not load before content.js — check manifest.json script order");
@@ -125,6 +125,7 @@
   let currentTabId = null;
   let taskHeartbeatTimer = null;
   let lastDiagnosticStatusText = "";
+  let lastStatusText = "";
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -461,6 +462,7 @@
     const el = document.querySelector("#oweh-status");
     if (el && el.textContent !== text) el.textContent = text;
     const value = String(text || "");
+    if (value) lastStatusText = value;
     const diagnosticValue = value
       .replace(/\b0\s+(?:failed|timeouts?|errors?|aborted)\b/ig, "")
       .replace(/\b0\s+timed\s+out\b/ig, "");
@@ -468,6 +470,16 @@
       lastDiagnosticStatusText = value;
       diagnosticLog("warning", "status", "status.alert", { text: value });
     }
+  }
+
+  // The shared worker tab closes as soon as its job reports done, taking its final status line
+  // with it. Publish that line through the cross-tab notice first so the tab where the user
+  // pressed the button can show why the job ended (e.g. "no breedable females").
+  function reportWorkerDone() {
+    if (workerClient.getOwner() != null && lastStatusText) {
+      void storageSet({ owehSweepNotice: { text: lastStatusText, at: Date.now() } });
+    }
+    releaseFinishedWorker();
   }
 
   function setRunning(value) {
@@ -1110,7 +1122,7 @@
       workerClient.resync(status.worker.owner, status.worker.generation);
       if (orphanedJob) {
         diagnosticLog("error", "worker", "worker.orphaned-after-reload", { owner: status.worker.owner, generation: status.worker.generation, phase: status.worker.phase, tabId: currentTabId });
-        reportWorkerDone();
+        releaseFinishedWorker();
         setStatus(`"${STRAIGHT_JOB_LABELS[status.worker.owner]}" was interrupted by a page reload and released the shared background tab — press its button again`);
       }
     }

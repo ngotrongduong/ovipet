@@ -98,6 +98,10 @@ OWEH.register("ui-dashboard", helpers => {
       if (state.owehBreedCampaign?.active) {
         const strategy = state.owehBreedCampaign.strategy === "same-ff-target" ? "Same-FF target" : "Pure line";
         jobs.push({ name: "Breeding", detail: `${strategy} · ${compactProgress(state.owehBreedCampaign.femaleIndex, state.owehBreedQueue.length)} · ${Number(state.owehBreedCampaign.bredCount || 0)} bred`, tone: "breed" });
+      } else if (workerOwns("breed") && !state.owehPetIndex?.active) {
+        // Planning (full-enclosure scan + pair selection) runs under the breed lease before the
+        // campaign record turns active; without this the panel read "Idle" for the whole scan.
+        jobs.push({ name: "Breeding", detail: `planning · background (${state.owehWorker.phase || "starting"})`, tone: "breed" });
       }
       if (state.owehHatchlingRun?.active) {
         const phase = state.owehHatchlingRun.phase === "maleMove" ? "moving males" : "checking hatchlings";
