@@ -2,11 +2,23 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.16**
+Current release: **v5.3.17**
 
 ## Engineering objective
 
 The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+
+## v5.3.17 Breeding dependency-wiring hotfix
+
+Live v5.3.16 QA found an integration-only crash immediately after pedigree re-indexing completed: `features/breeding.js` called `pedigree.pedigreeCompatibility(...)`, but the real `content.js` boot helper omitted `OWEH.domain.pedigree`.
+
+- `content.js` now injects `pedigree: OWEH.domain.pedigree` into the shared domain helper object.
+- `features/breeding.js` also has a manifest-order-backed global fallback and explicit dependency assertion.
+- A new `content-domain-wiring.test.js` verifies manifest dependency order and the actual `OWEH.boot(...)` wiring.
+- `database-breeding.test.js` now requires the exact pedigree injection contract.
+- v5.3.16 pedigree safety remains unchanged: unknown ancestry fails closed, shared/direct ancestors are rejected, and rejected males still fall through to the next safe candidate.
+
+Verification: full suite **60/60 PASS**; focused wiring/pedigree/breeding soak **20 rounds × 8 files = 160 executions, 0 failures**; clean-extracted final ZIP **60/60 PASS**. SHA-256: `df388ba98c7298e2a293d56623b090ce4c2d55db111e5a546ed370cb215b5df9`.
 
 ## v5.3.16 Pedigree Guard + male fallback
 
