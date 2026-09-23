@@ -17,10 +17,13 @@
     const absolute = Date.parse(raw);
     if (Number.isFinite(absolute)) return absolute;
     const text = (timeElement?.textContent || element.textContent || "").trim().toLowerCase();
-    const match = text.match(/(\d+)\s+(second|minute|hour)s?\s+ago/);
+    // Live OviPets labels include "a minute ago", "an hour ago" and "a few seconds ago".
+    if (/\b(?:just now|a few seconds ago)\b/.test(text)) return now;
+    const match = text.match(/(\d+|an?)\s+(second|minute|hour)s?\s+ago/);
     if (!match) return null;
     const units = { second: 1000, minute: 60000, hour: 3600000 };
-    return now - Number(match[1]) * units[match[2]];
+    const amount = /^an?$/.test(match[1]) ? 1 : Number(match[1]);
+    return now - amount * units[match[2]];
   }
 
   function postIdentityRoot(element) {

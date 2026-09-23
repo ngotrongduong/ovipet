@@ -49,6 +49,10 @@ const queue = chat.collectNinjaCandidates(container, { now, windowMs: 60 * 60 * 
 assert.deepEqual(queue.map(item => item.id), ["2"]);
 assert.equal(queue[0].timestamp, now - 1 * 60 * 1000);
 assert.throws(() => chat.collectNinjaCandidates(container, { windowMs: 1000 }), /finite now and windowMs/);
+// Live labels without a digit (seen on ovipets.com) still count as recent comments.
+const wordAges = [comment("5", "add", "a minute ago"), comment("6", "add", "an hour ago"), comment("7", "add", "a few seconds ago")];
+const wordQueue = chat.collectNinjaCandidates({ querySelectorAll: selector => selector === ".comments li" ? wordAges : [] }, { now, windowMs: 2 * 60 * 60 * 1000 });
+assert.deepEqual(wordQueue.map(item => [item.id, now - item.timestamp]), [["7", 0], ["5", 60000], ["6", 3600000]]);
 
 // Ninja scan now reads both fixed OviPets-profile posts, regardless of their vertical order.
 function heading(text) {
