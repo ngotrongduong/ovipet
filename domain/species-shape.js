@@ -1,13 +1,16 @@
 "use strict";
 
-// Silhouette matcher for the "Name the Species" challenge image (v5.4.0).
+// Silhouette matcher for the "Name the Species" challenge image (v5.4.0, tuned in v5.4.1).
 //
 // The challenge image (/img/pet/<id>/credit-challenge, 500x500 PNG with alpha) shows a RANDOM
 // species with random colors and random genes, so the old 16x16 luminance hash never repeated
 // across eggs and the answerer kept guessing (live: 336 correct out of 4617 detected). The pose
-// of each species is fixed, though: a 32x32 alpha mask (alpha > 127) of two images of the same
-// species differs by ~13-38 of 1024 bits, while different species are mostly > 50 apart. This
-// module is pure (no DOM/chrome), shared by the content world and the service worker.
+// of each species is roughly fixed, though, and normal pet images (/img/pet/<id>) are rendered
+// in the same 500x500 frame. Measured live on 129 Adoption Center pets (31 species), 32x32 alpha
+// mask (alpha > 127): nearest same-species distance p10/p50/p90 = 64/114/217 of 1024 bits,
+// nearest other-species 135/175/216; leave-one-out nearest-neighbour with 4 options = ~87%.
+// A 44-bit threshold (v5.4.0) almost never fired; 150 is the measured sweet spot. This module is
+// pure (no DOM/chrome), shared by the content world and the service worker.
 (() => {
   const SIZE = 32;
   const BITS = SIZE * SIZE;
@@ -15,9 +18,10 @@
   const ALPHA_THRESHOLD = 127;
   // A known species closer than this is taken as the answer; beyond it, an option with no
   // examples yet is the better bet (the image is probably a species we have never learned).
-  const MATCH_DISTANCE = 44;
+  const MATCH_DISTANCE = 150;
   const DEDUPE_DISTANCE = 6;
-  const MAX_EXAMPLES = 12;
+  // Mutations change the outline a lot, so more variants per species are kept.
+  const MAX_EXAMPLES = 40;
   const MIN_FILLED_BITS = 24;
   const POPCOUNT = Array.from({ length: 16 }, (_, value) =>
     (value & 1) + ((value >> 1) & 1) + ((value >> 2) & 1) + ((value >> 3) & 1));

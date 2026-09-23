@@ -63,8 +63,17 @@ function loadDomain(extra = {}) {
   assert.equal(api.addExample(library, "Cat", "bad").added, false);
   assert.equal(library.Cat.examples.length, 2);
   const crowded = {};
-  for (let i = 0; i < 20; i += 1) {
-    api.addExample(crowded, "Blob", api.shapeFromRgba(rgbaRect({ x0: 0, y0: i, x1: 31, y1: i + 8 })));
+  let seed = 12345;
+  const noise = () => {
+    const data = new Uint8ClampedArray(SIZE * SIZE * 4);
+    for (let i = 3; i < data.length; i += 4) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      data[i] = (seed >> 16) & 1 ? 255 : 0;
+    }
+    return data;
+  };
+  for (let i = 0; i < api.MAX_EXAMPLES + 8; i += 1) {
+    api.addExample(crowded, "Blob", api.shapeFromRgba(noise()));
   }
   assert.equal(crowded.Blob.examples.length, api.MAX_EXAMPLES, "examples are capped");
 

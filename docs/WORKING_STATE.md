@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-24
-Current release baseline: v5.4.0
+Current release baseline: v5.4.1
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
@@ -198,6 +198,13 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
+
+### v5.4.1 Learn Species Shapes + tuned threshold
+
+- Live measurement (129 Adoption Center pets, 31 species, full-frame 32x32 alpha mask): nearest same-species p10/p50/p90 = 64/114/217, nearest other-species 135/175/216; LOO 1-NN with 4 options ≈ 87% (kNN3 84%, Bernoulli NB 82%, bbox-cropped 79%). `credit-challenge` renders a random species for any pet id, so the pet's own species is useless for the challenge.
+- `domain/species-shape.js`: `MATCH_DISTANCE` 44 → 150 (simulated accuracy at 60% library coverage 36% → 72%), `MAX_EXAMPLES` 12 → 40.
+- New `jobs/species-seed.js` (Learn Species Shapes / Stop): own `owehPets` + Adoption Center JSONP list → profile JSONP species → `/img/pet/<id>` mask → `speciesShapeLearn`. 150 ms throttle, seen ids in `owehSpeciesSeedSeen` (cap 5000), species at the cap skipped, Adoption Center only on ovipets.com.
+- New `tests/species-seed.test.js`.
 
 ### v5.4.0 silhouette species solver + rolling Fast Sweep
 

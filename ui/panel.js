@@ -189,7 +189,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.4.0</span>
+          <span class="oweh-version">v5.4.1</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -255,7 +255,11 @@ OWEH.register("ui-panel", helpers => {
             <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
             <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
             <div class="oweh-actions">
-              <button id="oweh-export-species" class="oweh-secondary" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export Species JSON</button>
+              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from your saved pets and from the Adoption Center (read-only, no clicks). More learned shapes make Name the Species answers more accurate.">Learn Species Shapes</button>
+              <button id="oweh-species-seed-stop" class="oweh-secondary" type="button" data-tip="Stop Learn Species Shapes after the current pet.">Stop</button>
+            </div>
+            <div class="oweh-actions">
+              <button id="oweh-export-species"class="oweh-secondary" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export Species JSON</button>
               <button id="oweh-export-species-db" class="oweh-secondary" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Export Species DB</button>
               <button id="oweh-import-species-db" class="oweh-secondary" type="button" data-tip="Import/merge a Species database backup or a previous Species Inspector JSON export. Existing knowledge is preserved and merged.">Import Species DB</button>
               <input id="oweh-import-species-file" type="file" accept="application/json,.json" hidden>
