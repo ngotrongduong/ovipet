@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.4.0**
+Current release: **v5.4.1**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.4.1 Learn Species Shapes + tuned silhouette threshold
+
+- Measured live on 129 Adoption Center pets (31 species): the nearest same-species silhouette is 64/114/217 of 1,024 pixels away (p10/p50/p90), other species 135/175/216. The v5.4.0 threshold of 44 almost never fired, so answers stayed mostly random. `MATCH_DISTANCE` is now 150 and up to 40 variants per species are kept (mutations change the outline); leave-one-out nearest-neighbour with 4 options reaches ~87% once a species is learned. A far-away known species still loses to an option never learned (exclusion).
+- New **Learn Species Shapes** button (Hatchery & Eggs, `jobs/species-seed.js`): reads your saved pets and the Adoption Center list (species from each public profile), masks each normal pet image (same 500×500 frame as the challenge) and adds it to `owehSpeciesShapes`. Read-only, throttled, resumable (`owehSpeciesSeedSeen`), with its own Stop button.
 
 ## v5.4.0 Silhouette species solver + rolling Fast Sweep
 

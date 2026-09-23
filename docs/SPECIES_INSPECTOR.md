@@ -1,6 +1,6 @@
 # Name the Species — Inspector / Learning Dataset
 
-Current release compatibility: v5.4.0
+Current release compatibility: v5.4.1
 
 ## Purpose
 
@@ -50,7 +50,9 @@ Because the challenge image is served from `app.ovipets.com`, v5.3.5 uses a stri
 
 ### Silhouette matching (v5.4.0)
 
-The challenge image shows a random species with random colors and genes, so the exact identities above rarely repeat. Each species keeps a fixed pose, so the Inspector also records a 32x32 alpha-mask silhouette (`shape`, 256 hex chars). When no confirmed exact memory exists, the solver ranks the offered options with `domain/species-shape.js`: a learned silhouette within 44 of 1,024 pixels is answered (`shape-match`); otherwise it prefers an option never learned (`shape-unknown`), then the nearest (`shape-nearest`). Confirmed answers are added to `owehSpeciesShapes` (max 12 distinct silhouettes per species) through the serialized background writer, older confirmed URLs are back-filled once, and exports/imports carry `shapes`.
+The challenge image shows a random species with random colors and genes, so the exact identities above rarely repeat. Each species keeps a fixed pose, so the Inspector also records a 32x32 alpha-mask silhouette (`shape`, 256 hex chars). When no confirmed exact memory exists, the solver ranks the offered options with `domain/species-shape.js`: a learned silhouette within 150 of 1,024 pixels is answered (`shape-match`, v5.4.1; measured same-species median 114, other-species median 175); otherwise it prefers an option never learned (`shape-unknown`), then the nearest (`shape-nearest`). Confirmed answers are added to `owehSpeciesShapes` (max 40 distinct silhouettes per species) through the serialized background writer, older confirmed URLs are back-filled once, and exports/imports carry `shapes`.
+
+**Learn Species Shapes** (v5.4.1, `jobs/species-seed.js`) seeds the library before any challenge is answered: normal pet images (`/img/pet/<id>`) share the challenge's 500x500 frame, so own saved pets and Adoption Center pets (species read from their public profile) are masked and learned. The more species are covered, the better the exclusion step works.
 
 The real `pet_turn_egg` response is the authoritative outcome. `status: success` adds a positive vote; `status: failed` with the explicit incorrect message adds negative evidence. Answer IDs are also learned from the question/network request.
 
