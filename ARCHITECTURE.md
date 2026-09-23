@@ -34,6 +34,9 @@ own-eggs.js, friend-sweep.js, hatchlings.js, pet-index.js, breeding-campaign.js.
 ### jobs/
 One-button tasks. Replace the broad legacy dependency bag with explicit services over time.
 
+### services/
+Content-side orchestration composed by content.js: diagnostics.js, overview-catalog.js, pet-edit.js, friend-directory.js, retention.js. Each exports `OWEH.services.<name>.createX(deps)` with explicit dependencies (no content.js closure state, no shared bag). Loaded after ui/ and before content.js.
+
 ### ui/
 panel.js, dashboard.js. UI renders/dispatches intent; it is not authoritative automation state.
 

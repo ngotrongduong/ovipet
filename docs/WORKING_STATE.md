@@ -1,6 +1,6 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-09-20
+Last updated: 2026-09-24
 Current release baseline: v5.3.17
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.3.17 fixes the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
@@ -20,8 +20,8 @@ Original supplied v5.3.0 snapshot:
 Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 59/59 PASS;
-- content.js: 1,090 lines;
+- Node test files: 64/64 PASS;
+- content.js: 652 lines (composition/wiring + a few live helpers; see "content.js service split");
 - background.js: 205 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - deterministic domain modules own breeding/pet-record rules;
@@ -29,6 +29,7 @@ Current managed release-candidate baseline:
 - jobs no longer depend on a broad legacy helper bag;
 - all five major long-running feature state machines live under features/;
 - panel/dashboard presentation lives under ui/;
+- content-side orchestration moved out of content.js lives under services/ as explicit-dependency factories;
 - background state/database/worker/journal/alert/health responsibilities live under bg/.
 
 Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
@@ -182,6 +183,20 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Strategy is persisted in campaign/start/index-resume state so a long profile-index handoff cannot silently switch strategy.
 - Breed history records the strategy used for each confirmed pair.
 - Automated regression before packaging: syntax PASS; full suite 59/59 PASS.
+
+### content.js service split (2026-09-24, unreleased, behavior-preserving)
+
+- New `services/` layer, loaded after ui/panel.js and before content.js. Each file exports `OWEH.services.<name>.createX(deps)`; every dependency is passed explicitly and no service reads content.js closure state (`getPageLoadDelayMs()`, `getOwnUserId()` and `getBlacklist()` are read live per call).
+  - `services/diagnostics.js`: Diagnostic Logbook client (append/export/clear/summary).
+  - `services/overview-catalog.js`: Overview shell/cards waits, `waitForStableValue`, `collectAllOverviewPets` (partial-scan merge and empty-scan guard unchanged).
+  - `services/pet-edit.js`: profile tabs, rename, suggested name, save current pet, gender wait, move to enclosure.
+  - `services/friend-directory.js`: friends-list scan, blacklist CSV, Ninja please / Ads commenter scan.
+  - `services/retention.js`: review-only retention ranking and CSV.
+- content.js 1,182 -> 652 lines. Dead code removed: `compareHatchMales`, `waitForBreedingCandidates`, unused DOM imports and delay clamps. Selectors, storage keys and messages unchanged.
+- New runtime wiring gate `tests/content-boot-wiring.test.js`: loads every isolated content script in manifest order in a vm, runs content.js and fails if any helper handed to `OWEH.boot` (including `uiPanelActions`) is `undefined` or any module fails to start. This is the class of bug behind v5.3.17 and the panel display breakages; source-text tests could not see it.
+- New behavior tests: `tests/overview-catalog-service.test.js` (full / stuck-tab partial / fewer-tabs partial / empty / snapshot reuse) and `tests/friend-retention-services.test.js`.
+- Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
+- Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
 ### v5.3.17 breeding dependency-wiring hotfix
 

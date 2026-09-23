@@ -60,6 +60,11 @@
         "features/breeding.js",
         "ui/dashboard.js",
         "ui/panel.js",
+        "services/diagnostics.js",
+        "services/overview-catalog.js",
+        "services/pet-edit.js",
+        "services/friend-directory.js",
+        "services/retention.js",
         "content.js"
       ],
       "css": [

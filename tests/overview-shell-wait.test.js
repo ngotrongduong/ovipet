@@ -5,7 +5,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "..", "services", "overview-catalog.js"), "utf8");
 const catalog = fs.readFileSync(path.join(__dirname, "..", "jobs", "catalog.js"), "utf8");
 
 if (!source.includes("async function waitForOverviewShell(timeout = 10000)")) {

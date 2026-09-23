@@ -16,8 +16,17 @@ for (const part of block.split(",")) {
   if (/^[A-Za-z_$][\w$]*$/.test(token) && !part.includes(":")) shorthand.add(token);
 }
 
+// Actions extracted to services/*.js are bound in content.js by destructuring the factory result.
+const destructured = new Set();
+for (const [, names] of source.matchAll(/const\s*\{([^}]*)\}\s*=/g)) {
+  for (const part of names.split(",")) {
+    const local = part.split(":").pop().trim();
+    if (/^[A-Za-z_$][\w$]*$/.test(local)) destructured.add(local);
+  }
+}
+
 for (const name of shorthand) {
-  const declared = new RegExp(`(?:async\\s+)?function\\s+${name}\\b|(?:const|let|var)\\s+${name}\\b`).test(source);
+  const declared = destructured.has(name) || new RegExp(`(?:async\\s+)?function\\s+${name}\\b|(?:const|let|var)\\s+${name}\\b`).test(source);
   if (!declared) throw new Error(`uiPanelActions references an undefined shorthand action: ${name}`);
 }
 

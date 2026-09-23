@@ -58,18 +58,11 @@
     return;
   }
   const { findTab, isTabActive } = OWEH.dom.tabs;
-  const {
-    overviewEnclosureTabs, overviewCards, overviewCardInfo, isOverviewBusy,
-    overviewSignature, overviewEnclosureForPet
-  } = OWEH.dom.overview;
   if (!OWEH.dom?.friends || !OWEH.dom?.chat) {
     console.error("[OviPets Helper] dom/friends.js and dom/chat.js must load before content.js — check manifest.json script order");
     return;
   }
   const { friendLinks } = OWEH.dom.friends;
-  const {
-    NINJA_CHAT_TARGETS, parseCommentTime, chatPostContainer, collectChatCandidates
-  } = OWEH.dom.chat;
   if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan) {
     console.error("[OviPets Helper] domain modules did not load before content.js — check manifest.json script order");
     return;
@@ -105,12 +98,10 @@
   const PANEL_INSTANCE = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const DEFAULT_DELAY = 0;
   const DEFAULT_PAGE_LOAD_DELAY = 1500;
-  const CHAT_WINDOW_MS = 24 * 60 * 60 * 1000;
   const DIRECT_COMMAND_INTERVAL_MS = 100;
   const DEFAULT_REQUEST_DELAY = DIRECT_COMMAND_INTERVAL_MS;
   const RECENT_FULL_FOOD_MS = 20 * 60 * 60 * 1000;
   const PET_FEED_DELAY_MS = DIRECT_COMMAND_INTERVAL_MS;
-  const DOM_STABLE_MS = 450;
   let delayMs = DEFAULT_DELAY;
   let pageLoadDelayMs = DEFAULT_PAGE_LOAD_DELAY;
   let friendEggsModule = null;
@@ -129,105 +120,38 @@
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  function diagnosticLog(level, source, event, data = {}) {
-    if (isExtensionContextInvalidated?.()) {
-      return Promise.resolve({ ok: false, error: "extension-context-invalidated", contextInvalidated: true });
-    }
-    return runtimeRequest({
-      type: "diagnosticLogAppend",
-      entry: {
-        level, source, event,
-        data: { ...data, route: typeof location !== "undefined" ? `${location.pathname}${location.hash || ""}`.slice(0, 500) : "" }
-      }
-    });
+  if (!OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
+    || !OWEH.services?.friendDirectory || !OWEH.services?.retention) {
+    console.error("[OviPets Helper] services/*.js did not load before content.js — check manifest.json script order");
+    return;
   }
-
-  async function exportDiagnosticLog() {
-    const result = await runtimeRequest({ type: "diagnosticLogExport" });
-    if (!result.ok || !result.payload) throw new Error(result.error || "diagnostic-export-failed");
-    const blob = new Blob([JSON.stringify(result.payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    anchor.href = url;
-    anchor.download = `ovipets-diagnostic-log-${stamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setStatus(`Diagnostic Log exported (${result.payload.summary?.total || 0} event(s))`);
-    return result.payload;
-  }
-
-  async function clearDiagnosticLog() {
-    const result = await runtimeRequest({ type: "diagnosticLogClear" });
-    if (!result.ok) throw new Error(result.error || "diagnostic-clear-failed");
-    setStatus("Diagnostic Log cleared");
-  }
-
-  async function getDiagnosticSummary() {
-    const result = await runtimeRequest({ type: "diagnosticLogSummary" });
-    return result.ok ? result.summary : { total: 0, counts: {}, last: null };
-  }
-  const clampDelay = value => Math.min(30000, Math.max(0, Math.round((Number(value) || 0) * 1000)));
-  const clampPageLoadDelay = value => Math.min(10000, Math.max(250, Math.round((Number(value) || 1.5) * 1000)));
-
-  function retentionRecord(pet) {
-    const pure = petPureMetrics(pet, STRICT_PURE_TARGET);
-    return {
-      id: pet.id,
-      name: pet.name,
-      gender: pet.gender,
-      species: pet.species,
-      enclosure: pet.enclosure,
-      exactChannels: pure.exactChannels,
-      usedChannels: pure.usedChannels,
-      distance: pure.distance,
-      // Review-only score. Exact target channels dominate distance, matching the strict
-      // pure-line ordering used by breeding. No pet is removed automatically.
-      score: pure.exactChannels * 100000 - (Number.isFinite(pure.distance) ? pure.distance : 99999)
-    };
-  }
-
-  async function updateRetentionRanking(pets = null) {
-    const source = pets || await storageGet("owehPets", {});
-    const linePets = Object.values(source)
-      .filter(pet => pet?.owned && pet?.colors && isBreedingProgramEnclosure(pet.enclosure));
-    const speciesCounts = linePets.reduce((counts, pet) => {
-      const key = pet.species || "Unknown";
-      counts.set(key, (counts.get(key) || 0) + 1);
-      return counts;
-    }, new Map());
-    const focusSpecies = [...speciesCounts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    const ranking = linePets
-      .filter(pet => (pet.species || "Unknown") === focusSpecies)
-      .map(retentionRecord)
-      .filter(item => item.usedChannels > 0)
-      .sort((a, b) => b.exactChannels - a.exactChannels
-        || a.distance - b.distance
-        || String(a.id).localeCompare(String(b.id)));
-    const review = [...ranking].reverse().slice(0, Math.min(25, ranking.length));
-    await storageSet({ owehRetentionRanking: ranking, owehRetentionReview: review });
-    return { ranking, review };
-  }
-
-  async function copyRetentionReviewCsv() {
-    const { review } = await updateRetentionRanking();
-    if (!review.length) return setStatus("No indexed pets available for retention review");
-    const quote = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const rows = [
-      ["id", "name", "gender", "species", "enclosure", "exact_target_channels", "used_channels", "distance", "review_score"],
-      ...review.map(item => [item.id, item.name, item.gender, item.species, item.enclosure,
-        item.exactChannels, item.usedChannels, item.distance, item.score])
-    ];
-    try {
-      await navigator.clipboard.writeText(rows.map(row => row.map(quote).join(",")).join("\n"));
-      setStatus(`Copied ${review.length} lowest-ranked pet(s) as CSV; nothing was removed`);
-    } catch {
-      setStatus("Could not copy automatically — clipboard access was denied");
-    }
-  }
+  const writeClipboard = text => navigator.clipboard.writeText(text);
+  const {
+    diagnosticLog, exportDiagnosticLog, clearDiagnosticLog, getDiagnosticSummary
+  } = OWEH.services.diagnostics.createDiagnostics({ runtimeRequest, isExtensionContextInvalidated, setStatus });
+  const {
+    waitForOverviewShell, waitForStableValue, collectAllOverviewPets
+  } = OWEH.services.overviewCatalog.createOverviewCatalog({
+    storageGet, storageSet, runtimeRequest, sleep, getPageLoadDelayMs: () => pageLoadDelayMs,
+    overviewDom: OWEH.dom.overview, isTabActive, normalizeEnclosureLabel
+  });
+  const {
+    openTab, renamePet, applySuggestedName, saveCurrentPet, waitForPetGender, movePetToEnclosure
+  } = OWEH.services.petEdit.createPetEdit({
+    sleep, setStatus, storageGet, storageSet, getPageLoadDelayMs: () => pageLoadDelayMs,
+    sendGameCommand, fastMovePetToEnclosure, currentPetId, findTab, isTabActive, readOverviewValue, readPet,
+    suggestedPetName, normalizeEnclosureLabel, NEWBORN_ENCLOSURES
+  });
+  const {
+    scanFriends, copyBlacklistCsv, performNinjaChatScan
+  } = OWEH.services.friendDirectory.createFriendDirectory({
+    storageGet, storageSet, sleep, setStatus, getPageLoadDelayMs: () => pageLoadDelayMs,
+    getOwnUserId: () => ownUserId, getBlacklist: () => friendBlacklist(), writeClipboard,
+    friendLinks, chatDom: OWEH.dom.chat
+  });
+  const { updateRetentionRanking, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
+    storageGet, storageSet, setStatus, writeClipboard, petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure
+  });
 
   function hatchMaleMetrics(pet, target) {
     const targeted = petPureMetrics(pet, target);
@@ -243,141 +167,10 @@
     };
   }
 
-  function compareHatchMales(a, b) {
-    const aHasTarget = a.rank.targetUsed > 0;
-    const bHasTarget = b.rank.targetUsed > 0;
-    if (aHasTarget !== bHasTarget) return aHasTarget ? -1 : 1;
-    if (aHasTarget) {
-      const targetOrder = b.rank.targetExact - a.rank.targetExact
-        || a.rank.targetDistance - b.rank.targetDistance;
-      if (targetOrder) return targetOrder;
-    }
-    return b.rank.extremeExact - a.rank.extremeExact
-      || a.rank.extremeDistance - b.rank.extremeDistance
-      || String(a.id || "").localeCompare(String(b.id || ""));
-  }
-
-  async function openCompleteFriendsList() {
-    const avatarCount = document.querySelectorAll("fieldset.friends a.user.avatar[href]").length;
-    const closeButton = [...document.querySelectorAll("button")]
-      .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
-    const hasCompleteList = avatarCount >= 50 || (closeButton && avatarCount > 0);
-    if (hasCompleteList) return;
-    const button = [...document.querySelectorAll("main button")]
-      .find(candidate => /^Friends(?:\s*\(\d+\))?$/i.test(candidate.textContent.trim()));
-    if (!button) return;
-    button.click();
-    const end = Date.now() + 10000;
-    while (Date.now() < end) {
-      if (document.querySelectorAll("fieldset.friends a.user.avatar[href]").length >= 50) return;
-      await sleep(200);
-    }
-  }
-
-  async function scanFriends() {
-    await openCompleteFriendsList();
-    const found = friendLinks();
-    if (!found.length) return setStatus("No numeric friend profiles found on this page");
-    const blacklist = await friendBlacklist();
-    const friends = found.filter(friend => !blacklist[friend.id]);
-    const skipped = found.length - friends.length;
-    await storageSet({ owehFriendQueue: friends, owehSweep: { active: false, index: 0, maxFriends: friends.length } });
-    setStatus(`Found ${friends.length} friend(s) — full list saved; cooldowns will be skipped${skipped ? ` (${skipped} blacklisted friend(s) excluded)` : ""}`);
-  }
-
   async function friendBlacklist() {
     return friendSweepModule?.getBlacklist
       ? friendSweepModule.getBlacklist()
       : storageGet("owehFriendBlacklist", {});
-  }
-
-  // Export only a copied CSV; no external API/OAuth connection is required.
-  async function copyBlacklistCsv() {
-    const [blacklist, queue] = await Promise.all([
-      friendBlacklist(),
-      storageGet("owehFriendQueue", [])
-    ]);
-    const names = Object.fromEntries((queue || []).map(friend => [String(friend.id), friend.name || ""]));
-    const rows = Object.entries(blacklist || {}).map(([id, entry = {}]) => [
-      id,
-      names[String(id)] || "",
-      entry.reason || "",
-      Number.isFinite(Number(entry.at)) && Number(entry.at) > 0 ? new Date(Number(entry.at)).toISOString() : ""
-    ]);
-    if (!rows.length) {
-      setStatus("Blacklist is empty — nothing to copy");
-      return;
-    }
-    const quote = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const csv = [
-      "user_id,name,reason,blacklisted_at",
-      ...rows.map(row => row.map(quote).join(","))
-    ].join("\n");
-    try {
-      await navigator.clipboard.writeText(csv);
-      setStatus(`Copied ${rows.length} blacklisted friend(s) as CSV`);
-    } catch {
-      setStatus("Could not copy automatically — clipboard access was denied");
-    }
-  }
-
-  async function expandRecentChatComments(title) {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const container = chatPostContainer(title);
-      if (!container) return false;
-      const button = [...container.querySelectorAll("button")]
-        .find(candidate => /Show Previous Comments/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
-      if (!button) return true;
-      const before = container.querySelectorAll("li").length;
-      button.click();
-      await sleep(Math.max(pageLoadDelayMs, 1000));
-      const updated = chatPostContainer(title);
-      if (!updated) return false;
-      const after = updated.querySelectorAll("li").length;
-      if (after <= before) return true;
-      const oldest = [...updated.querySelectorAll(".comments li")]
-        .map(parseCommentTime).filter(Number.isFinite).sort((a, b) => a - b)[0];
-      if (oldest && Date.now() - oldest >= CHAT_WINDOW_MS) return true;
-    }
-    return true;
-  }
-
-  async function performNinjaChatScan() {
-    const ownId = String(await storageGet("owehOwnUserId", ownUserId || "") || "");
-    const history = await storageGet("owehFriendRequestHistory", {});
-    const containers = [];
-    const scanned = [];
-    const missing = [];
-
-    for (const title of NINJA_CHAT_TARGETS) {
-      let container = chatPostContainer(title);
-      if (!container) {
-        missing.push(title);
-        continue;
-      }
-      setStatus(`Loading recent ${title} comments...`);
-      await expandRecentChatComments(title);
-      container = chatPostContainer(title);
-      if (!container) {
-        missing.push(title);
-        continue;
-      }
-      containers.push(container);
-      scanned.push(title);
-    }
-
-    if (!containers.length) {
-      setStatus(`Could not find ${NINJA_CHAT_TARGETS.join(" or ")} chat posts`);
-      return null;
-    }
-
-    const queue = collectChatCandidates(containers, {
-      now: Date.now(), windowMs: CHAT_WINDOW_MS, ownId, history
-    });
-    await storageSet({ owehChatQueue: queue });
-    const missingText = missing.length ? `; not found: ${missing.join(", ")}` : "";
-    setStatus(`Found ${queue.length} unique commenter(s) from ${scanned.join(" + ")} in the last 24 hours${missingText}`);
-    return queue;
   }
 
   async function readSweep() {
@@ -499,33 +292,6 @@
   const updateActivityDashboard = () => requireDashboard().update();
   const scheduleActivityDashboard = delay => requireDashboard().schedule(delay);
 
-  function buttonWithText(text) {
-    return [...document.querySelectorAll("main button, [role=dialog] button")]
-      .find(button => button.textContent.trim() === text && button.offsetParent !== null) || null;
-  }
-
-  async function waitForButtonText(text, timeout = 5000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      const button = buttonWithText(text);
-      if (button) return button;
-      await sleep(150);
-    }
-    return null;
-  }
-
-  async function openTab(name, timeout = 8000) {
-    const tab = findTab(name);
-    if (!tab) return false;
-    if (!isTabActive(tab)) tab.querySelector("a")?.click();
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      if (isTabActive(findTab(name))) return true;
-      await sleep(100);
-    }
-    return isTabActive(findTab(name));
-  }
-
   // Confirmed selector (docs/dom-audit-2026-09-17.md #4).
   const BREEDING_CANDIDATE_SELECTOR = "section#breeding a[onclick*=\"ui_action_cmdExec('pet_breed'\"]";
 
@@ -539,115 +305,8 @@
     }).filter(Boolean);
   }
 
-  async function waitForBreedingCandidates(timeout = 8000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      if (document.querySelector(BREEDING_CANDIDATE_SELECTOR)) return true;
-      await sleep(150);
-    }
-    return Boolean(document.querySelector(BREEDING_CANDIDATE_SELECTOR));
-  }
-
   function petProfilePath(petId) {
     return buildPetProfilePath(petId, ownUserId);
-  }
-
-  async function saveCurrentPet() {
-    const pet = readPet();
-    if (!pet) return setStatus("Open a pet profile with visible Colors first");
-    const pets = await storageGet("owehPets", {});
-    const previous = pets[pet.id];
-    // Overview can be saved before lazy Pedigree content is mounted. Preserve an already
-    // verified pedigree in that manual-save case; never invent verification from an empty
-    // current panel. A breeding index refresh will still replace stale records normally.
-    if (pet.pedigreeVerified !== true && previous?.pedigreeVerified === true) {
-      pet.pedigreeVerified = true;
-      pet.ancestors = [...(previous.ancestors || [])];
-      pet.pedigree = [...(previous.pedigree || [])];
-      pet.parentIds = [...(previous.parentIds || [])];
-    }
-    pets[pet.id] = { ...(previous || {}), ...pet };
-    // petDbMerge upserts per record: write only this pet, so a stale copy of the rest of the
-    // database cannot overwrite what a worker tab saved meanwhile.
-    await storageSet({ owehPets: { [pet.id]: pets[pet.id] } });
-    const suggestion = suggestedPetName(pet);
-    const suffix = suggestion ? ` — suggested name: ${suggestion}` : "";
-    setStatus(`Saved ${pet.name} (${Object.keys(pets).length} pets indexed)${suffix}`);
-  }
-
-  // Confirmed flow (docs/dom-audit-2026-09-17.md #3): Rename lives on the Edit tab, opens a
-  // generic confirm dialog with input[name="Name"] (no id) and Ok/Cancel buttons.
-  async function waitForRenameInput(timeout = 5000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      const input = [...document.querySelectorAll('[role="dialog"] input[name="Name"]')]
-        .find(el => el.offsetParent !== null);
-      if (input) return input;
-      await sleep(100);
-    }
-    return null;
-  }
-
-  function visibleDialog(matcher = null) {
-    return [...document.querySelectorAll('[role="dialog"]')]
-      .find(dialog => dialog.offsetParent !== null && (!matcher || matcher.test(dialog.textContent || ""))) || null;
-  }
-
-  function dialogButton(dialog, text) {
-    return [...(dialog?.querySelectorAll("button") || [])]
-      .find(button => button.textContent.trim() === text && button.offsetParent !== null) || null;
-  }
-
-  async function renamePet(pet, desiredName = suggestedPetName(pet)) {
-    if (!pet || !desiredName) return { changed: false, reason: "missing-name" };
-    if (pet.name === desiredName) return { changed: false, reason: "already-named" };
-    const isUnnamed = /^Unnamed$/i.test(String(pet.name || "").trim());
-    // Confirmed live 2026-09-18: Rename calls
-    // ui_action_cmdExec('pet_rename', `PetID=${id}`, form), with input[name="Name"].
-    // Use that same rendered UI dispatcher first; retain the inspected button flow below
-    // as a compatibility fallback if the game changes or the dispatcher is unavailable.
-    if (!isUnnamed) {
-      const direct = await sendGameCommand("pet_rename", pet.id, { Name: desiredName });
-      if (direct.ok) return { changed: true, name: desiredName, fast: true };
-    }
-    // A live newly hatched pet exposes Name in the profile Actions block and keeps its
-    // Enclosure select disabled until naming succeeds. Older named pets expose Rename from
-    // Edit. Support both flows, preferring the directly visible Name action.
-    let renameButton = isUnnamed ? await waitForButtonText("Name", 5000) : buttonWithText("Name");
-    if (!renameButton) {
-      if (!(await openTab("Edit"))) return { changed: false, reason: "missing-edit-tab" };
-      renameButton = await waitForButtonText("Rename", 5000);
-    }
-    if (!renameButton) return { changed: false, reason: "missing-rename-button" };
-    renameButton.click();
-    const input = await waitForRenameInput();
-    if (!input) return { changed: false, reason: "missing-rename-input" };
-    input.value = desiredName;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    const dialog = input.closest('[role="dialog"]');
-    const ok = dialogButton(dialog, "Ok");
-    if (!ok) return { changed: false, reason: "missing-rename-confirm" };
-    ok.click();
-    const end = Date.now() + 8000;
-    while (Date.now() < end) {
-      const displayed = document.querySelector("main h3 .ui-section-title")?.textContent
-        || document.querySelector("main h3")?.textContent
-        || "";
-      if (!visibleDialog() && displayed.includes(desiredName)) return { changed: true, name: desiredName };
-      await sleep(150);
-    }
-    return { changed: !visibleDialog(), name: desiredName, reason: "unverified" };
-  }
-
-  async function applySuggestedName() {
-    const pet = readPet();
-    const suggestion = pet ? suggestedPetName(pet) : null;
-    if (!suggestion) return setStatus("Open a pet profile to get a naming suggestion first");
-    const result = await renamePet(pet, suggestion);
-    setStatus(result.changed
-      ? `Renamed to "${suggestion}"`
-      : result.reason === "already-named" ? `Already named "${suggestion}"` : `Rename failed: ${result.reason}`);
   }
 
   function targetValues() {
@@ -699,195 +358,6 @@
   }
 
   // --- Full pet indexing, color-code naming, and strict female-first breeding ----------
-
-  async function waitForOverviewCards(timeout = 10000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      if (overviewCards().length) return true;
-      await sleep(150);
-    }
-    return Boolean(overviewCards().length);
-  }
-
-  async function waitForOverviewShell(timeout = 10000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      // OviPets mounts the Overview route first, then adds enclosure tabs and cards
-      // asynchronously. Capturing overviewEnclosureTabs() before this point reduces a
-      // multi-enclosure account to a one-tab scan for the whole run.
-      if (overviewEnclosureTabs().length) return true;
-      const busy = isOverviewBusy();
-      if (!busy && overviewCards().length) return true;
-      await sleep(100);
-    }
-    return Boolean(overviewEnclosureTabs().length || overviewCards().length);
-  }
-
-  async function waitForStableValue(readValue, timeout = 10000, stableMs = DOM_STABLE_MS) {
-    const end = Date.now() + timeout;
-    let previous = null;
-    let stableSince = 0;
-    while (Date.now() < end) {
-      const current = String(readValue() ?? "");
-      if (current && current === previous) {
-        if (!stableSince) stableSince = Date.now();
-        if (Date.now() - stableSince >= stableMs) return current;
-      } else {
-        previous = current;
-        stableSince = 0;
-      }
-      await sleep(100);
-    }
-    return String(readValue() ?? "");
-  }
-
-  function fastFingerprint(text) {
-    let hash = 2166136261;
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(36);
-  }
-
-  async function collectAllOverviewPets() {
-    const found = new Map();
-    const enclosureIds = {};
-    const previousSnapshots = await storageGet("owehEnclosureSnapshots", {});
-    const previousEnclosureIds = await storageGet("owehEnclosureIds", {});
-    const nextSnapshots = {};
-    let reusedEnclosures = 0;
-    let skippedEnclosures = 0;
-    await waitForOverviewShell(Math.max(10000, pageLoadDelayMs * 6));
-    const tabs = overviewEnclosureTabs();
-    const tabCount = Math.max(tabs.length, 1);
-    // Fewer tabs than the last full scan means OviPets has not mounted every enclosure yet.
-    let partial = tabs.length < Object.keys(previousEnclosureIds || {}).length;
-    for (let index = 0; index < tabCount; index += 1) {
-      const currentTabs = overviewEnclosureTabs();
-      const tab = currentTabs[index];
-      if (tab && !isTabActive(tab)) {
-        tab.querySelector("a")?.click();
-        const end = Date.now() + 10000;
-        while (Date.now() < end && !isTabActive(overviewEnclosureTabs()[index])) await sleep(150);
-        if (!isTabActive(overviewEnclosureTabs()[index])) {
-          // The previous enclosure's cards are still on screen; reading them now would file
-          // those pets under this enclosure. Skip it and report the scan as partial.
-          partial = true;
-          skippedEnclosures += 1;
-          continue;
-        }
-      }
-      await waitForOverviewCards();
-      await waitForStableValue(overviewSignature, Math.max(5000, pageLoadDelayMs * 4));
-      const currentTab = overviewEnclosureTabs()[index];
-      const enclosure = currentTab?.textContent.trim() || "Default";
-      const enclosureId = currentTab?.querySelector("[enclosure]")?.getAttribute("enclosure")
-        || currentTab?.getAttribute("enclosure")?.match(/(\d+)$/)?.[1]
-        || null;
-      if (enclosureId !== null) enclosureIds[enclosure] = String(enclosureId);
-      const signature = overviewSignature();
-      const fingerprint = fastFingerprint(signature);
-      const snapshotKey = String(enclosureId ?? normalizeEnclosureLabel(enclosure));
-      const previous = previousSnapshots[snapshotKey];
-      let records;
-      if (previous?.fingerprint === fingerprint && Array.isArray(previous.records)) {
-        records = previous.records;
-        reusedEnclosures += 1;
-      } else {
-        records = overviewCards().map(overviewCardInfo).filter(Boolean)
-          .map(info => ({ ...info, enclosure, enclosureId }));
-      }
-      records.forEach(info => found.set(info.id, { ...info, enclosure, enclosureId }));
-      nextSnapshots[snapshotKey] = { fingerprint, enclosure, enclosureId, count: records.length, records, scannedAt: Date.now() };
-    }
-    // A scan that saw no pet at all (Overview not mounted) must not overwrite the saved
-    // enclosure ids/snapshots or reconcile breed commands against an empty catalog.
-    if (!found.size) return [];
-    // A partial scan only adds to what the last full scan knew; it never drops an enclosure.
-    const scanned = tabCount - skippedEnclosures;
-    await storageSet({
-      owehEnclosureIds: partial ? { ...previousEnclosureIds, ...enclosureIds } : enclosureIds,
-      owehEnclosureSnapshots: partial ? { ...previousSnapshots, ...nextSnapshots } : nextSnapshots,
-      owehEnclosureScanStats: { scanned, skipped: skippedEnclosures, reused: reusedEnclosures, changed: scanned - reusedEnclosures, partial, at: Date.now() }
-    });
-    const catalog = [...found.values()];
-    await runtimeRequest({ type: "reconcileBreedCommands", catalog });
-    return catalog;
-  }
-
-  function petGenderFromOverview() {
-    return readOverviewValue("Gender")
-      || document.querySelector('section#overview img[title="Male"], section#overview img[title="Female"]')?.title
-      || "";
-  }
-
-  async function waitForPetGender(timeout = 8000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      const gender = petGenderFromOverview().trim();
-      if (/^(?:Female|Male)$/i.test(gender)) return gender;
-      await sleep(150);
-    }
-    return petGenderFromOverview().trim();
-  }
-
-  function enclosureSelect() {
-    const selects = [...document.querySelectorAll('section#edit select, main select')];
-    return document.querySelector('section#edit select[name="Enclosure"]')
-      || selects.find(select => /enclosure/i.test(select.name || "") || /enclosure/i.test(select.id || ""))
-      || selects.find(select => {
-        const fieldsetText = select.closest("fieldset")?.textContent || "";
-        const labelText = select.closest("label")?.textContent || "";
-        return /\bEnclosure\b/i.test(`${fieldsetText} ${labelText}`);
-      })
-      || selects.find(select => NEWBORN_ENCLOSURES.some(target =>
-        [...select.options].some(option => normalizeEnclosureLabel(option.textContent) === normalizeEnclosureLabel(target))
-      ))
-      || null;
-  }
-
-  async function waitForEnclosureSelect(timeout = 10000) {
-    const end = Date.now() + timeout;
-    while (Date.now() < end) {
-      const select = enclosureSelect();
-      if (select && select.offsetParent !== null && !select.disabled) return select;
-      await sleep(150);
-    }
-    return null;
-  }
-
-  function enclosureOption(select, target) {
-    const wanted = normalizeEnclosureLabel(target);
-    return [...(select?.options || [])].find(option => normalizeEnclosureLabel(option.textContent) === wanted) || null;
-  }
-
-  async function movePetToEnclosure(target) {
-    const fast = await fastMovePetToEnclosure(currentPetId(), target);
-    if (fast.moved) return fast;
-    if (!(await openTab("Edit"))) return { moved: false, reason: "missing-edit-tab" };
-    let select = await waitForEnclosureSelect();
-    if (!select) return { moved: false, reason: "missing-enclosure-select" };
-    let option = enclosureOption(select, target);
-    if (!option) return { moved: false, reason: `missing-option:${target}` };
-    if (select.value === option.value) return { moved: false, alreadyThere: true };
-    const selectedValue = option.value;
-    select.value = selectedValue;
-    select.dispatchEvent(new Event("input", { bubbles: true }));
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-    const end = Date.now() + 10000;
-    while (Date.now() < end) {
-      await sleep(200);
-      select = enclosureSelect();
-      if (!select) continue;
-      option = enclosureOption(select, target);
-      if (option && select.value === option.value) {
-        await sleep(Math.max(500, pageLoadDelayMs));
-        return { moved: true };
-      }
-    }
-    return { moved: false, reason: "selection-not-confirmed" };
-  }
 
   function requireHatchlings() {
     if (!hatchlingModule) throw new Error("features/hatchlings.js did not initialize");
