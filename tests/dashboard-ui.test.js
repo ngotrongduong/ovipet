@@ -22,7 +22,7 @@ class FakeElement {
   replaceChildren(...children) { this.children = children; }
 }
 
-function setup() {
+function setup({ pets = {} } = {}) {
   const clock = { now: 1_000_000 };
   const state = {
     owehEggRun: { active: false, count: 0 },
@@ -36,7 +36,8 @@ function setup() {
     owehHatchlingQueue: [],
     owehFriendRemoval: { active: false },
     owehDatabaseMeta: { catalogCount: 2, completeProfiles: 1, enclosureCount: 1 },
-    owehSweepNotice: null
+    owehSweepNotice: null,
+    owehBreedPreview: null
   };
   const panel = new FakeElement();
   const summary = new FakeElement();
@@ -44,7 +45,14 @@ function setup() {
   const header = new FakeElement();
   const meta = new FakeElement();
   const health = new FakeElement();
+  const ready = new FakeElement();
+  const preview = new FakeElement();
+  const confirm = new FakeElement();
+  const discard = new FakeElement();
   const selectors = {
+    "#oweh-breed-preview": preview,
+    "#oweh-confirm-breed": confirm,
+    "#oweh-discard-breed": discard,
     "#oweh-active-summary": summary,
     "#oweh-active-jobs": jobs,
     "#oweh-header-state": header,
@@ -53,12 +61,21 @@ function setup() {
   panel.querySelector = selector => selectors[selector] || null;
   const document = {
     getElementById: id => id === "panel" ? panel : null,
-    querySelector: selector => selector === "#oweh-db-health" ? health : null,
+    querySelector: selector => ({ "#oweh-db-health": health, "#oweh-breed-ready": ready })[selector] || null,
     createElement: () => new FakeElement()
   };
   const log = { status: [], healthRequests: 0, visibilityCounts: [] };
   const timers = [];
   const helpers = {
+    storageGet: async (key, fallback) => key === "owehPets" ? JSON.parse(JSON.stringify(pets)) : fallback,
+    domain: {
+      breedingPlan: {
+        breedingReadiness: all => {
+          const females = Object.values(all).filter(pet => pet.gender === "Female");
+          return { total: females.length, ready: females.filter(pet => !pet.onCooldown).length, cooldown: females.filter(pet => pet.onCooldown).length, unverified: 0 };
+        }
+      }
+    },
     storageGetMany: async () => JSON.parse(JSON.stringify(state)),
     runtimeRequest: async message => {
       if (message.type === "stateHealth") {
@@ -82,7 +99,7 @@ function setup() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../jobs/core.js"), "utf8"), sandbox, { filename: "core.js" });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../ui/dashboard.js"), "utf8"), sandbox, { filename: "dashboard.js" });
   const modules = sandbox.OWEH.boot(helpers);
-  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, log, timers };
+  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, ready, preview, confirm, discard, log, timers };
 }
 
 (async () => {
@@ -168,6 +185,32 @@ function setup() {
     env.state.owehSweepNotice = { text: "Friend eggs: batch timeout", at: env.clock.now - 20_000 };
     await env.api.update();
     assert.deepEqual(env.log.status, []);
+  }
+
+  // Females ready X/Y comes from the database; a fresh plan is shown and can be confirmed.
+  {
+    const env = setup({ pets: { 1: { gender: "Female" }, 2: { gender: "Female", onCooldown: true }, 3: { gender: "Male" } } });
+    env.state.owehBreedPreview = {
+      strategy: "pure-line", createdAt: env.clock.now - 120_000, species: "Catus", femaleCount: 2, pairable: 1, unpaired: 1,
+      queue: [{ id: "1", name: "Fem", maleId: "3", maleName: "Mal" }, { id: "2", name: "Other", maleId: null }]
+    };
+    await env.api.update();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.ready.textContent, "Females ready: 1/2 · 1 on cooldown · 0 pedigree unverified");
+    assert.ok(env.preview.textContent.includes("1 pair(s) for 2 female(s)"));
+    assert.ok(env.preview.textContent.includes("Fem × Mal"));
+    assert.ok(env.preview.textContent.includes("built 2m ago"));
+    assert.equal(env.confirm.disabled, false);
+
+    env.state.owehBreedCampaign = { active: true, femaleIndex: 0, bredCount: 0 };
+    await env.api.update();
+    assert.equal(env.confirm.disabled, true, "no second confirm while a campaign runs");
+
+    env.state.owehBreedCampaign = { active: false };
+    env.state.owehBreedPreview.createdAt = env.clock.now - 16 * 60_000;
+    await env.api.update();
+    assert.equal(env.confirm.disabled, true, "an expired plan cannot be confirmed");
+    assert.ok(env.preview.textContent.includes("expired"));
   }
 
   // Schedule coalesces repeated requests into one timer.

@@ -221,4 +221,16 @@ assert.equal(noFfPlan.unpaired, 1);
 assert.equal(breedingPlan.classifyNewbornName("FFFFFF-anything").target, "FF FF FF");
 assert.equal(breedingPlan.desiredProgramEnclosure({ gender: "Male" }), "Males");
 
+// Readiness is a database-only count of females in the breeding enclosures.
+assert.deepEqual(breedingPlan.breedingReadiness({
+  1: { owned: true, gender: "Female", enclosure: "Breeding Stock", pedigreeVerified: true },
+  2: { owned: true, gender: "Female", enclosure: "Breeding Stock", pedigreeVerified: true, onCooldown: true },
+  3: { owned: true, gender: "Female", enclosure: "Breeding Stock" },
+  4: { owned: true, gender: "Female", enclosure: "Breeding Stock", pedigreeVerified: true, present: false },
+  5: { owned: true, gender: "Male", enclosure: "Males", pedigreeVerified: true },
+  6: { owned: true, gender: "Female", enclosure: "Somewhere else", pedigreeVerified: true },
+  7: { owned: false, gender: "Female", enclosure: "Breeding Stock", pedigreeVerified: true }
+}), { total: 3, ready: 1, cooldown: 1, unverified: 1 });
+assert.deepEqual(breedingPlan.breedingReadiness(null), { total: 0, ready: 0, cooldown: 0, unverified: 0 });
+
 console.log("pure breeding domain behavior tests passed");

@@ -4,7 +4,9 @@
 // renders only from durable storage + the shared-worker lease; content.js supplies the small
 // visibility/status callbacks needed to compose it with the rest of the panel.
 OWEH.register("ui-dashboard", helpers => {
-  const { storageGetMany, runtimeRequest, setStatus, uiDashboardActions } = helpers;
+  const { storageGet, storageGetMany, runtimeRequest, setStatus, uiDashboardActions } = helpers;
+  const breedingReadiness = helpers.domain?.breedingPlan?.breedingReadiness;
+  const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
   const STRAIGHT_JOB_LABELS = {
     catalog: "Update catalog", sort: "Sort pets", feed: "Feed pets", ninja: "Scan Ninja", requests: "Send requests"
@@ -15,6 +17,9 @@ OWEH.register("ui-dashboard", helpers => {
   let cachedDatabaseHealth = null;
   let lastShownSweepNotice = 0;
   let lastJobCount = 0;
+  let lastReadinessAt = 0;
+  let cachedReadiness = null;
+  let readinessKey = "";
 
   function compactProgress(index, total) {
     const current = Math.max(0, Number(index || 0));
@@ -35,6 +40,41 @@ OWEH.register("ui-dashboard", helpers => {
       detail.classList.toggle("oweh-health-warning", Boolean(health.incomplete || health.uncertainCommands || health.staleTasks));
     }
     return result.health;
+  }
+
+  // Females ready X/Y straight from the pet database; no worker tab, page or command involved.
+  async function refreshBreedReadiness(force = false) {
+    const target = document.querySelector("#oweh-breed-ready");
+    if (!target || !breedingReadiness || !storageGet) return null;
+    if (target.closest?.("details")?.open === false) return cachedReadiness;
+    if (!force && Date.now() - lastReadinessAt < 30000) return cachedReadiness;
+    lastReadinessAt = Date.now();
+    const summary = breedingReadiness(await storageGet("owehPets", {}));
+    cachedReadiness = summary;
+    target.textContent = summary.total
+      ? `Females ready: ${summary.ready}/${summary.total} · ${summary.cooldown} on cooldown · ${summary.unverified} pedigree unverified`
+      : "Females ready: no female in the breeding enclosures yet — run Update pet catalog";
+    return summary;
+  }
+
+  function renderBreedPreview(panel, preview, campaign) {
+    const box = panel.querySelector("#oweh-breed-preview");
+    const confirm = panel.querySelector("#oweh-confirm-breed");
+    const discard = panel.querySelector("#oweh-discard-breed");
+    if (!box) return;
+    const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
+    const fresh = Boolean(preview?.queue?.length) && age <= BREED_PREVIEW_MAX_AGE_MS;
+    let text = "No plan yet — press a Plan button";
+    if (preview && !fresh) text = "The last plan expired (older than 15 minutes) — plan again";
+    if (fresh) {
+      const strategy = preview.strategy === "same-ff-target" ? "Same-FF target" : "Pure-line";
+      const pairs = preview.queue.filter(row => row?.maleId);
+      const sample = pairs.slice(0, 3).map(row => `${row.name || row.id} × ${row.maleName || row.maleId}`).join(", ");
+      text = `${strategy} plan · ${preview.species || "?"} · ${Number(preview.pairable ?? pairs.length)} pair(s) for ${Number(preview.femaleCount || 0)} female(s) · ${Number(preview.unpaired || 0)} unpaired · built ${Math.max(0, Math.round(age / 60000))}m ago${sample ? ` · ${sample}${pairs.length > 3 ? ", …" : ""}` : ""}`;
+    }
+    if (box.textContent !== text) box.textContent = text;
+    if (confirm) confirm.disabled = !fresh || Boolean(campaign?.active);
+    if (discard) discard.disabled = !preview;
   }
 
   async function update() {
@@ -59,7 +99,8 @@ OWEH.register("ui-dashboard", helpers => {
         owehHatchlingQueue: [],
         owehFriendRemoval: { active: false },
         owehDatabaseMeta: { catalogCount: 0, completeProfiles: 0, missingProfiles: 0, enclosureCount: 0, catalogAt: 0 },
-        owehSweepNotice: null
+        owehSweepNotice: null,
+        owehBreedPreview: null
       });
       const notice = state.owehSweepNotice;
       if (notice?.text && notice.at > lastShownSweepNotice && Date.now() - notice.at < 15000) {
@@ -72,6 +113,12 @@ OWEH.register("ui-dashboard", helpers => {
         if (databaseMeta.textContent !== text) databaseMeta.textContent = text;
       }
       refreshHealth(false);
+      renderBreedPreview(panel, state.owehBreedPreview, state.owehBreedCampaign);
+      // A new plan or a finished pairing changes cooldowns: recount right away instead of in 30s.
+      const nextReadinessKey = `${state.owehBreedPreview?.createdAt || 0}|${state.owehBreedCampaign?.active}|${state.owehBreedCampaign?.bredCount || 0}|${state.owehDatabaseMeta?.catalogAt || 0}`;
+      const readinessChanged = nextReadinessKey !== readinessKey;
+      readinessKey = nextReadinessKey;
+      refreshBreedReadiness(readinessChanged).catch(() => {});
       const jobs = [];
       const workerIsLive = state.owehWorker && Date.now() < Number(state.owehWorker.leaseUntil || 0);
       const workerOwns = owner => workerIsLive && state.owehWorker.owner === owner;
@@ -145,5 +192,5 @@ OWEH.register("ui-dashboard", helpers => {
     timer = null;
   }
 
-  return { api: { refreshHealth, update, schedule, cancel, getJobCount: () => lastJobCount } };
+  return { api: { refreshHealth, refreshBreedReadiness, update, schedule, cancel, getJobCount: () => lastJobCount } };
 });

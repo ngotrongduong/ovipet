@@ -22,6 +22,10 @@ OWEH.register("feature-breeding", helpers => {
   let processing = false;
   let planning = false;
   let continuingStart = false;
+  let confirming = false;
+  const OVERVIEW_URL = "https://ovipets.com/#!/?src=pets&sub=overview";
+  // A preview reflects cooldowns at planning time; after this long it must be rebuilt.
+  const PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
 
   async function read() {
     return storageGet("owehBreedCampaign", { active: false, femaleIndex: 0, attempted: {}, bredCount: 0 });
@@ -31,8 +35,23 @@ OWEH.register("feature-breeding", helpers => {
     return strategy === BREEDING_STRATEGIES.SAME_FF_TARGET ? "Same-FF target improvement" : "Pure-line";
   }
 
+  function normalizePairLimit(value) {
+    const limit = Math.floor(Number(value));
+    return Number.isFinite(limit) && limit > 0 ? Math.min(limit, 999) : 0;
+  }
+
   async function startWorker(generation, resumeFromIndex = false, strategyOverride = null) {
     if (planning) return;
+    if (!resumeFromIndex) {
+      // The worker was claimed by Confirm: execute the plan the user reviewed, never re-plan.
+      const confirmed = await read();
+      if (confirmed.active && confirmed.confirmedAt) {
+        const queueLength = (await storageGet("owehBreedQueue", [])).length;
+        reportWorkerPhase(`breeding ${Math.min(Number(confirmed.femaleIndex || 0) + 1, queueLength)}/${queueLength}`);
+        process();
+        return;
+      }
+    }
     const strategy = normalizeBreedingStrategy(strategyOverride
       || await storageGet("owehBreedStrategy", BREEDING_STRATEGIES.PURE_LINE));
     if (!routes.isPetsOverview()) {
@@ -123,36 +142,34 @@ OWEH.register("feature-breeding", helpers => {
         shortlistSize: breedingScore.DEFAULT_MALE_SHORTLIST_SIZE
       });
       if (!plan.femaleCount) {
+        await storageSet({ owehBreedPreview: null });
         setStatus("No blue-heart-free indexed females found across the enclosure snapshot");
         reportWorkerDone();
         return;
       }
-      const campaign = {
-        active: true,
-        mode: "database-direct-v2",
-        strategy: plan.strategy || strategy,
-        femaleIndex: 0,
-        attempted: {},
-        bredCount: 0,
-        errors: 0,
-        unpaired: plan.unpaired,
-        target,
-        species: plan.focusSpecies,
-        maleCount: plan.maleCount,
-        shortlistSize: plan.shortlistSize,
-        catalogCount: catalog.length,
-        startedAt: now
-      };
+      // Planning never breeds. The plan is saved as a preview and the worker is released; only
+      // the Confirm button turns it into an active campaign.
+      const planStrategy = plan.strategy || strategy;
+      const pairable = plan.queue.filter(row => row?.maleId).length;
       await storageSet({
-        owehBreedQueue: plan.queue,
-        owehBreedCampaign: campaign,
-        owehBreedStrategy: campaign.strategy,
-        owehBreedStartRequest: { active: false, strategy: campaign.strategy },
-        owehTargetColors: target
+        owehBreedPreview: {
+          strategy: planStrategy,
+          createdAt: now,
+          queue: plan.queue,
+          femaleCount: plan.femaleCount,
+          pairable,
+          maleCount: plan.maleCount,
+          unpaired: plan.unpaired,
+          species: plan.focusSpecies,
+          shortlistSize: plan.shortlistSize,
+          catalogCount: catalog.length,
+          target
+        },
+        owehBreedStrategy: planStrategy,
+        owehBreedStartRequest: { active: false, strategy: planStrategy }
       });
-      reportWorkerPhase(`breeding 0/${plan.femaleCount}`);
-      setStatus(`${strategyLabel(campaign.strategy)} campaign ready: ${plan.femaleCount} breedable female(s), ${plan.maleCount} cached male(s), ${plan.unpaired} without a safe pair`);
-      process();
+      setStatus(`${strategyLabel(planStrategy)} plan ready: ${pairable} pair(s) for ${plan.femaleCount} female(s), ${plan.maleCount} male(s), ${plan.unpaired} without a safe pair — nothing bred yet. Review it under Breeding and press Confirm.`);
+      reportWorkerDone();
     } finally {
       planning = false;
     }
@@ -160,9 +177,13 @@ OWEH.register("feature-breeding", helpers => {
 
   async function requestStart(strategy = BREEDING_STRATEGIES.PURE_LINE) {
     strategy = normalizeBreedingStrategy(strategy);
+    if ((await read()).active) {
+      setStatus("A confirmed breeding campaign is still running — press Stop before planning a new one");
+      return;
+    }
     await storageSet({ owehBreedStrategy: strategy });
     setStatus(`Claiming the shared background tab for the ${strategyLabel(strategy)} breeding campaign...`);
-    const response = await requestClaimWorker("breed", "https://ovipets.com/#!/?src=pets&sub=overview");
+    const response = await requestClaimWorker("breed", OVERVIEW_URL);
     if (!response.ok) {
       if (response.reason === "busy") {
         setStatus(`Shared background tab is busy running "${response.owner}" (${response.phase || "working"}) — stop it first, then try again`);
@@ -173,12 +194,85 @@ OWEH.register("feature-breeding", helpers => {
     }
     setStatus(response.alreadyRunning
       ? "Breeding campaign is already running in the shared background tab"
-      : `${strategyLabel(strategy)} breeding campaign started in the shared background tab`);
+      : `Planning a ${strategyLabel(strategy)} breeding campaign in the shared background tab — nothing is bred until you confirm`);
+  }
+
+  async function confirmPreview() {
+    if (confirming) return;
+    confirming = true;
+    try {
+      const preview = await storageGet("owehBreedPreview", null);
+      if (!preview?.queue?.length) {
+        setStatus("No breeding plan to confirm — press a Plan campaign button first");
+        return;
+      }
+      if (Date.now() - Number(preview.createdAt || 0) > PREVIEW_MAX_AGE_MS) {
+        await storageSet({ owehBreedPreview: null });
+        setStatus("The breeding plan is older than 15 minutes and was discarded — plan it again");
+        return;
+      }
+      if ((await read()).active) {
+        setStatus("A breeding campaign is already running — stop it before confirming another plan");
+        return;
+      }
+      const limit = normalizePairLimit(await storageGet("owehBreedPairLimit", 0));
+      const queue = limit ? preview.queue.slice(0, limit) : preview.queue;
+      const now = Date.now();
+      const campaign = {
+        active: true,
+        mode: "database-direct-v2",
+        strategy: normalizeBreedingStrategy(preview.strategy),
+        femaleIndex: 0,
+        attempted: {},
+        bredCount: 0,
+        errors: 0,
+        unpaired: preview.unpaired || 0,
+        target: preview.target,
+        species: preview.species,
+        maleCount: preview.maleCount,
+        shortlistSize: preview.shortlistSize,
+        catalogCount: preview.catalogCount,
+        pairLimit: limit || null,
+        startedAt: now,
+        confirmedAt: now
+      };
+      await storageSet({
+        owehBreedQueue: queue,
+        owehBreedCampaign: campaign,
+        owehBreedPreview: null,
+        owehTargetColors: preview.target
+      });
+      const response = await requestClaimWorker("breed", OVERVIEW_URL);
+      if (!response.ok) {
+        // Nothing was dispatched: put the preview back so the user can confirm it later.
+        await storageSet({ owehBreedCampaign: { ...campaign, active: false }, owehBreedPreview: preview });
+        setStatus(response.reason === "busy"
+          ? `Shared background tab is busy running "${response.owner}" (${response.phase || "working"}) — stop it first, then confirm again`
+          : `Could not start breeding${response.error ? `: ${response.error}` : ""} — the plan is kept, confirm again`);
+        return;
+      }
+      setStatus(`Confirmed: breeding ${queue.length} female(s)${limit && preview.queue.length > limit ? ` (limit ${limit} of ${preview.queue.length})` : ""} in the shared background tab`);
+    } finally {
+      confirming = false;
+    }
+  }
+
+  async function discardPreview() {
+    await storageSet({ owehBreedPreview: null });
+    setStatus("Breeding plan discarded — nothing was bred");
+  }
+
+  async function setPairLimit(value) {
+    const limit = normalizePairLimit(value);
+    await storageSet({ owehBreedPairLimit: limit });
+    return limit;
   }
 
   async function stop() {
     const campaign = await read();
     if (campaign.active) await storageSet({ owehBreedCampaign: { ...campaign, active: false } });
+    // Stop also withdraws an unconfirmed plan so a later click cannot confirm a stale one.
+    await storageSet({ owehBreedPreview: null });
     await requestReleaseWorker("breed");
   }
 
@@ -403,6 +497,10 @@ OWEH.register("feature-breeding", helpers => {
       read,
       requestStart,
       startWorker,
+      confirmPreview,
+      discardPreview,
+      setPairLimit,
+      normalizePairLimit,
       stop,
       stopLocal,
       maybeContinueStart,

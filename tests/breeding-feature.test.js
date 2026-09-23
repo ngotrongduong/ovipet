@@ -18,7 +18,9 @@ function setup({
   plan = null,
   breedResult = { ok: true },
   hatchlingActive = false,
-  scanPartial = false
+  scanPartial = false,
+  claimResult = { ok: true },
+  extraStore = {}
 } = {}) {
   const clock = { now: 1_000_000 };
   const scheduled = [];
@@ -30,7 +32,8 @@ function setup({
     owehBreedStartRequest: { active: false },
     owehPetIndex: { active: false },
     owehHatchlingRun: { active: hatchlingActive },
-    owehOwnUserId: "77"
+    owehOwnUserId: "77",
+    ...clone(extraStore)
   };
   let ownUserId = "77";
   const log = {
@@ -59,7 +62,7 @@ function setup({
       }
     },
     setStatus: text => log.status.push(text),
-    requestClaimWorker: async (workerOwner, url) => { log.claims.push([workerOwner, url]); return { ok: true }; },
+    requestClaimWorker: async (workerOwner, url) => { log.claims.push([workerOwner, url]); return clone(claimResult); },
     requestReleaseWorker: async workerOwner => { log.releases.push(workerOwner); return { ok: true }; },
     reportWorkerPhase: text => log.phases.push(text),
     reportWorkerDone: () => { log.done += 1; },
@@ -285,6 +288,86 @@ function setup({
     await env.api.stop();
     assert.equal(env.store.owehBreedCampaign.active, false);
     assert.deepEqual(env.log.releases, ["breed"]);
+  }
+
+  // Planning only builds a preview: no command, no active campaign, and the worker is released.
+  {
+    const catalog = [{ id: "10", usr: "77", name: "F", modified: "m1" }, { id: "20", usr: "77", name: "M", modified: "m2" }];
+    const queue = [{ id: "10", name: "F", maleId: "20", maleName: "M" }, { id: "11", name: "G", maleId: null }];
+    const env = setup({ overview: true, catalog, queue, plan: { femaleCount: 2, maleCount: 1, unpaired: 1, focusSpecies: "Catus", shortlistSize: 30, queue } });
+    await env.api.startWorker(9, false, "pure-line");
+    assert.equal(env.log.breedCalls.length, 0, "planning must never breed");
+    assert.equal(env.store.owehBreedCampaign.active, false);
+    assert.equal(env.store.owehBreedPreview.queue.length, 2);
+    assert.equal(env.store.owehBreedPreview.pairable, 1);
+    assert.equal(env.store.owehBreedPreview.createdAt, env.clock.now);
+    assert.equal(env.log.done, 1);
+    assert.ok(env.log.status.at(-1).includes("nothing bred yet"));
+  }
+
+  // Confirm applies the pair limit, activates the campaign and claims the worker; the worker then
+  // executes the confirmed queue without planning again.
+  {
+    const preview = {
+      strategy: "pure-line", createdAt: 1_000_000 - 60_000, femaleCount: 3, pairable: 3, maleCount: 3, unpaired: 0,
+      species: "Catus", shortlistSize: 30, catalogCount: 6, target: { body1: "#FFFFFF" },
+      queue: [
+        { id: "10", name: "F1", maleId: "20", maleName: "M1", pure: { distance: 0 } },
+        { id: "11", name: "F2", maleId: "21", maleName: "M2", pure: { distance: 1 } },
+        { id: "12", name: "F3", maleId: "22", maleName: "M3", pure: { distance: 2 } }
+      ]
+    };
+    const env = setup({
+      extraStore: { owehBreedPreview: preview, owehBreedPairLimit: 2 },
+      pets: {
+        "10": { id: "10", name: "F1", gender: "Female", pedigreeVerified: true, ancestors: ["a"] },
+        "20": { id: "20", name: "M1", gender: "Male", pedigreeVerified: true, ancestors: ["b"] }
+      }
+    });
+    await env.api.confirmPreview();
+    assert.equal(env.store.owehBreedCampaign.active, true);
+    assert.ok(env.store.owehBreedCampaign.confirmedAt > 0);
+    assert.equal(env.store.owehBreedQueue.length, 2, "the pair limit trims the queue");
+    assert.equal(env.store.owehBreedPreview, null);
+    assert.deepEqual(env.log.claims, [["breed", "https://ovipets.com/#!/?src=pets&sub=overview"]]);
+    assert.equal(env.log.breedCalls.length, 0, "confirming only claims the worker");
+
+    await env.api.startWorker(9, false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.catalogScans, 0, "a confirmed campaign is executed, not re-planned");
+    assert.deepEqual(env.log.breedCalls[0].slice(0, 2), ["10", "20"]);
+  }
+
+  // A stale preview, or a busy worker, never starts breeding; busy keeps the plan.
+  {
+    const stale = setup({ extraStore: { owehBreedPreview: { createdAt: 1_000_000 - 16 * 60_000, queue: [{ id: "10", maleId: "20" }] } } });
+    await stale.api.confirmPreview();
+    assert.equal(stale.store.owehBreedCampaign.active, false);
+    assert.equal(stale.store.owehBreedPreview, null);
+    assert.equal(stale.log.claims.length, 0);
+
+    const preview = { createdAt: 1_000_000, queue: [{ id: "10", maleId: "20" }], strategy: "pure-line" };
+    const busy = setup({ extraStore: { owehBreedPreview: preview }, claimResult: { ok: false, reason: "busy", owner: "sweep" } });
+    await busy.api.confirmPreview();
+    assert.equal(busy.store.owehBreedCampaign.active, false);
+    assert.equal(busy.store.owehBreedPreview.queue.length, 1, "a refused claim keeps the plan for later");
+    assert.ok(busy.log.status.at(-1).includes("busy"));
+
+    const running = setup({ campaign: { active: true, confirmedAt: 1, femaleIndex: 0, bredCount: 0 } });
+    await running.api.requestStart("pure-line");
+    assert.equal(running.log.claims.length, 0, "planning never starts over a running campaign");
+
+    await busy.api.stop();
+    assert.equal(busy.store.owehBreedPreview, null, "Stop withdraws an unconfirmed plan");
+  }
+
+  // The pair limit is a non-negative integer; 0 means every pair.
+  {
+    const env = setup();
+    assert.equal(await env.api.setPairLimit("5.7"), 5);
+    assert.equal(await env.api.setPairLimit("-3"), 0);
+    assert.equal(await env.api.setPairLimit("abc"), 0);
+    assert.equal(env.store.owehBreedPairLimit, 0);
   }
 
   console.log("breeding feature behavior tests passed");

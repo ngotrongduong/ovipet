@@ -52,6 +52,7 @@ function setup() {
       startOwnEggs() {}, stopOwnEggs() {}, scanFriends() {}, requestFriendSweepWorker() {}, requestGoToNextFriend() {},
       stopFriendSweep() {}, copyBlacklistCsv() {}, applySuggestedName() {}, requestStartBreedCampaign() {}, requestStartBreedTargetCampaign() {}, stopBreedCampaign() {},
       copyRetentionReviewCsv() {}, requestStartHatchlingProcessing() {}, stopHatchlingProcessing() {},
+      confirmBreedPreview() {}, discardBreedPreview() {}, setBreedPairLimit: async value => Number(value) || 0,
       getPetNameSuggestion: () => suggestion,
       friendBlacklist: async () => blacklistValue,
       isContextVisible: count => count > 0,

@@ -26,6 +26,9 @@ OWEH.register("ui-panel", helpers => {
     requestStartBreedTargetCampaign,
     stopBreedCampaign,
     copyRetentionReviewCsv,
+    confirmBreedPreview,
+    discardBreedPreview,
+    setBreedPairLimit,
     requestStartHatchlingProcessing,
     stopHatchlingProcessing,
     exportSpeciesInspector,
@@ -125,6 +128,12 @@ OWEH.register("ui-panel", helpers => {
     const removeEmptyInput = panel.querySelector("#oweh-remove-empty");
     storageGet("owehRemoveEmptyFriends", true).then(value => { removeEmptyInput.checked = value !== false; });
     removeEmptyInput.addEventListener("change", () => storageSet({ owehRemoveEmptyFriends: removeEmptyInput.checked }));
+
+    const pairLimitInput = panel.querySelector("#oweh-breed-limit");
+    storageGet("owehBreedPairLimit", 0).then(value => { pairLimitInput.value = String(Math.max(0, Math.floor(Number(value) || 0))); });
+    pairLimitInput.addEventListener("change", async () => {
+      pairLimitInput.value = String(await setBreedPairLimit(pairLimitInput.value));
+    });
 
     const autoRenameInput = panel.querySelector("#oweh-auto-rename");
     storageGet("owehAutoRename", true).then(value => { autoRenameInput.checked = value !== false; });
@@ -276,9 +285,16 @@ OWEH.register("ui-panel", helpers => {
           <summary>Breeding <span>female-first · Males</span></summary>
           <div class="oweh-module-body">
             <div class="oweh-actions">
-              <button id="oweh-start-breed" type="button" data-tip="Pure-line strategy: scan the full enclosure snapshot, then choose complementary Body-1 FF pairs while preserving pedigree safety and male-line diversity.">Start pure-line campaign</button>
-              <button id="oweh-start-breed-target" type="button" data-tip="Same-FF target-improvement strategy: scan every enclosure, take every breedable female, list every safe same-species male with the same Body-1 FF mask, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot.">Start Same-FF target campaign</button>
-              <button id="oweh-stop-breed" class="oweh-danger" type="button" data-tip="Stop the active breeding campaign without clearing cached pet data.">Stop</button>
+              <button id="oweh-start-breed" type="button" data-tip="Pure-line strategy: scan the full enclosure snapshot, then choose complementary Body-1 FF pairs while preserving pedigree safety and male-line diversity. Builds a plan only; nothing is bred until you press Confirm.">Plan pure-line campaign</button>
+              <button id="oweh-start-breed-target" type="button" data-tip="Same-FF target-improvement strategy: scan every enclosure, take every breedable female, list every safe same-species male with the same Body-1 FF mask, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot. Builds a plan only; nothing is bred until you press Confirm.">Plan Same-FF target campaign</button>
+              <button id="oweh-stop-breed" class="oweh-danger" type="button" data-tip="Stop the active breeding campaign (and withdraw an unconfirmed plan) without clearing cached pet data.">Stop</button>
+            </div>
+            <div id="oweh-breed-ready" class="oweh-inline-meta" data-tip="From the database only: females in the breeding enclosures, and how many are off cooldown with a verified pedigree. Run Update pet catalog to refresh cooldowns.">Females ready: checking…</div>
+            <div id="oweh-breed-preview" class="oweh-inline-meta oweh-breed-preview">No plan yet — press a Plan button</div>
+            <div class="oweh-row" data-tip="Breed at most this many pairs when you confirm (0 = every pair in the plan). The best-ranked pairs go first."><label for="oweh-breed-limit">Pair limit</label><input id="oweh-breed-limit" type="number" min="0" max="999" step="1" value="0"><span>pairs</span></div>
+            <div class="oweh-actions">
+              <button id="oweh-confirm-breed" type="button" disabled data-tip="Breed the planned pairs shown above (up to the pair limit) in the shared background tab.">Confirm &amp; breed</button>
+              <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard plan</button>
             </div>
             <div class="oweh-actions">
               <button id="oweh-rank" class="oweh-secondary" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
@@ -370,6 +386,8 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-start-breed", "Building pure-line breeding campaign", requestStartBreedCampaign, missingControls);
     bindPanelAction(panel, "#oweh-start-breed-target", "Building Same-FF target breeding campaign", requestStartBreedTargetCampaign, missingControls);
     bindPanelAction(panel, "#oweh-stop-breed", "Stopping breeding campaign", stopBreedCampaign, missingControls);
+    bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
+    bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-copy-retention", "Copying retention review", copyRetentionReviewCsv, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);

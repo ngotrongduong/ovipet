@@ -913,6 +913,9 @@
   const requestStartBreedCampaign = () => requireBreeding().requestStart(OWEH.domain.breedingPlan.BREEDING_STRATEGIES.PURE_LINE);
   const requestStartBreedTargetCampaign = () => requireBreeding().requestStart(OWEH.domain.breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET);
   const stopBreedCampaign = () => requireBreeding().stop();
+  const confirmBreedPreview = () => requireBreeding().confirmPreview();
+  const discardBreedPreview = () => requireBreeding().discardPreview();
+  const setBreedPairLimit = value => requireBreeding().setPairLimit(value);
   const stopBreedCampaignLocal = () => requireBreeding().stopLocal();
   const maybeContinueBreedStart = () => requireBreeding().maybeContinueStart();
   const processBreedCampaign = () => requireBreeding().process();
@@ -1069,6 +1072,7 @@
       stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped"),
       scanFriends, requestFriendSweepWorker, requestGoToNextFriend, stopFriendSweep, copyBlacklistCsv,
       applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, stopBreedCampaign, copyRetentionReviewCsv,
+      confirmBreedPreview, discardBreedPreview, setBreedPairLimit,
       requestStartHatchlingProcessing, stopHatchlingProcessing,
       exportSpeciesInspector: () => OWEH.get("species-inspector")?.api?.exportData?.(),
       exportSpeciesDatabase: () => OWEH.get("species-inspector")?.api?.exportDatabase?.(),

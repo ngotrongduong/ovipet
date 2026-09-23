@@ -348,6 +348,20 @@
     };
   }
 
+  // Database-only readiness summary for the panel: females in the breeding enclosures and how
+  // many of them a campaign could use right now. Opens no page and sends no command.
+  function breedingReadiness(pets) {
+    const summary = { total: 0, ready: 0, cooldown: 0, unverified: 0 };
+    for (const pet of Object.values(pets || {})) {
+      if (pet?.present === false || !pet?.owned || pet.gender !== "Female" || !isBreedingFemaleEnclosure(pet.enclosure)) continue;
+      summary.total += 1;
+      if (pet.onCooldown) summary.cooldown += 1;
+      else if (pet.pedigreeVerified !== true) summary.unverified += 1;
+      else summary.ready += 1;
+    }
+    return summary;
+  }
+
   OWEH.domain.breedingPlan = Object.freeze({
     MALES_ENCLOSURE,
     BREEDING_STOCK_ENCLOSURE,
@@ -365,6 +379,7 @@
     desiredProgramEnclosure,
     recentMaleUsage,
     normalizeBreedingStrategy,
-    buildDatabaseBreedPlan
+    buildDatabaseBreedPlan,
+    breedingReadiness
   });
 })();
