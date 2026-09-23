@@ -23,6 +23,9 @@ const EGG_TAB_WATCHDOG_MS = 60 * 1000;
 const EGG_BATCH_WATCHDOG_MS = 2 * 60 * 1000;
 const EGG_TAB_ALARM_PREFIX = "oweh-egg-tab-watchdog:";
 const EGG_BATCH_ALARM_PREFIX = "oweh-egg-batch-watchdog:";
+// chrome.storage.session survives service-worker restarts but not a browser restart. A marker
+// there proves the registry's tab ids were issued in THIS browser session.
+const EGG_SESSION_KEY = "owehEggTabSession";
 
 const eggDiag = (level, event, data = {}) => globalThis.OWEH_BG?.diagnosticLog?.append(level, "egg-tabs", event, data).catch(() => {});
 const eggLightweightTabs = globalThis.OWEH_BG?.lightweightTabs || null;
@@ -51,6 +54,30 @@ function scheduleEggTabWatchdog(tabId, openedAt = Date.now()) {
 
 function scheduleEggBatchWatchdog(batchId, startedAt = Date.now()) {
   try { chrome.alarms.create(eggBatchAlarmName(batchId), { when: Number(startedAt || Date.now()) + EGG_BATCH_WATCHDOG_MS }); } catch {}
+}
+
+async function markEggSession(batchId) {
+  try { await chrome.storage.session?.set?.({ [EGG_SESSION_KEY]: String(batchId || "") }); } catch {}
+}
+
+async function eggRegistryFromThisSession() {
+  const area = chrome.storage?.session;
+  if (typeof area?.get !== "function") return true;
+  try { return (await area.get({ [EGG_SESSION_KEY]: null }))[EGG_SESSION_KEY] != null; } catch { return true; }
+}
+
+// Forced closes skip URL verification, so they must never act on ids from an earlier browser
+// session: after a restart Chrome reuses small tab ids, and a persisted watchdog alarm can fire
+// before onStartup has cleared the registry. Such a registry is forgotten without closing anything.
+async function forgetStaleEggRegistry() {
+  if (await eggRegistryFromThisSession()) return false;
+  const forgotten = await withEggState(state => {
+    const count = Object.keys(state.tabs || {}).length + Object.keys(state.leftover || {}).length;
+    if (count || state.batchId) Object.assign(state, emptyEggState());
+    return count;
+  });
+  if (forgotten) eggDiag("warning", "registry.stale-session-forgotten", { count: forgotten });
+  return true;
 }
 
 async function readEggState() {
@@ -196,25 +223,7 @@ async function closeOwnedTab(tabId) {
 // misses its deadline we close that owned tab by id even if the page never finished loading or
 // its URL cannot be verified. A foreign/user tab still cannot be closed because it is absent
 // from the ownership registry.
-async function forceCloseOwnedTab(tabId) {
-  const id = String(tabId);
-  const owned = await withEggState(state => {
-    if (state.coordinatorTabId != null && Number(state.coordinatorTabId) === Number(id)) {
-      eggDiag("error", "coordinator-close-blocked", { tabId: id, batchId: state.batchId, source: state.source, forced: true });
-      delete state.tabs[id];
-      delete state.leftover[id];
-      return null;
-    }
-    const found = state.tabs[id]?.eggId ?? state.leftover[id] ?? null;
-    delete state.tabs[id];
-    delete state.leftover[id];
-    return found;
-  });
-  clearEggAlarm(eggTabAlarmName(id));
-  if (owned == null) return { ok: false, reason: "not-owned" };
-  await removeTabQuietly(id);
-  return { ok: true, eggId: owned };
-}
+// Forced closes live in forceTimeoutEggTab, expireEggBatch and closeAllEggTabs({ force }).
 
 
 // `leftover` is now migration/recovery state only. v5.3.6 does not intentionally create new
@@ -238,6 +247,7 @@ async function reconcileEggLeftovers() {
 }
 
 async function closeAllEggTabs(expectedSource = null, { force = false } = {}) {
+  if (force && await forgetStaleEggRegistry()) return 0;
   const snapshot = await withEggState(state => {
     if (expectedSource && state.source && state.source !== expectedSource) return { entries: [], batchId: null };
     const all = [
@@ -316,6 +326,7 @@ async function openEggBatch(message, sender) {
     eggDiag("warning", "batch.admission-blocked", { source, batchId, reason: admission.reason || "unknown", requested: eggs.length });
     return admission;
   }
+  await markEggSession(batchId);
   eggDiag("info", "batch.opened", { source, batchId, friendId: String(message.friendId || ""), expected: eggs.length, coordinatorTabId: sender?.tab?.id ?? null });
   if (admission.previousBatchId) clearEggAlarm(eggBatchAlarmName(admission.previousBatchId));
   scheduleEggBatchWatchdog(batchId, admission.startedAt);
@@ -389,6 +400,10 @@ async function eggTabResult(message, sender) {
 
 async function forceTimeoutEggTab(tabId, reason = "tab watchdog exceeded 60s") {
   const id = String(tabId);
+  if (await forgetStaleEggRegistry()) {
+    clearEggAlarm(eggTabAlarmName(id));
+    return { ok: false, reason: "stale-session" };
+  }
   const outcome = await withEggState(state => {
     const record = state.tabs[id];
     if (!record) return { ok: false, reason: "not-owned" };
@@ -408,6 +423,10 @@ async function forceTimeoutEggTab(tabId, reason = "tab watchdog exceeded 60s") {
 }
 
 async function expireEggBatch(batchId, reason = "batch watchdog exceeded 120s") {
+  if (await forgetStaleEggRegistry()) {
+    clearEggAlarm(eggBatchAlarmName(batchId));
+    return { ok: false, reason: "stale-session", entries: [] };
+  }
   const snapshot = await withEggState(state => {
     if (state.batchId !== String(batchId)) return { ok: false, reason: "unknown-batch", entries: [] };
     const entries = [

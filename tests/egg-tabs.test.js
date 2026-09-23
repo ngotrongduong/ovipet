@@ -23,6 +23,8 @@ const sent = [];
 const removedListeners = [];
 const startupListeners = [];
 const tabUrls = {};
+const sessionState = {};
+const alarmListeners = [];
 let nextTabId = 100;
 let messageListener;
 let context;
@@ -39,8 +41,11 @@ const chrome = {
   },
   offscreen: {},
   windows: { update: () => Promise.resolve() },
-  alarms: { clear() {}, create() {}, onAlarm: { addListener() {} } },
-  storage: { local: {
+  alarms: { clear() {}, create() {}, onAlarm: { addListener(listener) { alarmListeners.push(listener); } } },
+  storage: { session: {
+    get: defaults => new Promise(resolve => later(() => resolve({ ...defaults, ...JSON.parse(JSON.stringify(sessionState)) }))),
+    set: values => new Promise(resolve => later(() => { Object.assign(sessionState, JSON.parse(JSON.stringify(values))); resolve(); }))
+  }, local: {
     get(defaults, callback) {
       const result = new Promise(resolve => later(() => resolve({ ...defaults, ...JSON.parse(JSON.stringify(state)) })));
       if (callback) { result.then(callback); return undefined; }
@@ -326,6 +331,26 @@ const eggs = count => Array.from({ length: count }, (_, i) => ({ id: String(9000
   assert(released.ok && released.wasRunning === true, "sweep release");
   await sleep(600);
   assert(!removed.includes(FOREIGN_TAB), "the foreign tab survives everything");
+
+  // Browser restart: storage.session is wiped, Chrome reuses small tab ids, and a persisted
+  // watchdog alarm may fire before onStartup clears the registry. Forced closes must not touch
+  // ids from the previous browser session, which may now belong to the player's own tabs.
+  assert(sessionState.owehEggTabSession != null, "opening a batch marks this browser session");
+  for (const key of Object.keys(sessionState)) delete sessionState[key];
+  state.owehEggTabs = {
+    batchId: "old-session", source: "sweep", coordinatorTabId: null, expected: 2, startedAt: Date.now() - 5000,
+    eggIds: ["1", "2"], results: {}, leftover: { 811: "2" },
+    tabs: { 810: { eggId: "1", openedAt: Date.now() - 5000 } }
+  };
+  tabUrls[810] = "https://ovipets.com/#!/?src=pets&sub=hatchery";
+  tabUrls[811] = "https://mail.example.com/inbox";
+  const removedBeforeRestart = removed.length;
+  alarmListeners.forEach(listener => listener({ name: "oweh-egg-tab-watchdog:810" }));
+  alarmListeners.forEach(listener => listener({ name: "oweh-egg-batch-watchdog:old-session" }));
+  await sleep(60);
+  const restartStop = await request({ type: "eggBatchStop" });
+  assert(removed.length === removedBeforeRestart, `no tab from a previous browser session may be force-closed: ${JSON.stringify(removed.slice(removedBeforeRestart))}`);
+  assert(restartStop.closed === 0 && Object.keys(state.owehEggTabs.tabs || {}).length === 0, "the stale registry is forgotten");
 
   console.log("egg tab manager tests passed");
 })().catch(error => {
