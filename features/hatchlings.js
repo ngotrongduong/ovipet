@@ -5,7 +5,7 @@
 // UI mutations that still depend on live OviPets forms are injected through hatchlingActions.
 OWEH.register("feature-hatchlings", helpers => {
   const {
-    storageGet, storageSet, sleep, setStatus,
+    storageGet, storageSet, getPetsByIds, sleep, setStatus,
     requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone,
     isWorkerOwner, workerClient, routes, hatcheryDom, domain, settings,
     hatchlingActions, pageActions
@@ -156,6 +156,8 @@ OWEH.register("feature-hatchlings", helpers => {
   async function finish(state) {
     state.active = false;
     await storageSet({ owehHatchlingRun: state });
+    // Ranking needs the whole pet DB, so compute it once per run rather than per hatchling.
+    await hatchlingActions.updateRetentionRanking();
     setStatus(`Hatchery complete — renamed ${state.renamed || 0}, females moved ${state.movedFemales || 0}, males moved to Males ${state.movedMales || 0}, skipped ${state.unroutable || 0}, errors ${state.errors || 0}`);
     routes.navigateTo(state.returnHash || "?src=pets&sub=hatchery");
     reportWorkerDone();
@@ -195,9 +197,10 @@ OWEH.register("feature-hatchlings", helpers => {
         const result = await hatchlingActions.movePetToEnclosure(item.target);
         if (result.moved || result.alreadyThere) {
           if (result.moved) state.movedMales = (state.movedMales || 0) + 1;
-          const pets = await storageGet("owehPets", {});
-          if (pets[item.id]) pets[item.id].enclosure = item.target;
-          await storageSet({ owehPets: pets });
+          // Touch only this pet: owehPets writes merge per record, and re-writing the whole
+          // DB from a stale snapshot would clobber concurrent updates from other tabs.
+          const pets = await getPetsByIds([item.id]);
+          if (pets[item.id]) await storageSet({ owehPets: { [item.id]: { id: item.id, enclosure: item.target } } });
           await recordCheck(item.id, result.moved ? "moved-male" : "already-male");
         } else {
           state.errors = (state.errors || 0) + 1;
@@ -245,7 +248,7 @@ OWEH.register("feature-hatchlings", helpers => {
         return advanceScan(state, queue);
       }
 
-      const pets = await storageGet("owehPets", {});
+      const pets = await getPetsByIds([pet.id]);
       const existingPet = pets[pet.id];
       pets[pet.id] = { ...(existingPet || {}), ...pet };
       const databaseMeta = await storageGet("owehDatabaseMeta", {});
@@ -257,7 +260,6 @@ OWEH.register("feature-hatchlings", helpers => {
       }
       databaseMeta.lastProfileAt = Date.now();
       await storageSet({ owehPets: pets, owehDatabaseMeta: databaseMeta });
-      await hatchlingActions.updateRetentionRanking(pets);
 
       if (gender.toLowerCase() === "female") {
         const stockMaxDistance = await storageGet("owehBreedingStockMaxDistance", breedingPlan.DEFAULT_BREEDING_STOCK_MAX_DISTANCE);

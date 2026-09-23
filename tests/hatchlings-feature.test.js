@@ -44,7 +44,7 @@ function setup({
   const page = { petId, hash: ownHatchery ? "#!/?src=pets&sub=hatchery" : "#!/?usr=999" };
   const log = {
     status: [], claims: [], releases: [], phases: [], done: 0, navigations: [],
-    tabs: [], renames: [], moves: [], ranking: 0, timersCleared: 0
+    tabs: [], renames: [], moves: [], ranking: 0, timersCleared: 0, fullPetReads: 0, petWrites: []
   };
   const petTemplate = {
     id: petId || queue[0]?.id || "10",
@@ -57,8 +57,22 @@ function setup({
   let ownUserId = "77";
 
   const helpers = {
-    storageGet: async (key, fallback) => key in store ? clone(store[key]) : clone(fallback),
-    storageSet: async values => { for (const [key, value] of Object.entries(values)) store[key] = clone(value); },
+    storageGet: async (key, fallback) => {
+      if (key === "owehPets") log.fullPetReads += 1;
+      return key in store ? clone(store[key]) : clone(fallback);
+    },
+    storageSet: async values => {
+      for (const [key, value] of Object.entries(values)) {
+        // Mirrors petDbMerge: owehPets writes merge field-by-field into each listed record.
+        if (key === "owehPets") {
+          for (const [id, pet] of Object.entries(clone(value))) store.owehPets[id] = { ...(store.owehPets[id] || {}), ...pet };
+          log.petWrites.push(Object.keys(value));
+        } else store[key] = clone(value);
+      }
+    },
+    getPetsByIds: async ids => Object.fromEntries(ids.map(String)
+      .filter(id => Object.prototype.hasOwnProperty.call(store.owehPets, id))
+      .map(id => [id, clone(store.owehPets[id])])),
     sleep: async ms => { clock.now += Number(ms || 0); await Promise.resolve(); },
     setStatus: text => log.status.push(text),
     requestClaimWorker: async (workerOwner, url) => { log.claims.push([workerOwner, url]); return { ok: true }; },
@@ -168,6 +182,25 @@ function setup({
     assert.equal(env.store.owehHatchlingRun.movedMales, 1);
     assert.equal(env.log.moves.at(-1), "Males");
     assert.equal(env.log.done, 1);
+  }
+
+  // Per-hatchling steps touch only that pet's record: no whole-DB read, no whole-DB rewrite
+  // (a stale full snapshot would clobber other pets updated concurrently by other tabs).
+  {
+    const items = [
+      { id: "40", href: "?usr=77&pet=40", likelyHatched: true, unnamed: true },
+      { id: "41", href: "?usr=77&pet=41", likelyHatched: true, unnamed: true }
+    ];
+    const env = setup({ active: true, queue: items, petId: "40", gender: "Female" });
+    env.store.owehPets = { 99: { id: "99", name: "Other", enclosure: "Keep" } };
+    await env.api.process();
+    assert.equal(env.log.fullPetReads, 0);
+    assert.ok(env.log.petWrites.every(ids => ids.length === 1 && ids[0] === "40"));
+    assert.equal(env.log.ranking, 0, "ranking is deferred to the end of the run");
+    await env.api.process();
+    assert.equal(env.store.owehHatchlingRun.active, false);
+    assert.equal(env.log.ranking, 1);
+    assert.equal(env.store.owehPets["99"].enclosure, "Keep");
   }
 
   // A non-owner tab cannot advance durable hatchling progress.

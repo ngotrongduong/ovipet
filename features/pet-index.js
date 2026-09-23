@@ -127,11 +127,17 @@ OWEH.register("feature-pet-index", helpers => {
           }
         }
         const pets = await getPetsByIds([pet.id]);
+        const wasComplete = Boolean(pets[pet.id]) && petRecord.isCompletePetRecord(pets[pet.id]);
         pets[pet.id] = { ...(pets[pet.id] || {}), ...pet };
         const databaseMeta = await storageGet("owehDatabaseMeta", {});
-        if (petRecord.isCompletePetRecord(pets[pet.id])) {
+        // Count transitions only: re-indexing an already complete profile must not inflate the
+        // dashboard's "complete/catalog" counter past the catalog size.
+        const isComplete = petRecord.isCompletePetRecord(pets[pet.id]);
+        if (!wasComplete && isComplete) {
           databaseMeta.completeProfiles = Number(databaseMeta.completeProfiles || 0) + 1;
           databaseMeta.missingProfiles = Math.max(0, Number(databaseMeta.missingProfiles || 0) - 1);
+        } else if (wasComplete && !isComplete) {
+          databaseMeta.completeProfiles = Math.max(0, Number(databaseMeta.completeProfiles || 0) - 1);
         }
         databaseMeta.lastProfileAt = Date.now();
         await storageSet({ owehPets: pets, owehDatabaseMeta: databaseMeta });

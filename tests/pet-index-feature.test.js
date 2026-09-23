@@ -102,6 +102,22 @@ function setup({ breedPlanning = false, owner = true, queue = [], currentPetId =
     assert.equal(env.log.navigations.at(-1), "#!/?src=pets&sub=overview");
   }
 
+  // Re-indexing an already complete profile must not inflate completeProfiles past the catalog.
+  {
+    const env = setup({ queue: [{ id: "1" }, { id: "2" }], currentPetId: "1" });
+    env.store.owehPets["1"] = {
+      id: "1", name: "Old", gender: "Female", species: "Catus", ancestors: [], pedigreeVerified: true,
+      colors: { body1: "FFFFFF" }
+    };
+    env.store.owehDatabaseMeta = { completeProfiles: 1, missingProfiles: 1 };
+    await env.api.process();
+    assert.equal(env.store.owehDatabaseMeta.completeProfiles, 1);
+    assert.equal(env.store.owehDatabaseMeta.missingProfiles, 1);
+    await env.api.process();
+    assert.equal(env.store.owehDatabaseMeta.completeProfiles, 2, "a newly complete profile still counts");
+    assert.equal(env.store.owehDatabaseMeta.missingProfiles, 0);
+  }
+
   // A breed-planning index hands control back to the breed planner instead of completing
   // the shared worker as an ordinary index job.
   {
