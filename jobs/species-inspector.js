@@ -9,6 +9,7 @@ OWEH.register("species-inspector", helpers => {
   const STORE_KEY = "owehSpeciesInspectorV1";
   const MEMORY_KEY = "owehSpeciesMemory";
   const ANSWER_ID_KEY = "owehSpeciesAnswerIds";
+  const SHAPES_KEY = "owehSpeciesShapes";
   const MAX_SESSIONS = 120;
   const MAX_NETWORK_PER_SESSION = 30;
   const MAX_SOURCE_HINTS = 24;
@@ -159,12 +160,25 @@ OWEH.register("species-inspector", helpers => {
       const average = values.reduce((sum, value) => sum + value, 0) / values.length;
       const fingerprint = `visual:${values.map(value => value >= average ? "1" : "0").join("")}`;
 
+      // Color-independent silhouette (domain/species-shape.js): matches the same species across
+      // eggs even though every challenge image has random colors and genes.
+      let shape = null;
+      const shapeApi = OWEH.domain?.speciesShape;
+      if (shapeApi) {
+        const shapeCanvas = document.createElement("canvas");
+        shapeCanvas.width = shapeApi.SIZE;
+        shapeCanvas.height = shapeApi.SIZE;
+        const shapeContext = shapeCanvas.getContext("2d", { willReadFrequently: true });
+        shapeContext.drawImage(image, 0, 0, shapeApi.SIZE, shapeApi.SIZE);
+        shape = shapeApi.shapeFromRgba(shapeContext.getImageData(0, 0, shapeApi.SIZE, shapeApi.SIZE).data);
+      }
+
       const thumbCanvas = document.createElement("canvas");
       thumbCanvas.width = 96;
       thumbCanvas.height = 96;
       thumbCanvas.getContext("2d").drawImage(image, 0, 0, 96, 96);
       const thumbnail = thumbCanvas.toDataURL("image/jpeg", 0.55);
-      return { fingerprint, thumbnail };
+      return { fingerprint, thumbnail, shape };
     } catch {
       return null;
     }
@@ -246,6 +260,7 @@ OWEH.register("species-inspector", helpers => {
         attrs: safeAttributes(image),
         fingerprint: artifact.fingerprint,
         thumbnail: artifact.thumbnail,
+        shape: artifact.shape || null,
         captureMethod: artifact.method
       } : null,
       options,
@@ -362,7 +377,8 @@ OWEH.register("species-inspector", helpers => {
         const session = store.sessions.find(item => item.id === activeSessionId);
         if (session) {
           session.lastSeenAt = now();
-          if (!session.question?.image?.fingerprint && snapshot.image?.fingerprint) session.question = snapshot;
+          if ((!session.question?.image?.fingerprint && snapshot.image?.fingerprint)
+            || (!session.question?.image?.shape && snapshot.image?.shape)) session.question = snapshot;
         }
       });
       await updateAnswerIdMap(snapshot.options);
@@ -416,8 +432,19 @@ OWEH.register("species-inspector", helpers => {
     await storageSet({ owehSpeciesStats: stats });
   }
 
+  // A confirmed answer teaches the silhouette library, so the same species is recognized on
+  // every later egg regardless of its colors (see domain/species-shape.js).
+  async function learnShape(shape, species) {
+    const shapeApi = OWEH.domain?.speciesShape;
+    if (!shapeApi?.validShape(shape) || !species) return;
+    if (await viaBackground({ type: "speciesShapeLearn", species, shape })) return;
+    const { library, added } = shapeApi.addExample(await storageGet(SHAPES_KEY, {}), species, shape);
+    if (added) await storageSet({ [SHAPES_KEY]: library });
+  }
+
   async function learnQuestionOutcome(question, species, correct) {
     if (!question || !species) return;
+    if (correct) await learnShape(question.image?.shape, species);
     const keys = memoryKeysForQuestion(question);
     if (!keys.length) return;
     const shared = await viaBackground({
@@ -630,6 +657,7 @@ OWEH.register("species-inspector", helpers => {
       key: session.question.key || null,
       keys: memoryKeysForQuestion(session.question),
       fingerprint: session.question.image?.fingerprint || null,
+      shape: session.question.image?.shape || null,
       sources: session.question.image?.sources || [],
       options: session.question.options || []
     };
@@ -711,6 +739,7 @@ OWEH.register("species-inspector", helpers => {
     const memory = {};
     const answerIds = {};
     const stats = { correct: 0, wrong: 0 };
+    const shapes = {};
     for (const session of trace?.sessions || []) {
       const question = session?.question || null;
       const attempts = Array.isArray(session?.attempts) ? session.attempts : [];
@@ -759,9 +788,10 @@ OWEH.register("species-inspector", helpers => {
         for (const key of memoryKeysForQuestion(question)) {
           mergePortableMemory(memory, key, species, correct, question?.image?.thumbnail || null, timestamp);
         }
+        if (correct && question?.image?.shape) OWEH.domain?.speciesShape?.addExample(shapes, species, question.image.shape, timestamp || now());
       }
     }
-    return { memory, answerIds, stats };
+    return { memory, answerIds, stats, shapes };
   }
 
   function normalizeImportPayload(payload) {
@@ -777,13 +807,16 @@ OWEH.register("species-inspector", helpers => {
         if (typeof value === "number" && Number.isFinite(value)) stats[key] = Math.max(Number(stats[key] || 0), value);
         else if (key === "lastAt") stats[key] = Math.max(Number(stats[key] || 0), Number(value || 0));
       }
-      return { memory, answerIds, stats };
+      const shapes = derived.shapes || {};
+      OWEH.domain?.speciesShape?.mergeLibraries(shapes, payload.shapes || {});
+      return { memory, answerIds, stats, shapes };
     }
     if (payload.format === "ovipets-species-learning-db") {
       return {
         memory: payload.learnedMemory || payload.memory || {},
         answerIds: payload.answerIds || {},
-        stats: payload.stats || {}
+        stats: payload.stats || {},
+        shapes: payload.shapes || {}
       };
     }
     throw new Error(`Unsupported Species database format: ${String(payload.format || "unknown")}`);
@@ -822,19 +855,32 @@ OWEH.register("species-inspector", helpers => {
       [ANSWER_ID_KEY]: mergedAnswerIds,
       owehSpeciesStats: mergedStats
     });
+    let shapeSpecies = 0;
+    const shapeApi = OWEH.domain?.speciesShape;
+    if (shapeApi && Object.keys(incoming.shapes || {}).length) {
+      const shared = await viaBackground({ type: "speciesShapeMerge", library: incoming.shapes });
+      if (shared) shapeSpecies = Number(shared.species || 0);
+      else {
+        const { library } = shapeApi.mergeLibraries(await storageGet(SHAPES_KEY, {}), incoming.shapes);
+        await storageSet({ [SHAPES_KEY]: library });
+        shapeSpecies = Object.keys(library).length;
+      }
+    }
     setStatus(`Imported Species database — ${Object.keys(mergedMemory).length} learned image key(s), ${Object.keys(mergedAnswerIds).length} species ID mapping(s)`);
     return {
       memoryKeys: Object.keys(mergedMemory).length,
-      speciesIds: Object.keys(mergedAnswerIds).length
+      speciesIds: Object.keys(mergedAnswerIds).length,
+      shapeSpecies
     };
   }
 
   async function exportDatabase() {
     await writeChain;
-    const [memory, answerIds, stats] = await Promise.all([
+    const [memory, answerIds, stats, shapes] = await Promise.all([
       storageGet(MEMORY_KEY, {}),
       storageGet(ANSWER_ID_KEY, {}),
-      storageGet("owehSpeciesStats", {})
+      storageGet("owehSpeciesStats", {}),
+      storageGet(SHAPES_KEY, {})
     ]);
     const payload = {
       format: "ovipets-species-learning-db",
@@ -843,7 +889,8 @@ OWEH.register("species-inspector", helpers => {
       extensionVersion: chrome.runtime?.getManifest?.().version || null,
       learnedMemory: memory,
       answerIds,
-      stats
+      stats,
+      shapes
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -861,11 +908,12 @@ OWEH.register("species-inspector", helpers => {
 
   async function exportData() {
     await writeChain;
-    const [trace, memory, stats, answerIds] = await Promise.all([
+    const [trace, memory, stats, answerIds, shapes] = await Promise.all([
       readStore(),
       storageGet(MEMORY_KEY, {}),
       storageGet("owehSpeciesStats", {}),
-      storageGet(ANSWER_ID_KEY, {})
+      storageGet(ANSWER_ID_KEY, {}),
+      storageGet(SHAPES_KEY, {})
     ]);
     const payload = {
       format: "ovipets-species-inspector",
@@ -875,7 +923,8 @@ OWEH.register("species-inspector", helpers => {
       trace,
       learnedMemory: memory,
       answerIds,
-      stats
+      stats,
+      shapes
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);

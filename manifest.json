@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OviPets Hatchery Helper",
-  "version": "5.3.17",
+  "version": "5.4.0",
   "description": "One button per job (catalog, profiles, sort, feed, Ninja + Ads friend discovery, friend requests), automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
   "background": {
     "service_worker": "background.js"
@@ -41,6 +41,7 @@
         "domain/pedigree.js",
         "domain/breeding-score.js",
         "domain/breeding-plan.js",
+        "domain/species-shape.js",
         "core/game-actions.js",
         "jobs/species-inspector.js",
         "jobs/species-answer.js",

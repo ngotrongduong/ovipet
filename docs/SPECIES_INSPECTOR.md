@@ -1,6 +1,6 @@
 # Name the Species — Inspector / Learning Dataset
 
-Current release compatibility: v5.3.11
+Current release compatibility: v5.4.0
 
 ## Purpose
 
@@ -47,6 +47,10 @@ The solver/Inspector uses the strongest available identity in this order:
 - question key fallback.
 
 Because the challenge image is served from `app.ovipets.com`, v5.3.5 uses a strict background fetcher limited to `/img/pet/<id>/credit-challenge` so the isolated content script can safely compute a thumbnail/fingerprint without weakening the page bridge.
+
+### Silhouette matching (v5.4.0)
+
+The challenge image shows a random species with random colors and genes, so the exact identities above rarely repeat. Each species keeps a fixed pose, so the Inspector also records a 32x32 alpha-mask silhouette (`shape`, 256 hex chars). When no confirmed exact memory exists, the solver ranks the offered options with `domain/species-shape.js`: a learned silhouette within 44 of 1,024 pixels is answered (`shape-match`); otherwise it prefers an option never learned (`shape-unknown`), then the nearest (`shape-nearest`). Confirmed answers are added to `owehSpeciesShapes` (max 12 distinct silhouettes per species) through the serialized background writer, older confirmed URLs are back-filled once, and exports/imports carry `shapes`.
 
 The real `pet_turn_egg` response is the authoritative outcome. `status: success` adds a positive vote; `status: failed` with the explicit incorrect message adds negative evidence. Answer IDs are also learned from the question/network request.
 
