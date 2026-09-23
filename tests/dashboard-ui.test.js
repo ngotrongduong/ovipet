@@ -1,0 +1,155 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+class FakeClassList {
+  constructor() { this.values = new Set(); }
+  toggle(name, enabled) { if (enabled) this.values.add(name); else this.values.delete(name); }
+  contains(name) { return this.values.has(name); }
+}
+class FakeElement {
+  constructor() {
+    this.textContent = "";
+    this.dataset = {};
+    this.classList = new FakeClassList();
+    this.children = [];
+    this.title = "";
+    this.className = "";
+  }
+  replaceChildren(...children) { this.children = children; }
+}
+
+function setup() {
+  const clock = { now: 1_000_000 };
+  const state = {
+    owehEggRun: { active: false, count: 0 },
+    owehSweep: { active: false, index: 0, maxFriends: 0 },
+    owehWorker: null,
+    owehBreedCampaign: { active: false, femaleIndex: 0, bredCount: 0 },
+    owehBreedQueue: [],
+    owehPetIndex: { active: false, index: 0, indexed: 0 },
+    owehPetScanQueue: [],
+    owehHatchlingRun: { active: false, phase: "", index: 0 },
+    owehHatchlingQueue: [],
+    owehFriendRemoval: { active: false },
+    owehDatabaseMeta: { catalogCount: 2, completeProfiles: 1, enclosureCount: 1 },
+    owehSweepNotice: null
+  };
+  const panel = new FakeElement();
+  const summary = new FakeElement();
+  const jobs = new FakeElement();
+  const header = new FakeElement();
+  const meta = new FakeElement();
+  const health = new FakeElement();
+  const selectors = {
+    "#oweh-active-summary": summary,
+    "#oweh-active-jobs": jobs,
+    "#oweh-header-state": header,
+    "#oweh-db-meta": meta
+  };
+  panel.querySelector = selector => selectors[selector] || null;
+  const document = {
+    getElementById: id => id === "panel" ? panel : null,
+    querySelector: selector => selector === "#oweh-db-health" ? health : null,
+    createElement: () => new FakeElement()
+  };
+  const log = { status: [], healthRequests: 0, visibilityCounts: [] };
+  const timers = [];
+  const helpers = {
+    storageGetMany: async () => JSON.parse(JSON.stringify(state)),
+    runtimeRequest: async message => {
+      if (message.type === "stateHealth") {
+        log.healthRequests += 1;
+        return { ok: true, health: { complete: 1, present: 2, incomplete: 1, stale: 0, uncertainCommands: 0, activeTasks: 0, staleTasks: 0 } };
+      }
+      return { ok: false };
+    },
+    setStatus: text => log.status.push(text),
+    uiDashboardActions: {
+      panelId: "panel",
+      isPanelVisible: count => { log.visibilityCounts.push(count); return count > 0; }
+    }
+  };
+  const sandbox = vm.createContext({
+    console: { error() {} }, Promise, document,
+    Date: { now: () => clock.now }, Object, Array, Set, Map, JSON, Math, Number, String, Boolean, RegExp,
+    setTimeout: fn => { timers.push(fn); return timers.length; },
+    clearTimeout: () => {}
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../jobs/core.js"), "utf8"), sandbox, { filename: "core.js" });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../ui/dashboard.js"), "utf8"), sandbox, { filename: "dashboard.js" });
+  const modules = sandbox.OWEH.boot(helpers);
+  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, log, timers };
+}
+
+(async () => {
+  // A live shared-worker lease is the source of truth for straight-line job activity.
+  {
+    const env = setup();
+    env.state.owehWorker = { owner: "catalog", phase: "scanning", leaseUntil: env.clock.now + 30_000 };
+    await env.api.update();
+    assert.equal(env.api.getJobCount(), 1);
+    assert.equal(env.summary.textContent, "1 automation running");
+    assert.equal(env.header.textContent, "1 active");
+    assert.equal(env.jobs.children.length, 1);
+    assert.ok(env.jobs.children[0].textContent.includes("Update catalog"));
+    assert.equal(env.meta.textContent, "Database: 1/2 profiles · 1 enclosures");
+  }
+
+  // An expired lease must not keep the UI stuck in a false busy state.
+  {
+    const env = setup();
+    env.state.owehWorker = { owner: "feed", phase: "working", leaseUntil: env.clock.now - 1 };
+    await env.api.update();
+    assert.equal(env.api.getJobCount(), 0);
+    assert.equal(env.summary.textContent, "No automation running");
+    assert.equal(env.header.textContent, "Idle");
+  }
+
+  // Sweep notices are surfaced once while fresh, and health calls are cached for 30 seconds.
+  {
+    const env = setup();
+    env.state.owehSweepNotice = { text: "Sweep stopped safely", at: env.clock.now };
+    await env.api.update();
+    await env.api.update();
+    assert.deepEqual(env.log.status, ["Sweep stopped safely"]);
+    assert.equal(env.log.healthRequests, 1);
+    assert.ok(env.health.textContent.includes("1/2 complete"));
+  }
+
+
+  // An active sweep without a live worker is an orphan/recovery state, not "this tab".
+  {
+    const env = setup();
+    env.state.owehSweep = { active: true, index: 28, maxFriends: 213, cycle: 1, waitingUntil: 0 };
+    env.state.owehWorker = null;
+    await env.api.update();
+    assert.equal(env.api.getJobCount(), 1);
+    assert.ok(env.jobs.children[0].textContent.includes("recovering"));
+    assert.ok(!env.jobs.children[0].textContent.includes("this tab"));
+  }
+
+  // Sweep notices expire quickly so an old timeout does not look like the current blocker.
+  {
+    const env = setup();
+    env.state.owehSweepNotice = { text: "Friend eggs: batch timeout", at: env.clock.now - 20_000 };
+    await env.api.update();
+    assert.deepEqual(env.log.status, []);
+  }
+
+  // Schedule coalesces repeated requests into one timer.
+  {
+    const env = setup();
+    env.api.schedule(10);
+    env.api.schedule(10);
+    assert.equal(env.timers.length, 1);
+  }
+
+  console.log("dashboard UI behavior tests passed");
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
