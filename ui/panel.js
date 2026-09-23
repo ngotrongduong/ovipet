@@ -135,6 +135,7 @@ OWEH.register("ui-panel", helpers => {
     document.getElementById(TOOLTIP_ID)?.remove();
     const tooltip = document.createElement("div");
     tooltip.id = TOOLTIP_ID;
+    tooltip.dataset.owehUi = "1";
     tooltip.setAttribute("role", "tooltip");
     document.body.appendChild(tooltip);
     let tooltipTarget = null;
@@ -173,6 +174,7 @@ OWEH.register("ui-panel", helpers => {
     existing?.remove();
     const panel = document.createElement("section");
     panel.id = PANEL_ID;
+    panel.dataset.owehUi = "1";
     panel.dataset.owehInstance = PANEL_INSTANCE;
     panel.innerHTML = `
       <header class="oweh-header">

@@ -5,16 +5,30 @@
 
   const DEFAULT_REFRESH_DEBOUNCE_MS = 50;
 
+  // Extension-owned subtrees: MAIN-world bridge forms plus the helper's own panel/tooltip.
+  // Panel status/dashboard text writes used to re-trigger the document-wide observer, so every
+  // status line update scheduled another full refresh (storage reads for every feature).
+  const OWNED_SELECTOR = '[data-oweh-bridge-owned="1"], [data-oweh-ui="1"]';
+
+  function isOwnedElement(element) {
+    return Boolean(element?.dataset?.owehBridgeOwned === "1" || element?.dataset?.owehUi === "1"
+      || element?.closest?.(OWNED_SELECTOR));
+  }
+
   function isBridgeOwnedMutationNode(node) {
-    const element = node?.nodeType === 1 ? node : node?.parentElement;
-    return Boolean(element?.dataset?.owehBridgeOwned === "1"
-      || element?.closest?.('[data-oweh-bridge-owned="1"]'));
+    return isOwnedElement(node?.nodeType === 1 ? node : node?.parentElement);
   }
 
   function shouldIgnoreBridgeMutations(records) {
     let sawNode = false;
     for (const record of records || []) {
       const nodes = [...(record.addedNodes || []), ...(record.removedNodes || [])];
+      // A removed text node has no parentElement any more, so judge the whole record by the
+      // element whose children changed when that element is itself extension-owned.
+      if (nodes.length && isOwnedElement(record.target?.nodeType === 1 ? record.target : null)) {
+        sawNode = true;
+        continue;
+      }
       for (const node of nodes) {
         sawNode = true;
         if (!isBridgeOwnedMutationNode(node)) return false;
