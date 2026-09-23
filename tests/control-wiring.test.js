@@ -8,7 +8,9 @@ const path = require("path");
 const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
 const panelSource = fs.readFileSync(path.join(__dirname, "..", "ui", "panel.js"), "utf8");
 const overviewCatalogSource = fs.readFileSync(path.join(__dirname, "..", "services", "overview-catalog.js"), "utf8");
-const ownEggsSource = fs.readFileSync(path.join(__dirname, "..", "features", "own-eggs.js"), "utf8");
+const workerControlSource = fs.readFileSync(path.join(__dirname, "..", "services", "worker-control.js"), "utf8");
+const statusSource = fs.readFileSync(path.join(__dirname, "..", "services", "status.js"), "utf8");
+const ownEggsSource =fs.readFileSync(path.join(__dirname, "..", "features", "own-eggs.js"), "utf8");
 const friendSweepSource = fs.readFileSync(path.join(__dirname, "..", "features", "friend-sweep.js"), "utf8");
 const runtimeSource = `${source}\n${ownEggsSource}\n${friendSweepSource}`;
 const jobsDir = path.join(__dirname, "..", "jobs");
@@ -70,8 +72,9 @@ if (!friendSweepSource.includes('runtimeRequest({ type: "eggBatchStop", source: 
   throw new Error("Stopping the sweep must close only the sweep egg tabs it opened");
 }
 // A reload of the worker tab kills a one-button job; the resync must release the orphaned lease.
-if (!source.includes("const orphanedJob = workerClient.getOwner() == null && Boolean(STRAIGHT_JOB_LABELS[status.worker.owner])")
-  || !source.includes('status.worker.phase !== "starting"')) {
+if (!workerControlSource.includes("const orphanedJob = workerClient.getOwner() == null && Boolean(STRAIGHT_JOB_LABELS[status.worker.owner])")
+  || !workerControlSource.includes('status.worker.phase !== "starting"')
+  || !source.includes("await recoverAfterReload();")) {
   throw new Error("Worker-tab reload must release an orphaned one-button job lease");
 }
 if (!overviewCatalogSource.includes("if (!found.size) return [];")) {
@@ -89,8 +92,8 @@ if (!panelSource.includes("existing?.dataset.owehInstance === PANEL_INSTANCE")
 }
 
 // A worker tab closes right after reporting done; its final status must reach the other tabs.
-if (!source.includes("owehSweepNotice: { text: lastStatusText, at: Date.now() }")
-  || !source.includes("releaseFinishedWorker();")) {
+if (!statusSource.includes("owehSweepNotice: { text: lastStatusText, at: Date.now() }")
+  || !statusSource.includes("releaseFinishedWorker();")) {
   throw new Error("Worker completion status must be published before the worker tab is released");
 }
 

@@ -15,7 +15,7 @@ const friendEggs = read("jobs/friend-eggs.js");
 const eggTurn = read("jobs/egg-turn-tab.js");
 const species = read("jobs/species-answer.js");
 const sweep = read("features/friend-sweep.js");
-const content = read("content.js");
+const workerControl = read("services/worker-control.js");
 
 assert.match(tabs, /EGG_TAB_MAX = 15/);
 assert.match(tabs, /EGG_TAB_STAGGER_MS = 175/);
@@ -28,7 +28,7 @@ assert.match(friendEggs, /one final Hatchery verification/i);
 assert.match(eggTurn, /POST_CLICK_SETTLE_MS = 250/);
 assert.match(eggTurn, /species-incorrect" \? 400 : 750/);
 assert.match(species, /Date\.now\(\) \+ 600/);
-assert.match(content, /message\?\.type === "eggBatchProgress"/);
+assert.match(workerControl, /message\?\.type === "eggBatchProgress"/);
 assert.match(sweep, /await sleep\(250\)/);
 
 console.log("Fast Sweep v5.3.11 release contract tests passed");
