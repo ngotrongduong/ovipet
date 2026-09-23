@@ -393,11 +393,11 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-export-species", "Exporting Species Inspector data", async () => {
       await exportSpeciesInspector();
-      await updateSpeciesInspectorStats();
+      await updateSpeciesInspectorStats(true);
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-species-db", "Exporting Species database", async () => {
       await exportSpeciesDatabase();
-      await updateSpeciesInspectorStats();
+      await updateSpeciesInspectorStats(true);
     }, missingControls);
     const importSpeciesFile = panel.querySelector("#oweh-import-species-file");
     bindPanelAction(panel, "#oweh-import-species-db", "Choosing Species database backup", async () => {
@@ -412,7 +412,7 @@ OWEH.register("ui-panel", helpers => {
       try {
         const payload = JSON.parse(await file.text());
         await importSpeciesDatabase(payload);
-        await updateSpeciesInspectorStats();
+        await updateSpeciesInspectorStats(true);
       } catch (error) {
         console.error("[OviPets Helper] Species database import failed", error);
         setStatus(`Species database import failed: ${error?.message || error}`);
@@ -422,7 +422,7 @@ OWEH.register("ui-panel", helpers => {
     });
     bindPanelAction(panel, "#oweh-clear-species", "Clearing Species Inspector data", async () => {
       await clearSpeciesInspector();
-      await updateSpeciesInspectorStats();
+      await updateSpeciesInspectorStats(true);
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
@@ -473,14 +473,24 @@ OWEH.register("ui-panel", helpers => {
   }
 
 
-  async function updateSpeciesInspectorStats() {
+  // sync() runs on every coalesced DOM refresh (in up to 15 egg tabs at once) and the summary
+  // reads the whole Inspector store, network traces included — so passive refreshes are
+  // throttled; export/import/clear force an immediate recount.
+  let speciesStatsAt = 0;
+  let speciesStatsPending = false;
+  async function updateSpeciesInspectorStats(force = false) {
     const label = document.querySelector("#oweh-species-inspector-stats");
     if (!label || typeof getSpeciesInspectorSummary !== "function") return;
+    if (!force && (speciesStatsPending || Date.now() - speciesStatsAt < 5000)) return;
+    speciesStatsPending = true;
     try {
       const summary = await getSpeciesInspectorSummary();
+      speciesStatsAt = Date.now();
       const text = `Species Inspector: ${summary?.questions || 0} question(s) · ${summary?.correct || 0} correct · ${summary?.wrong || 0} wrong · ${summary?.network || 0} trace event(s)`;
       if (label.textContent !== text) label.textContent = text;
-    } catch {}
+    } catch {} finally {
+      speciesStatsPending = false;
+    }
   }
 
   let diagnosticStatsAt = 0;
@@ -515,7 +525,6 @@ OWEH.register("ui-panel", helpers => {
     const panel = ensure();
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
-    updateBlacklistCount();
     updateSpeciesInspectorStats();
     updateDiagnosticStats();
   }

@@ -24,19 +24,22 @@ function setup() {
   const copy = new FakeElement();
   const apply = new FakeElement();
   const blacklist = new FakeElement();
+  const inspector = new FakeElement();
   const start = new FakeElement();
   const stop = new FakeElement();
   const panel = new FakeElement();
   panel.querySelector = selector => ({ "#oweh-start": start, "#oweh-stop": stop }[selector] || null);
   let suggestion = "FFFFFF-FF0000-000000";
   let blacklistValue = { 1: {}, 2: {} };
+  const inspectorReads = { count: 0 };
   const document = {
     querySelector(selector) {
       return {
         "#oweh-pet-name": label,
         "#oweh-copy-name": copy,
         "#oweh-apply-name": apply,
-        "#oweh-blacklist-count": blacklist
+        "#oweh-blacklist-count": blacklist,
+        "#oweh-species-inspector-stats": inspector
       }[selector] || null;
     },
     getElementById(id) { return id === "panel" ? panel : null; }
@@ -55,6 +58,7 @@ function setup() {
       confirmBreedPreview() {}, discardBreedPreview() {}, setBreedPairLimit: async value => Number(value) || 0,
       getPetNameSuggestion: () => suggestion,
       friendBlacklist: async () => blacklistValue,
+      getSpeciesInspectorSummary: async () => { inspectorReads.count += 1; return { questions: inspectorReads.count }; },
       isContextVisible: count => count > 0,
       targetColors: { body1: "#FFFFFF" },
       defaultDelayMs: 0,
@@ -71,7 +75,7 @@ function setup() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../ui/panel.js"), "utf8"), sandbox, { filename: "panel.js" });
   const api = sandbox.OWEH.boot(helpers)["ui-panel"].api;
   return {
-    api, label, copy, apply, blacklist, start, stop,
+    api, label, copy, apply, blacklist, inspector, inspectorReads, start, stop,
     setSuggestion(value) { suggestion = value; },
     setBlacklist(value) { blacklistValue = value; }
   };
@@ -111,6 +115,16 @@ function setup() {
 
   assert.equal(env.api.isVisible(0), false);
   assert.equal(env.api.isVisible(1), true);
+
+  // Passive refreshes (every DOM mutation, in every egg tab) must not re-read the whole
+  // Inspector store each time; an explicit export/import/clear still recounts at once.
+  await env.api.updateSpeciesInspectorStats();
+  await env.api.updateSpeciesInspectorStats();
+  await env.api.updateSpeciesInspectorStats();
+  assert.equal(env.inspectorReads.count, 1);
+  assert.ok(env.inspector.textContent.startsWith("Species Inspector: 1 question(s)"));
+  await env.api.updateSpeciesInspectorStats(true);
+  assert.equal(env.inspectorReads.count, 2);
 
   // Regression guard: refresh must call the extracted panel API, not a deleted bare helper.
   const content = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
