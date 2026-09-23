@@ -21,7 +21,7 @@ Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
 - Node test files: 64/64 PASS;
-- content.js: 652 lines (composition/wiring + a few live helpers; see "content.js service split");
+- content.js: 464 lines (composition/wiring + a few live helpers; see "content.js service split");
 - background.js: 205 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - deterministic domain modules own breeding/pet-record rules;
@@ -196,6 +196,7 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - New runtime wiring gate `tests/content-boot-wiring.test.js`: loads every isolated content script in manifest order in a vm, runs content.js and fails if any helper handed to `OWEH.boot` (including `uiPanelActions`) is `undefined` or any module fails to start. This is the class of bug behind v5.3.17 and the panel display breakages; source-text tests could not see it.
 - New behavior tests: `tests/overview-catalog-service.test.js` (full / stuck-tab partial / fewer-tabs partial / empty / snapshot reuse) and `tests/friend-retention-services.test.js`.
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
+- Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
 ### v5.3.17 breeding dependency-wiring hotfix

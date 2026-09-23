@@ -41,7 +41,7 @@
   }
   const {
     currentPetId, currentFriendId, isFriendHatchery, isHatchery, isOwnHatchery,
-    isOviPetsChatPage, isPetsOverview, classifyRoute, navigateTo, petProfilePath: buildPetProfilePath
+    isOviPetsChatPage, isPetsOverview, classifyRoute
   } = OWEH.dom.routes;
   if (!OWEH.dom?.profile) {
     console.error("[OviPets Helper] dom/profile.js did not load before content.js — check manifest.json script order");
@@ -68,7 +68,7 @@
     return;
   }
   const {
-    TARGET_KEYS, STRICT_PURE_TARGET, rgb, suggestedPetName, petOffTarget, petPureMetrics
+    STRICT_PURE_TARGET, rgb, suggestedPetName, petOffTarget, petPureMetrics
   } = OWEH.domain.colors;
   if (!OWEH.domain?.petRecord) {
     console.error("[OviPets Helper] domain/pet-record.js did not load before content.js — check manifest.json script order");
@@ -76,10 +76,7 @@
   }
   const { petProfileNeedsRefresh, isCompletePetRecord, databaseMetaFor } = OWEH.domain.petRecord;
   const { ancestorsOverlap } = OWEH.domain.pedigree;
-  const {
-    DEFAULT_MALE_SHORTLIST_SIZE: BREED_MALE_SHORTLIST_SIZE, pairPureMetrics,
-    comparePairPureMetrics, formatPureProbability
-  } = OWEH.domain.breedingScore;
+  const { pairPureMetrics, comparePairPureMetrics, formatPureProbability } = OWEH.domain.breedingScore;
   const {
     MALES_ENCLOSURE, DEFAULT_BREEDING_STOCK_MAX_DISTANCE, NEWBORN_ENCLOSURES,
     normalizeEnclosureLabel, isBreedingProgramEnclosure, desiredProgramEnclosure, buildDatabaseBreedPlan
@@ -114,18 +111,21 @@
   let panelModule = null;
   let ownUserId = null;
   let currentTabId = null;
-  let taskHeartbeatTimer = null;
-  let lastDiagnosticStatusText = "";
-  let lastStatusText = "";
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  if (!OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
-    || !OWEH.services?.friendDirectory || !OWEH.services?.retention) {
+  if (!OWEH.services?.status || !OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
+    || !OWEH.services?.friendDirectory || !OWEH.services?.retention || !OWEH.services?.partnerRanking
+    || !OWEH.services?.workerControl) {
     console.error("[OviPets Helper] services/*.js did not load before content.js — check manifest.json script order");
     return;
   }
   const writeClipboard = text => navigator.clipboard.writeText(text);
+  // setStatus logs alerts through diagnosticLog, which is created just below (and itself reports
+  // through setStatus), so the status service reaches it lazily.
+  const { setStatus, reportWorkerDone } = OWEH.services.status.createStatus({
+    diagnosticLog: (...args) => diagnosticLog(...args), storageSet, workerClient, releaseFinishedWorker
+  });
   const {
     diagnosticLog, exportDiagnosticLog, clearDiagnosticLog, getDiagnosticSummary
   } = OWEH.services.diagnostics.createDiagnostics({ runtimeRequest, isExtensionContextInvalidated, setStatus });
@@ -153,19 +153,10 @@
     storageGet, storageSet, setStatus, writeClipboard, petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure
   });
 
-  function hatchMaleMetrics(pet, target) {
-    const targeted = petPureMetrics(pet, target);
-    const body = pet?.colors?.body1 ? rgb(pet.colors.body1) : [];
-    const extremeExact = body.filter(value => value === 0 || value === 255).length;
-    const extremeDistance = body.reduce((sum, value) => sum + Math.min(value, 255 - value), 0);
-    return {
-      targetExact: targeted.exactChannels,
-      targetUsed: targeted.usedChannels,
-      targetDistance: targeted.distance,
-      extremeExact,
-      extremeDistance
-    };
-  }
+  const { rankPartners, hasBreedingCandidates, hatchMaleMetrics } = OWEH.services.partnerRanking.createPartnerRanking({
+    storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
+    comparePairPureMetrics, formatPureProbability, ancestorsOverlap, STRICT_PURE_TARGET
+  });
 
   async function friendBlacklist() {
     return friendSweepModule?.getBlacklist
@@ -177,43 +168,6 @@
     return friendSweepModule?.read
       ? friendSweepModule.read()
       : storageGet("owehSweep", { active: false, index: 0, maxFriends: 10 });
-  }
-
-  function ownedByThisTab(state) {
-    if (state?.ownerTabId != null && currentTabId != null) return Number(state.ownerTabId) === Number(currentTabId);
-    return !state?.ownerInstance || state.ownerInstance === PANEL_INSTANCE;
-  }
-
-  // "Stop All", next to the activity card that already aggregates every running job.
-  // Additive, not a replacement for the scoped per-feature Stop buttons: releases
-  // whichever single feature currently holds the shared worker tab (no owner passed, so
-  // background.js releases whatever is actually claimed) plus the two lanes that still
-  // run in this same tab rather than the shared worker (egg-turning, and Ninja Please's
-  // send lane).
-  // The unconditional reset: calls every feature's own Stop function directly (each one
-  // clears its own storage flag unconditionally, not just when a live shared-worker claim
-  // exists — see the comment on stopFriendSweep) rather than only asking background.js to
-  // release whatever it currently thinks is claimed. The one-button jobs under jobs/ keep no
-  // storage flag at all, so the final generic release below is what stops them. Sequential,
-  // not Promise.all, so no two stops ever race on the same storage key.
-  async function stopAllAutomation() {
-    diagnosticLog("warning", "control", "automation.stop-all", {});
-    await stopFriendSweep();
-    await stopBreedCampaign();
-    await petIndexModule?.stop();
-    await stopHatchlingProcessing();
-    await ownEggsModule?.stop("Egg turn/hatch stopped");
-    await runtimeRequest({ type: "eggBatchStop" });
-    await requestReleaseWorker();
-    setStatus("Stop All: cleared every automation flag and released the shared background tab");
-  }
-
-  async function sendTaskHeartbeat() {
-    const state = await storageGetMany({ owehEggRun: { active: false } });
-    const ids = [];
-    if (state.owehEggRun.active && ownedByThisTab(state.owehEggRun)) ids.push("egg-run");
-    if (ids.length) await runtimeRequest({ type: "taskHeartbeat", ids });
-    await workerClient.heartbeatSharedWorker();
   }
 
   function requireFriendSweep() {
@@ -251,37 +205,9 @@
     return false;
   }
 
-  function setStatus(text) {
-    const el = document.querySelector("#oweh-status");
-    if (el && el.textContent !== text) el.textContent = text;
-    const value = String(text || "");
-    if (value) lastStatusText = value;
-    const diagnosticValue = value
-      .replace(/\b0\s+(?:failed|timeouts?|errors?|aborted)\b/ig, "")
-      .replace(/\b0\s+timed\s+out\b/ig, "");
-    if (value && value !== lastDiagnosticStatusText && /(failed|stopped|timeout|timed out|interrupted|could not|error|busy|lost|aborted)/i.test(diagnosticValue)) {
-      lastDiagnosticStatusText = value;
-      diagnosticLog("warning", "status", "status.alert", { text: value });
-    }
-  }
-
-  // The shared worker tab closes as soon as its job reports done, taking its final status line
-  // with it. Publish that line through the cross-tab notice first so the tab where the user
-  // pressed the button can show why the job ended (e.g. "no breedable females").
-  function reportWorkerDone() {
-    if (workerClient.getOwner() != null && lastStatusText) {
-      void storageSet({ owehSweepNotice: { text: lastStatusText, at: Date.now() } });
-    }
-    releaseFinishedWorker();
-  }
-
   function setRunning(value) {
     panelModule?.setEggRunning(Boolean(value));
   }
-
-  const STRAIGHT_JOB_LABELS = {
-    catalog: "Update catalog", sort: "Sort pets", feed: "Feed pets", ninja: "Scan Ninja", requests: "Send requests"
-  };
 
   function requireDashboard() {
     if (!dashboardModule) throw new Error("ui/dashboard.js did not initialize");
@@ -291,71 +217,6 @@
   const refreshDatabaseHealth = force => requireDashboard().refreshHealth(force);
   const updateActivityDashboard = () => requireDashboard().update();
   const scheduleActivityDashboard = delay => requireDashboard().schedule(delay);
-
-  // Confirmed selector (docs/dom-audit-2026-09-17.md #4).
-  const BREEDING_CANDIDATE_SELECTOR = "section#breeding a[onclick*=\"ui_action_cmdExec('pet_breed'\"]";
-
-  function breedingCandidates(parentId) {
-    return [...document.querySelectorAll(BREEDING_CANDIDATE_SELECTOR)].map(anchor => {
-      const onclick = anchor.getAttribute("onclick") || "";
-      const mother = onclick.match(/MotherID=(\d+)/)?.[1];
-      const father = onclick.match(/FatherID=(\d+)/)?.[1];
-      const otherId = mother === parentId ? father : mother;
-      return otherId ? { anchor, otherId } : null;
-    }).filter(Boolean);
-  }
-
-  function petProfilePath(petId) {
-    return buildPetProfilePath(petId, ownUserId);
-  }
-
-  function targetValues() {
-    return { ...STRICT_PURE_TARGET };
-  }
-
-  async function rankPartners() {
-    const parent = readPet();
-    const target = targetValues();
-    const pets = await storageGet("owehPets", {});
-    if (!parent) return setStatus("Open the parent profile with its Colors table visible");
-    if (!Object.values(target).some(Boolean)) return setStatus("Enter at least one target color");
-    const ranked = breedingCandidates(parent.id).map(({ anchor, otherId }) => {
-      const partner = pets[otherId];
-      return {
-        anchor,
-        partner,
-        otherId,
-        pure: pairPureMetrics(parent, partner, target),
-        offTarget: petOffTarget(partner, target),
-        inbred: ancestorsOverlap(parent, partner)
-      };
-    }).sort(comparePairPureMetrics);
-    const best = ranked.find(x => Number.isFinite(x.pure.distance) && !x.inbred);
-    document.querySelectorAll(".oweh-recommended, .oweh-warning").forEach(e => e.remove());
-    ranked.forEach((item, index) => {
-      item.anchor.style.outline = item.inbred
-        ? "3px solid #d9534f"
-        : (index < 3 && Number.isFinite(item.pure.distance) ? "3px solid #ffd166" : "");
-      if (item.inbred) {
-        const warning = document.createElement("span");
-        warning.className = "oweh-warning";
-        warning.textContent = "Shares a visible ancestor — likely won't breed";
-        item.anchor.appendChild(warning);
-        return;
-      }
-      if (item === best) {
-        const offText = Number.isFinite(item.offTarget) ? ` · ${item.offTarget} off target` : "";
-        const badge = document.createElement("span");
-        badge.className = "oweh-recommended";
-        const chance = item.pure.purePossible
-          ? formatPureProbability(item.pure.pureProbability)
-          : `${item.pure.reachableChannels}/${item.pure.usedChannels} target channels reachable`;
-        badge.textContent = `Best pair · Body 1 ${item.pure.body1ReachableChannels}/3 reachable, +${item.pure.body1NewExactChannels} new FF · ${chance} · ${item.pure.lockedChannels} locked${offText}`;
-        item.anchor.appendChild(badge);
-      }
-    });
-    setStatus(best ? `Best indexed partner: ${best.partner?.name || "unknown"}` : "No matching partner has been indexed yet");
-  }
 
   // --- Full pet indexing, color-code naming, and strict female-first breeding ----------
 
@@ -394,7 +255,7 @@
 
   function isPanelContextVisible(jobCount) {
     return Boolean(getHatcheryEggs().length || getProfileTurnButton() || currentPetId() || currentFriendId()
-      || document.querySelector(BREEDING_CANDIDATE_SELECTOR) || friendLinks().length || isHatchery()
+      || hasBreedingCandidates() || friendLinks().length || isHatchery()
       || isOviPetsChatPage() || isPetsOverview() || jobCount > 0);
   }
 
@@ -420,49 +281,31 @@
   const refreshScheduler = createRefreshScheduler(refresh);
   const scheduleRefresh = (delay, reason) => refreshScheduler.schedule(delay, reason);
 
-  // v5 shared worker tab dispatch: background.js's claimWorker/releaseWorker send these
-  // two generic message types to whichever tab it just attached/is releasing as the
-  // shared worker, naming the feature via `owner`. Each feature registers its own
-  // start/stop pair here instead of background.js needing to know each feature's
-  // function names directly (the one-button jobs under jobs/ register their own handlers via
-  // OWEH.collect; the features still living in this file are listed here).
-  const workerHandlers = {
-    sweep: { start: startFriendSweepWorker, stop: stopFriendSweepLocal },
-    breed: { start: generation => startBreedCampaign(generation, false), stop: stopBreedCampaignLocal },
-    hatchlings: { start: generation => startHatchlingProcessing(generation, true), stop: stopHatchlingProcessingLocal }
-  };
-
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "startSharedWorker") {
-      const handler = ({ ...workerHandlers, ...OWEH.collect("workerHandlers") })[message.owner];
-      if (!handler?.start) return;
-      workerClient.handleStartMessage(message, handler);
-      return;
-    }
-    if (message?.type === "stopSharedWorker") {
-      const handler = ({ ...workerHandlers, ...OWEH.collect("workerHandlers") })[message.owner];
-      workerClient.handleStopMessage(message, handler);
-      return;
-    }
-    if (message?.type === "recoverSharedWorker") {
-      workerClient.resync(message.owner, message.generation);
-      diagnosticLog("warning", "worker", "worker.recovery-received", { owner: message.owner, generation: message.generation, tabId: currentTabId });
-      if (message.owner === "sweep") {
-        Promise.resolve(requireFriendSweep().recoverWorker?.()).catch(error =>
-          diagnosticLog("error", "friend-sweep", "sweep.recovery-failed", { message: error?.message || String(error) }));
-      }
-      sendResponse?.({ ok: true });
-      return;
-    }
-    if (message?.type === "eggBatchProgress") {
+  const {
+    ownedByThisTab, stopAllAutomation, startHeartbeat, handleRuntimeMessage, recoverAfterReload
+  } = OWEH.services.workerControl.createWorkerControl({
+    runtimeRequest, storageGetMany, workerClient, releaseFinishedWorker, requestReleaseWorker,
+    diagnosticLog, setStatus, instanceId: PANEL_INSTANCE, getCurrentTabId: () => currentTabId,
+    stops: {
+      stopFriendSweep, stopBreedCampaign, stopHatchlings: stopHatchlingProcessing,
+      stopPetIndex: () => petIndexModule?.stop(),
+      stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped")
+    },
+    localWorkerHandlers: {
+      sweep: { start: startFriendSweepWorker, stop: stopFriendSweepLocal },
+      breed: { start: generation => startBreedCampaign(generation, false), stop: stopBreedCampaignLocal },
+      hatchlings: { start: generation => startHatchlingProcessing(generation, true), stop: stopHatchlingProcessingLocal }
+    },
+    collectWorkerHandlers: () => OWEH.collect("workerHandlers"),
+    recoverSweepWorker: () => requireFriendSweep().recoverWorker?.(),
+    onEggBatchProgress: message => {
       OWEH.get("friend-eggs")?.api?.onBatchProgress?.(message);
       OWEH.get("feature-own-eggs")?.api?.onBatchProgress?.(message);
-      return;
-    }
-    if (message?.type === "goToNextFriendFromBackground") {
-      goToNextFriend();
-    }
+    },
+    goToNextFriend
   });
+
+  chrome.runtime.onMessage.addListener(handleRuntimeMessage);
 
   const activityStorageKeys = new Set([
     "owehEggRun", "owehSweep", "owehWorker",
@@ -590,41 +433,10 @@
 
   runtimeRequest({ type: "stateGetTabIdentity" }).then(async result => {
     if (result.ok) currentTabId = result.tabId;
-    // Resync currentWorkerOwner/currentWorkerGeneration after a reload of the worker tab
-    // itself (extension update, manual refresh, crash-restart). Those are plain in-memory
-    // variables that reset to null on every script reload, which would otherwise leave
-    // isWorkerOwner() permanently false here even though background.js's lease still
-    // correctly lists this exact tab as the current owner — silently stalling whatever
-    // feature was mid-run, the same failure shape this shared-worker redesign exists to
-    // fix. Only resync (never re-invoke a feature's .start()) — the feature's own
-    // progress record (owehSweep/owehBreedCampaign/etc.) already reflects where it
-    // was, and the passive refresh()-driven functions pick it back up once ownership
-    // checks pass again.
-    const status = await runtimeRequest({ type: "getWorkerStatus" });
-    if (status.ok && status.active && status.worker && Number(status.worker.tabId) === Number(currentTabId)) {
-      // No start message reached THIS script instance, so a reload killed the job. One-button
-      // jobs have no progress record to resume from; releasing the lease is the only way it
-      // stops reading "busy" (heartbeats would keep renewing it). "starting" is excluded: the
-      // fresh tab's start message may simply not have arrived yet.
-      const orphanedJob = workerClient.getOwner() == null && Boolean(STRAIGHT_JOB_LABELS[status.worker.owner])
-        && status.worker.phase !== "starting";
-      workerClient.resync(status.worker.owner, status.worker.generation);
-      if (orphanedJob) {
-        diagnosticLog("error", "worker", "worker.orphaned-after-reload", { owner: status.worker.owner, generation: status.worker.generation, phase: status.worker.phase, tabId: currentTabId });
-        releaseFinishedWorker();
-        setStatus(`"${STRAIGHT_JOB_LABELS[status.worker.owner]}" was interrupted by a page reload and released the shared background tab — press its button again`);
-      }
-    }
+    await recoverAfterReload();
     refresh();
   });
-  taskHeartbeatTimer = setInterval(() => {
-    if (isExtensionContextInvalidated?.()) {
-      clearInterval(taskHeartbeatTimer);
-      taskHeartbeatTimer = null;
-      return;
-    }
-    sendTaskHeartbeat().catch(error => diagnosticLog("error", "runtime", "heartbeat.failed", { message: error?.message || String(error) }));
-  }, 15000);
+  const stopHeartbeat = startHeartbeat(isExtensionContextInvalidated);
   window.addEventListener("error", event => {
     diagnosticLog("error", "runtime", "runtime.window-error", {
       message: event.message || event.error?.message || "window error",
@@ -636,7 +448,7 @@
     diagnosticLog("error", "runtime", "runtime.unhandled-rejection", { message: reason?.message || String(reason || "unknown"), stack: reason?.stack || "" });
   });
   window.addEventListener("pagehide", () => {
-    clearInterval(taskHeartbeatTimer);
+    stopHeartbeat();
     refreshScheduler.cancel();
     dashboardModule?.cancel();
   }, { once: true });
