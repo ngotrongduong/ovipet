@@ -46,4 +46,9 @@ assert.ok(core >= 0 && core < storageClient && storageClient < gameBridge && gam
   && pedigree < score && score < plan && plan < gameActions && gameActions < ownEggs && ownEggs < petIndex && petIndex < content,
   "core/domain modules must load after jobs/core.js and before content.js in dependency order");
 
+// Species inspector sessions/memory (dialog HTML + thumbnails) share chrome.storage.local with
+// the worker lease, sweep cursor and egg-tab registry. Without unlimitedStorage the 10MB quota
+// can fill and make every durable write fail, not just the species recorder's.
+assert.ok(manifest.permissions.includes("unlimitedStorage"), "durable state must not be capped by the storage.local quota");
+
 console.log("manifest integrity and domain load-order tests passed");
