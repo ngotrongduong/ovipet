@@ -70,10 +70,15 @@ OWEH.register("feature-friend-sweep", helpers => {
 
   async function nextEligibleIndex(queue, startIndex, maxFriends, now = Date.now()) {
     const limit = Math.min(queue.length, maxFriends);
+    if (Math.max(0, startIndex) >= limit) return -1;
+    // Read both maps once: the per-friend helpers cost two storage round trips (plus a possible
+    // cooldown prune write) for every skipped friend in a long queue.
+    const cooldownMap = await cooldowns(now);
+    const blacklistMap = await getBlacklist();
     for (let index = Math.max(0, startIndex); index < limit; index += 1) {
-      const id = queue[index].id;
-      if (await isCoolingDown(id, now)) continue;
-      if (await isBlacklisted(id)) continue;
+      const id = String(queue[index].id);
+      if (Number(cooldownMap[id] || 0) > now) continue;
+      if (blacklistMap[id]) continue;
       return index;
     }
     return -1;

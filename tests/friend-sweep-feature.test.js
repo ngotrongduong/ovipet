@@ -35,11 +35,14 @@ function setup({
   const page = { hash };
   const log = {
     status: [], claims: [], releases: [], phases: [], done: 0, navigations: [], reloads: 0,
-    runtime: [], taskReleases: [], removeCalls: [], relays: 0, eggProcesses: 0, scans: 0, running: []
+    runtime: [], taskReleases: [], removeCalls: [], relays: 0, eggProcesses: 0, scans: 0, running: [], reads: {}
   };
 
   const helpers = {
-    storageGet: async (key, fallback) => key in store ? clone(store[key]) : clone(fallback),
+    storageGet: async (key, fallback) => {
+      log.reads[key] = (log.reads[key] || 0) + 1;
+      return key in store ? clone(store[key]) : clone(fallback);
+    },
     storageSet: async values => { for (const [key, value] of Object.entries(values)) store[key] = clone(value); },
     sleep: async ms => {
       const delay = Number(ms || 0);
@@ -219,6 +222,21 @@ function setup({
     await env.api.stop();
     assert.equal(env.store.owehSweep.active, false);
     assert.deepEqual(env.log.releases, ["sweep"]);
+  }
+
+  // Eligibility scans read the cooldown and blacklist maps once, not twice per skipped friend.
+  {
+    const queue = Array.from({ length: 200 }, (_, index) => ({ id: String(1000 + index), hatchery: `#!/?src=pets&sub=hatchery&usr=${1000 + index}` }));
+    const cooldowns = Object.fromEntries(queue.slice(0, 150).map(friend => [friend.id, 2_000_000]));
+    const blacklist = Object.fromEntries(queue.slice(150, 199).map(friend => [friend.id, { at: 1, reason: "zero eggs" }]));
+    const env = setup({ active: true, queue, cooldowns, blacklist });
+    env.log.reads = {};
+    const index = await env.api.nextEligibleIndex(queue, 0, queue.length, 1_000_000);
+    assert.equal(index, 199, "only the last friend is neither cooling down nor blacklisted");
+    assert.equal(env.log.reads.owehFriendCooldowns, 1);
+    assert.equal(env.log.reads.owehFriendBlacklist, 1);
+    assert.equal(await env.api.nextEligibleIndex(queue, 0, 199, 1_000_000), -1);
+    assert.equal(await env.api.nextEligibleIndex(queue, 0, queue.length, 2_000_001), 0, "expired cooldowns are eligible again");
   }
 
   console.log("friend sweep feature behavior tests passed");
