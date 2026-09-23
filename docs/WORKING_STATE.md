@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-09-21
-Current release baseline: v5.3.15
+Last updated: 2026-09-23
+Current release baseline: v5.3.16
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
-Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.15 adds an independent Same-FF target-improvement breeding strategy that keeps each female on her existing Body 1 FF line and selects the best safe male by secondary-color target proximity. Live/manual gates remain.
+Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.16 hardens both breeding strategies with verified lazy-pedigree indexing, fail-closed relationship checks, OviPets rejection detection, and ordered alternate-male fallback. Live/manual gates remain.
 
 ## Current verification
 
@@ -133,6 +133,18 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Same-FF breeding soak 20 × 6 = 120 executions, 0 failures, clean-extracted ZIP 59/59 PASS.
 - Final ZIP SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`.
 
+### v5.3.16 Pedigree Guard + male fallback
+
+- `dom/profile.js` marks pedigree verified only when the lazy-loaded ancestor fieldset is present.
+- Pet indexing waits for Pedigree content and a stable ancestor-ID signature for 300 ms, retries the tab once, and leaves unresolved records unverified.
+- `domain/pet-record.js` requires `pedigreeVerified=true` and bumps database metadata schema to 4, forcing legacy records to refresh once.
+- `domain/pedigree.js` fails closed on unverified ancestry and distinguishes shared/direct ancestor rejection.
+- Pure-line and Same-FF planners only use pedigree-verified pets and persist ordered `maleCandidates` for each female.
+- `database-direct-v2` revalidates pedigree immediately before every breed command.
+- MAIN-world bridge detects/dismisses `Unable to breed pets.` and reports `unable-to-breed-pets` instead of waiting for `command-timeout`.
+- Rejected males are persisted on that female's queue row; the next safe male is tried before advancing the female.
+- Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused soak 140/140 PASS, clean ZIP 59/59 PASS. Final ZIP SHA-256 `d4fa19b3a8fc6caca656350aeca0b78078e54bf6639890d3a49e3d203d9d4860`.
+
 ## Still open
 
 - Ninja + Ads expansion (Issue #8): implemented in the supplied v5.3.11 runtime and released locally as v5.3.12. The runtime scans `Ninja please` + `Ads post`, merges/deduplicates by stable User ID over the rolling last 24 hours, keeps the newest duplicate, excludes IDs in global `owehFriendRequestHistory`, and fails soft per source. Full suite 59/59 PASS; focused Ninja/chat soak 40/40 PASS; clean ZIP 59/59 PASS. Artifact SHA-256 `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`. Complete runtime-tree import/CI is still tracked by Issue #2.
@@ -142,7 +154,7 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
 - multi-hour live-game soak;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.15-runtime-import`);
+- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.16-runtime-import`);
 - friend-request state remains intentionally `dispatched` unless a reliable confirmation signal is observed.
 
 ## Invariants
