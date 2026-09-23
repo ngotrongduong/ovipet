@@ -1,17 +1,17 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-23
-Current release baseline: v5.3.16
+Current release baseline: v5.3.17
 Current repository phase: Phase 0 — runtime import/CI bootstrap remains open
-Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.16 hardens both breeding strategies with verified lazy-pedigree indexing, fail-closed relationship checks, OviPets rejection detection, and ordered alternate-male fallback. Live/manual gates remain.
+Current local implementation status: Phases 1–5 plus current Phase 6 automated gates validated; v5.3.17 fixes the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Live/manual gates remain.
 
 ## Current verification
 
 - JavaScript syntax: PASS
 - release consistency: PASS
-- Node tests: **59/59 PASS**
-- clean-extracted ZIP reproduces 59/59
-- current full-suite release gate: 59/59 PASS
+- Node tests: **60/60 PASS**
+- clean-extracted ZIP reproduces 60/60
+- current full-suite release gate: 60/60 PASS
 - focused Egg/Species/DB soak: **20 rounds × 8 files = 160 test-file executions, 0 failures**
 - local-only Claude/session files absent from release package
 
@@ -133,6 +133,15 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Verification: syntax PASS, release consistency PASS, full suite 59/59 PASS, focused Same-FF breeding soak 20 × 6 = 120 executions, 0 failures, clean-extracted ZIP 59/59 PASS.
 - Final ZIP SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`.
 
+### v5.3.17 breeding dependency-wiring hotfix
+
+- Live diagnostic reproduced a deterministic crash at the first breeding step after indexing: `Cannot read properties of undefined (reading 'pedigreeCompatibility')` from `features/breeding.js`.
+- Root cause: `domain/pedigree.js` loaded correctly, but `content.js` omitted `pedigree` from the `domain` object passed into `OWEH.boot(...)`.
+- Runtime now explicitly injects `pedigree: OWEH.domain.pedigree`.
+- Breeding feature also falls back to the already-loaded global pedigree module and asserts the required compatibility API before campaign execution.
+- New integration regression verifies manifest dependency order plus real content boot wiring; database-breeding regression requires the exact injection contract.
+- Verification: syntax PASS, release consistency PASS, full suite 60/60 PASS, focused soak 160/160 PASS, clean ZIP 60/60 PASS. Final ZIP SHA-256 `df388ba98c7298e2a293d56623b090ce4c2d55db111e5a546ed370cb215b5df9`.
+
 ### v5.3.16 Pedigree Guard + male fallback
 
 - `dom/profile.js` marks pedigree verified only when the lazy-loaded ancestor fieldset is present.
@@ -154,7 +163,7 @@ Adaptive speed now includes latency pressure: repeated batches >=35s back off on
 - Export Species DB → clean/new Edge profile → Import → learned mapping restored;
 - worker Start/Stop/reload recovery;
 - multi-hour live-game soak;
-- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.16-runtime-import`);
+- complete runtime/test tree imported to GitHub and clean-checkout CI green (publish helper now targets `release/v5.3.17-runtime-import`);
 - friend-request state remains intentionally `dispatched` unless a reliable confirmation signal is observed.
 
 ## Invariants
