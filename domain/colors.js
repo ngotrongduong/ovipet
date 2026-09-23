@@ -40,12 +40,26 @@
     return /^[0-9a-f]{6}$/i.test(raw) ? `#${raw.toUpperCase()}` : null;
   }
 
+  // Planning evaluates every female x shortlisted-male pair, re-parsing the same few hundred
+  // hex strings millions of times (profiled at ~70% of plan time). Cache the parsed channels;
+  // the arrays are frozen because callers share them.
+  const RGB_CACHE_LIMIT = 8192;
+  const rgbCache = new Map();
+
   function rgb(value) {
-    return [parseInt(value.slice(1, 3), 16), parseInt(value.slice(3, 5), 16), parseInt(value.slice(5, 7), 16)];
+    let parsed = rgbCache.get(value);
+    if (parsed) return parsed;
+    parsed = Object.freeze([parseInt(value.slice(1, 3), 16), parseInt(value.slice(3, 5), 16), parseInt(value.slice(5, 7), 16)]);
+    if (rgbCache.size >= RGB_CACHE_LIMIT) rgbCache.clear();
+    rgbCache.set(value, parsed);
+    return parsed;
   }
 
   function slotDistance(a, b) {
-    return a && b ? rgb(a).reduce((sum, value, index) => sum + Math.abs(value - rgb(b)[index]), 0) : null;
+    if (!a || !b) return null;
+    const left = rgb(a);
+    const right = rgb(b);
+    return Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]) + Math.abs(left[2] - right[2]);
   }
 
   function nearestPureColor(colorHex) {

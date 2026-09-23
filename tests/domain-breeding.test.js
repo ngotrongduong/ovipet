@@ -26,6 +26,9 @@ const exactColors = { ...target };
 assert.equal(colors.hex("fff"), "#FFFFFF");
 assert.equal(colors.hex("ff0000"), "#FF0000");
 assert.equal(colors.slotDistance("#FFFFFF", "#FFFFF7"), 8);
+assert.deepEqual(colors.rgb("#0A80FF"), [10, 128, 255]);
+assert.equal(colors.rgb("#0A80FF"), colors.rgb("#0A80FF"), "parsed channels are memoized");
+assert.ok(Object.isFrozen(colors.rgb("#0A80FF")), "shared cached channels must be immutable");
 assert.deepEqual(colors.petPureMetrics({ colors: exactColors }, target), {
   exactChannels: 15,
   usedChannels: 15,

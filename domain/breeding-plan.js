@@ -127,6 +127,15 @@
     };
   }
 
+  // Decorate-sort-undecorate: the comparator used to recompute petPureMetrics for both sides
+  // of every comparison (O(n log n) metric evaluations). Same order, one evaluation per pet.
+  function sortByPureMetrics(pets, target) {
+    const decorated = pets.map(pet => ({ pet, keyed: { ...pet, pure: petPureMetrics(pet, target) } }));
+    decorated.sort((a, b) => comparePetPureMetrics(a.keyed, b.keyed));
+    decorated.forEach((item, index) => { pets[index] = item.pet; });
+    return pets;
+  }
+
   function buildSameFfTargetPlan(pets, target, history, options, now) {
     // Line-improvement strategy: scan the complete enclosure snapshot. Every owned,
     // present, blue-heart-free female with complete target colors is considered,
@@ -135,11 +144,8 @@
     // target-endpoint mask (for the current target this is the same FF pair/set).
     const females = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
-        && pet.pedigreeVerified === true && completeForTarget(pet, target))
-      .sort((a, b) => comparePetPureMetrics(
-        { ...a, pure: petPureMetrics(a, target) },
-        { ...b, pure: petPureMetrics(b, target) }
-      ));
+        && pet.pedigreeVerified === true && completeForTarget(pet, target));
+    sortByPureMetrics(females, target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
         && pet.pedigreeVerified === true && completeForTarget(pet, target));
@@ -242,12 +248,8 @@
     }, new Map());
     const focusSpecies = [...speciesCounts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    const females = breedableFemales
-      .filter(pet => (pet.species || "Unknown") === focusSpecies)
-      .sort((a, b) => comparePetPureMetrics(
-        { ...a, pure: petPureMetrics(a, target) },
-        { ...b, pure: petPureMetrics(b, target) }
-      ));
+    const females = sortByPureMetrics(breedableFemales
+      .filter(pet => (pet.species || "Unknown") === focusSpecies), target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
         && pet.pedigreeVerified === true
