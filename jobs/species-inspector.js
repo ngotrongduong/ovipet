@@ -296,9 +296,26 @@ OWEH.register("species-inspector", helpers => {
     } catch {}
   }
 
+  // Writes shared by every egg tab go through the service worker, which serializes them;
+  // a local read-modify-write is only the fallback when the background cannot be reached.
+  async function viaBackground(message) {
+    if (typeof runtimeRequest !== "function") return null;
+    try {
+      const response = await runtimeRequest(message);
+      return response?.ok ? response : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function updateAnswerIdMap(options) {
     const useful = (options || []).filter(option => option.text && option.answerId != null);
     if (!useful.length) return;
+    const shared = await viaBackground({
+      type: "speciesAnswerIdsMerge",
+      options: useful.map(option => ({ text: String(option.text), answerId: String(option.answerId) }))
+    });
+    if (shared) return;
     const map = await storageGet(ANSWER_ID_KEY, {});
     for (const option of useful) {
       const species = String(option.text).trim();
@@ -403,6 +420,10 @@ OWEH.register("species-inspector", helpers => {
     if (!question || !species) return;
     const keys = memoryKeysForQuestion(question);
     if (!keys.length) return;
+    const shared = await viaBackground({
+      type: "speciesMemoryLearn", keys, species, correct: Boolean(correct), image: question.image?.thumbnail || null
+    });
+    if (shared) return;
     let memory = await storageGet(MEMORY_KEY, {});
     for (const key of keys) {
       const previous = memory[key] || {};

@@ -58,14 +58,23 @@ OWEH.register("species-answer", helpers => {
   }
 
   async function updateStats(patch) {
-    const stats = await storageGet("owehSpeciesStats", {
-      detected: 0, learnedAnswers: 0, manualHandoffs: 0, manualAlerts: 0, correct: 0, wrong: 0
-    });
-    for (const [key, amount] of Object.entries(patch || {})) {
-      stats[key] = Number(stats[key] || 0) + Number(amount || 0);
+    // Every egg tab counts into the same stats object: let the service worker serialize the
+    // increment, and fall back to a local read-modify-write only when it cannot be reached.
+    let stats = null;
+    try {
+      const shared = typeof runtimeRequest === "function" ? await runtimeRequest({ type: "speciesStatsBump", patch: patch || {} }) : null;
+      if (shared?.ok && shared.stats) stats = shared.stats;
+    } catch {}
+    if (!stats) {
+      stats = await storageGet("owehSpeciesStats", {
+        detected: 0, learnedAnswers: 0, manualHandoffs: 0, manualAlerts: 0, correct: 0, wrong: 0
+      });
+      for (const [key, amount] of Object.entries(patch || {})) {
+        stats[key] = Number(stats[key] || 0) + Number(amount || 0);
+      }
+      stats.lastAt = Date.now();
+      await storageSet({ owehSpeciesStats: stats });
     }
-    stats.lastAt = Date.now();
-    await storageSet({ owehSpeciesStats: stats });
     const line = document.querySelector("#oweh-species-stats");
     const text = `Species checks: ${stats.detected} detected · ${stats.correct} correct · ${stats.manualAlerts} manual prompt(s)`;
     if (line && line.textContent !== text) line.textContent = text;

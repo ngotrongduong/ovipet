@@ -98,11 +98,25 @@ const sandbox = vm.createContext({
 for (const file of ["core.js", "species-inspector.js"]) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "jobs", file), "utf8"), sandbox, { filename: file });
 }
+// The real serialized background writer, over the same fake storage.
+const bgContext = vm.createContext({
+  console, Date, Promise, JSON, Object, Array, Set, Number, String, Boolean,
+  chrome: { storage: { local: {
+    get: async defaults => ({ ...defaults, ...JSON.parse(JSON.stringify(store)) }),
+    set: async values => { Object.assign(store, JSON.parse(JSON.stringify(values))); }
+  } } }
+});
+vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "bg", "species-memory.js"), "utf8"), bgContext, { filename: "bg/species-memory.js" });
+const speciesMemory = vm.runInContext("OWEH_BG.speciesMemory", bgContext);
+const backgroundTypes = [];
 const helpers = {
   storageGet: async (key, fallback) => key in store ? JSON.parse(JSON.stringify(store[key])) : fallback,
   storageSet: async values => Object.assign(store, JSON.parse(JSON.stringify(values))),
   setStatus: value => statuses.push(value),
   runtimeRequest: async message => {
+    backgroundTypes.push(message.type);
+    if (message.type === "speciesMemoryLearn") return speciesMemory.learn(message);
+    if (message.type === "speciesAnswerIdsMerge") return speciesMemory.mergeAnswerIds(message);
     assert.equal(message.type, "speciesImageFetch");
     return { ok: true, dataUrl: "data:image/png;base64,AA==" };
   }
@@ -165,6 +179,10 @@ async function settle() { await new Promise(resolve => setTimeout(resolve, 10));
   await settle();
   assert.equal(store.owehSpeciesStats.correct, 1);
   assert.equal(store.owehSpeciesMemory[visualKey].species, "Feline");
+  // Learning and Answer-ID writes are shared by every egg tab, so they go through the
+  // service worker's serialized writer instead of a per-tab read-modify-write.
+  assert.ok(backgroundTypes.includes("speciesMemoryLearn"), "learned outcomes must be written by the background");
+  assert.ok(backgroundTypes.includes("speciesAnswerIdsMerge"), "Answer IDs must be merged by the background");
 
   // Terminal server response is recorded separately and does not manufacture another wrong answer.
   doc.dispatchEvent(new TestCustomEvent("oweh:species-trace-network", {

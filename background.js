@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-memory.js", "bg/state-health.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -18,8 +18,9 @@ const commandJournal = globalThis.OWEH_BG?.commandJournal;
 const workerManager = globalThis.OWEH_BG?.workerManager;
 const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
+const speciesMemory = globalThis.OWEH_BG?.speciesMemory;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesMemory || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -178,6 +179,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "speciesVerificationRequired") {
     showSpeciesVerification(sender, message.playSound).catch(() => {});
     return;
+  }
+  // Species knowledge is shared by up to 15 egg tabs; the service worker serializes its writes.
+  const speciesMemoryHandlers = {
+    speciesMemoryLearn: () => speciesMemory.learn(message),
+    speciesStatsBump: () => speciesMemory.bumpStats(message),
+    speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message)
+  };
+  if (speciesMemoryHandlers[message?.type]) {
+    speciesMemoryHandlers[message.type]().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
   }
   if (message?.type === "speciesImageFetch") {
     fetchSpeciesImage(message.url).then(sendResponse)
