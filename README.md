@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.3.17**
+Current release: **v5.4.0**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.4.0 Silhouette species solver + rolling Fast Sweep
+
+- **Name the Species** now matches the challenge image by its silhouette. The image shows a random species with random colors and genes, so the old exact image hash almost never repeated (live: 336 correct of 4,617 detected). Each species keeps a fixed pose, so a 32×32 alpha mask identifies it: same-species masks differ by ~13–38 of 1,024 pixels, other species mostly by more than 50. `domain/species-shape.js` ranks the offered options (close match → answer; nothing close → an option never learned yet; otherwise the nearest). Every confirmed answer adds a silhouette to `owehSpeciesShapes` through the serialized `bg/species-shapes.js` writer, and answers confirmed before v5.4.0 are back-filled once from `owehSpeciesMemory`. Import/export carries the library; the stats line shows `shape X/Y`.
+- **Start full sweep** keeps a rolling window of egg tabs: as soon as tabs of the running batch resolve, the coordinator hands the free slots to the next queued eggs (`eggBatchExtend`) instead of waiting for the slowest tab. Background stays authoritative (never more than the adaptive 10/12/15 unresolved tabs; a finished batch is never reopened), watchdogs count from the latest top-up, and adaptive speed judges a long batch per window. An older background falls back to plain batches.
 
 ## v5.3.17 Breeding dependency-wiring hotfix
 

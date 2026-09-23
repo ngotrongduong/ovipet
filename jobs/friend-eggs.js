@@ -4,6 +4,8 @@
 // once, drains that snapshot through back-to-back extension-owned profile-tab batches, then
 // performs ONE final Hatchery reload/verification pass. This removes the old reload-after-every-
 // 10-eggs bottleneck while keeping the 60s tab / 120s batch watchdogs in bg/egg-tabs.js.
+// v5.4.0: a running batch is topped up as its tabs resolve (rolling window), so one slow tab no
+// longer idles the other slots until the batch ends.
 OWEH.register("friend-eggs", helpers => {
   const { storageGet, storageSet, sleep, setStatus, runtimeRequest, waitForGameReady, reportWorkerPhase,
     isWorkerOwner, routes, hatcheryDom, sweepService, pageActions, diagnosticLog } = helpers;
@@ -149,14 +151,20 @@ OWEH.register("friend-eggs", helpers => {
     const profile = await speedProfile();
     const currentIndex = Math.max(0, SPEED_LEVELS.indexOf(profile.concurrency));
     const problems = Number(status.timedOut || 0) + Number(status.systemFailed || 0);
-    const elapsed = Math.max(0, Number(elapsedMs || 0));
+    // A rolling batch (v5.4.0) can drain several windows' worth of eggs. Judge it per window of
+    // `concurrency` eggs so a long friend is neither called "slow" for its size nor demoted for
+    // one timeout among a hundred clean eggs.
+    const windowShare = Math.min(1, profile.concurrency / Number(status.expected));
+    const windows = Math.max(1, Math.floor(Number(status.expected) / profile.concurrency));
+    const problemBudget = Math.floor((windows - 1) / 3);
+    const elapsed = Math.max(0, Math.round(Number(elapsedMs || 0) * windowShare));
     const slow = elapsed >= SLOW_BATCH_MS;
     const verySlow = elapsed >= VERY_SLOW_BATCH_MS;
     let nextIndex = currentIndex;
     let cleanStreak = profile.cleanStreak;
     let slowStreak = profile.slowStreak;
 
-    if (problems > 0 || verySlow) {
+    if (problems > problemBudget || verySlow) {
       nextIndex = Math.max(0, currentIndex - 1);
       cleanStreak = 0;
       slowStreak = 0;
@@ -169,7 +177,7 @@ OWEH.register("friend-eggs", helpers => {
       }
     } else if (status.done && Number(status.expected) >= profile.concurrency) {
       slowStreak = 0;
-      if (!elapsed || elapsed <= PROMOTE_BATCH_MAX_MS) cleanStreak += 1;
+      if (!elapsed || elapsed <= PROMOTE_BATCH_MAX_MS) cleanStreak += Math.max(1, windows - problems);
       else cleanStreak = 0;
       if (cleanStreak >= SPEED_PROMOTE_STREAK && currentIndex < SPEED_LEVELS.length - 1) {
         nextIndex = currentIndex + 1;
@@ -213,8 +221,45 @@ OWEH.register("friend-eggs", helpers => {
     reportWorkerPhase(`eggs ${resolved}/${status.expected}`);
   }
 
-  async function waitForBatch(batchId, friendId) {
+  // Rolling window: whenever tabs of the running batch resolve, hand the free slots to the next
+  // queued eggs right away instead of waiting for the slowest tab of the batch. The background
+  // is authoritative (it caps unresolved tabs and refuses a finished batch); eggs it did not
+  // take are un-charged and stay queued for the next batch.
+  async function topUpBatch(friendId, state, status, rolling) {
+    if (rolling.disabled || !status?.ok || status.done || !state.batchId) return false;
+    const inFlight = Math.max(0, Number(status.expected || 0) - Number(status.resolved || 0));
+    const room = rolling.concurrency - inFlight;
+    if (room <= 0) return false;
+    const inBatch = new Set((state.batchEggs || []).map(egg => String(egg.id)));
+    const next = (state.queue || [])
+      .filter(egg => !inBatch.has(String(egg.id)) && Number(state.attempts[String(egg.id)] || 0) < MAX_ATTEMPTS)
+      .slice(0, room);
+    if (!next.length) return false;
+    for (const egg of next) state.attempts[String(egg.id)] = Number(state.attempts[String(egg.id)] || 0) + 1;
+    state.batchEggs = [...(state.batchEggs || []), ...next];
+    await storageSet({ owehFriendEggState: state });
+    const reply = await runtimeRequest({
+      type: "eggBatchExtend", source: "sweep", batchId: state.batchId, friendId,
+      eggs: next.map(egg => ({ id: egg.id, usr: egg.usr || friendId }))
+    });
+    const added = new Set(reply?.ok ? (reply.addedIds || []).map(String) : []);
+    const refused = next.filter(egg => !added.has(String(egg.id)));
+    if (refused.length) {
+      const refusedIds = new Set(refused.map(egg => String(egg.id)));
+      for (const egg of refused) state.attempts[String(egg.id)] -= 1;
+      state.batchEggs = state.batchEggs.filter(egg => !refusedIds.has(String(egg.id)));
+      await storageSet({ owehFriendEggState: state });
+    }
+    // An older background without eggBatchExtend, or any hard refusal: fall back to plain batches.
+    if (!reply?.ok && reply?.reason !== "done") rolling.disabled = true;
+    if (!added.size) return false;
+    diagnosticLog?.("info", "friend-eggs", "batch.extended", { friendId, batchId: state.batchId, added: added.size, expected: reply.expected });
+    return true;
+  }
+
+  async function waitForBatch(batchId, friendId, topUp = null) {
     const startedAt = Date.now();
+    let activeAt = startedAt;
     let status = await runtimeRequest({ type: "eggBatchStatus", batchId });
     while (true) {
       if (!(await ownsFriendPage(friendId))) { clearBatchSignal(batchId); return { outcome: "cancelled", elapsedMs: Date.now() - startedAt }; }
@@ -229,7 +274,9 @@ OWEH.register("friend-eggs", helpers => {
         clearBatchSignal(batchId);
         return { outcome: "done", status, elapsedMs: Date.now() - startedAt };
       }
-      if (Date.now() - startedAt > BATCH_TIMEOUT_MS) {
+      if (topUp && await topUp(status)) activeAt = Date.now();
+      // The 2-minute coordinator watchdog counts from the latest top-up of a rolling batch.
+      if (Date.now() - activeAt > BATCH_TIMEOUT_MS) {
         diagnosticLog?.("warning", "friend-eggs", "batch.coordinator-timeout", { friendId, batchId, elapsedMs: Date.now() - startedAt });
         await runtimeRequest({ type: "eggBatchExpire", batchId });
         const expired = await runtimeRequest({ type: "eggBatchStatus", batchId });
@@ -340,7 +387,8 @@ OWEH.register("friend-eggs", helpers => {
 
       // Recovery after a coordinator/content reload: resume exactly the persisted batch first.
       if (state.batchId) {
-        await finishBatch(friendId, state, await waitForBatch(state.batchId, friendId));
+        const rolling = { concurrency: (await speedProfile()).concurrency, disabled: false };
+        await finishBatch(friendId, state, await waitForBatch(state.batchId, friendId, status => topUpBatch(friendId, state, status, rolling)));
         return;
       }
 
@@ -416,7 +464,8 @@ OWEH.register("friend-eggs", helpers => {
         await continueAfterEggFailure(friendId, `Friend eggs: could not open egg tabs (${opened.reason || opened.error || "unknown"})`);
         return;
       }
-      await finishBatch(friendId, state, await waitForBatch(batchId, friendId));
+      const rolling = { concurrency: profile.concurrency, disabled: false };
+      await finishBatch(friendId, state, await waitForBatch(batchId, friendId, status => topUpBatch(friendId, state, status, rolling)));
     } catch (error) {
       diagnosticLog?.("error", "friend-eggs", "step.exception", {
         friendId: activeFriendId || routes.currentFriendId(), message: error?.message || String(error), stack: error?.stack || ""

@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-memory.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-memory.js", "domain/species-shape.js", "bg/species-shapes.js", "bg/state-health.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -19,8 +19,9 @@ const workerManager = globalThis.OWEH_BG?.workerManager;
 const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
 const speciesMemory = globalThis.OWEH_BG?.speciesMemory;
+const speciesShapes = globalThis.OWEH_BG?.speciesShapes;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesMemory || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesMemory || !speciesShapes || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -50,6 +51,15 @@ function ensureWorkerHealthAlarm() {
   chrome.alarms.create(WORKER_HEALTH_ALARM, { periodInMinutes: WORKER_HEALTH_INTERVAL_MINUTES });
 }
 
+// v5.4.0: back-fill the silhouette library from answers confirmed before it existed (once).
+function migrateSpeciesShapes() {
+  speciesShapes.migrateFromMemory().then(result => {
+    if (result && !result.skipped) diagnostic("info", "species", "shapes.migrated", result);
+  }).catch(error => diagnostic("warning", "species", "shapes.migration-failed", { message: error?.message || String(error) }));
+}
+
+chrome.runtime.onInstalled.addListener(migrateSpeciesShapes);
+chrome.runtime.onStartup.addListener(migrateSpeciesShapes);
 chrome.runtime.onInstalled.addListener(disableLegacyDailyAlarm);
 chrome.runtime.onInstalled.addListener(ensureWorkerHealthAlarm);
 chrome.runtime.onStartup.addListener(disableLegacyDailyAlarm);
@@ -184,7 +194,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const speciesMemoryHandlers = {
     speciesMemoryLearn: () => speciesMemory.learn(message),
     speciesStatsBump: () => speciesMemory.bumpStats(message),
-    speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message)
+    speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message),
+    speciesShapeLearn: () => speciesShapes.learn(message),
+    speciesShapeMerge: () => speciesShapes.merge(message)
   };
   if (speciesMemoryHandlers[message?.type]) {
     speciesMemoryHandlers[message.type]().then(sendResponse)

@@ -10,7 +10,7 @@ const vm = require("node:vm");
 function setup({ eggCount = 25, sweepActive = true, turnStrategy = "all", initialStore = {} } = {}) {
   const clock = { now: 1000000 };
   const store = { ...initialStore };
-  const log = { opened: [], statuses: [], finished: 0, finishOptions: [], stopped: 0, reloads: 0, expired: 0, forcedStops: 0, phases: [] };
+  const log = { opened: [], extended: [], maxInFlight: 0, statuses: [], finished: 0, finishOptions: [], stopped: 0, reloads: 0, expired: 0, forcedStops: 0, phases: [] };
   const hatchery = { eggs: Array.from({ length: eggCount }, (_, i) => ({ id: String(7000 + i), href: `#!/?src=pets&sub=profile&usr=555&pet=${7000 + i}` })) };
   let batch = null;
   let pollsUntilDone = 2;
@@ -35,6 +35,18 @@ function setup({ eggCount = 25, sweepActive = true, turnStrategy = "all", initia
       if (message.type === "eggBatchStatus") {
         if (!batch || batch.id !== message.batchId) return { ok: false, reason: "unknown-batch" };
         batch.polls += 1;
+        if (page.rolling) {
+          // Rolling fake: `page.rolling` eggs resolve per poll; the batch is done once all are.
+          batch.resolved = Math.min(batch.eggs.length, (batch.resolved || 0) + page.rolling);
+          const resolvedIds = batch.eggs.slice(0, batch.resolved);
+          const done = batch.resolved >= batch.eggs.length;
+          if (done && turnStrategy === "all") hatchery.eggs = hatchery.eggs.filter(egg => !batch.eggs.includes(egg.id));
+          return {
+            ok: true, expected: batch.eggs.length, resolved: batch.resolved, turned: batch.resolved, already: 0, failed: 0,
+            systemFailed: 0, timedOut: 0, open: batch.eggs.length - batch.resolved,
+            results: Object.fromEntries(resolvedIds.map(id => [id, { state: "turned", reason: "ui-confirmed" }])), done
+          };
+        }
         if (batch.expired) {
           const results = Object.fromEntries(batch.eggs.map(id => [id, { state: "timeout", reason: "test-expired" }]));
           return { ok: true, expected: batch.eggs.length, resolved: batch.eggs.length, turned: 0, already: 0, failed: batch.eggs.length, systemFailed: 0, timedOut: batch.eggs.length, open: 0, results, done: true };
@@ -54,6 +66,18 @@ function setup({ eggCount = 25, sweepActive = true, turnStrategy = "all", initia
           };
         }
         return { ok: true, expected: batch.eggs.length, resolved: 1, turned: 1, already: 0, failed: 0, systemFailed: 0, timedOut: 0, open: batch.eggs.length - 1, results: {}, done: false };
+      }
+      if (message.type === "eggBatchExtend") {
+        log.extended.push(message);
+        if (!page.rolling) return { ok: false, error: "unexpected " + message.type };
+        if (!batch || batch.id !== message.batchId) return { ok: false, reason: "unknown-batch" };
+        const resolved = batch.resolved || 0;
+        if (resolved >= batch.eggs.length) return { ok: false, reason: "done" };
+        const room = Math.max(0, 10 - (batch.eggs.length - resolved));
+        const added = message.eggs.filter(egg => !batch.eggs.includes(egg.id)).slice(0, room).map(egg => egg.id);
+        batch.eggs.push(...added);
+        log.maxInFlight = Math.max(log.maxInFlight, batch.eggs.length - resolved);
+        return { ok: true, added: added.length, addedIds: added, expected: batch.eggs.length };
       }
       if (message.type === "eggBatchExpire") { log.expired += 1; if (batch) batch.expired = true; return { ok: true }; }
       if (message.type === "eggBatchStop") { log.forcedStops += 1; return { ok: true, closed: batch?.eggs?.length || 0 }; }
@@ -257,6 +281,30 @@ function setup({ eggCount = 25, sweepActive = true, turnStrategy = "all", initia
     assert.equal(env.store.owehEggTabConcurrency, 15);
     assert.equal(env.log.reloads, 1, "130 eggs still require only one final Hatchery reload");
     assert.equal(env.log.finished, 1);
+  }
+
+  // Rolling window: freed slots are topped up inside the running batch, so 25 eggs need ONE
+  // batch open instead of three, never more than 10 unresolved tabs, every egg charged once.
+  {
+    const env = setup({ eggCount: 25 });
+    env.page.rolling = 3;
+    for (let round = 0; round < 4 && !env.log.finished; round += 1) await env.api.process();
+    assert.equal(env.log.opened.length, 1, "a rolling batch is opened once and then topped up");
+    assert.ok(env.log.extended.length >= 5, "freed slots are handed to queued eggs");
+    assert.ok(env.log.maxInFlight <= 10, `never more than the adaptive limit in flight (${env.log.maxInFlight})`);
+    const sent = [...env.log.opened.flatMap(request => request.eggs), ...env.log.extended.flatMap(request => request.eggs)].map(egg => egg.id);
+    assert.equal(new Set(sent).size, 25, "every egg reaches a tab");
+    assert.equal(env.log.reloads, 1, "still exactly one final verification reload");
+    assert.equal(env.log.finished, 1);
+  }
+
+  // An older background without eggBatchExtend: the first refusal turns top-ups off for the
+  // batch and un-charges the eggs, so plain back-to-back batches still drain the snapshot.
+  {
+    const env = setup({ eggCount: 25 });
+    for (let round = 0; round < 6 && !env.log.finished; round += 1) await env.api.process();
+    assert.equal(env.log.extended.length, 2, "one refused top-up per batch with queued eggs left, then no more");
+    assert.deepEqual(env.log.opened.map(request => request.eggs.length), [10, 10, 5]);
   }
 
   console.log("friend eggs tests passed");

@@ -31,7 +31,7 @@ const eggDiag = (level, event, data = {}) => globalThis.OWEH_BG?.diagnosticLog?.
 const eggLightweightTabs = globalThis.OWEH_BG?.lightweightTabs || null;
 
 function emptyEggState() {
-  return { batchId: null, source: null, friendId: null, coordinatorTabId: null, expected: 0, startedAt: 0, eggIds: [], tabs: {}, results: {}, leftover: {} };
+  return { batchId: null, source: null, friendId: null, coordinatorTabId: null, expected: 0, startedAt: 0, extendedAt: 0, eggIds: [], tabs: {}, results: {}, leftover: {} };
 }
 
 const eggSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -104,6 +104,7 @@ function summarizeEggState(state) {
     open: Object.keys(state.tabs || {}).length,
     leftover: Object.keys(state.leftover || {}).length,
     startedAt: Number(state.startedAt || 0),
+    extendedAt: Number(state.extendedAt || 0),
     results: Object.fromEntries(Object.entries(state.results || {}).map(([eggId, result]) => [eggId, { state: String(result?.state || ""), reason: String(result?.reason || "").slice(0, 160) }])),
     done: Number(state.expected || 0) > 0 && results.length >= Number(state.expected || 0)
   };
@@ -286,18 +287,57 @@ async function isEggBatchCoordinator(source, sender) {
   return false;
 }
 
+async function eggTabLimit() {
+  const configured = Number((await chrome.storage.local.get({ owehEggTabConcurrency: EGG_TAB_DEFAULT })).owehEggTabConcurrency);
+  return Math.max(1, Math.min(EGG_TAB_MAX, Number.isFinite(configured) ? Math.floor(configured) : EGG_TAB_DEFAULT));
+}
+
+function validBatchEggs(list, source) {
+  const valid = (Array.isArray(list) ? list : [])
+    .map(egg => ({ id: String(egg?.id || ""), usr: String(egg?.usr || "") }))
+    .filter(egg => /^\d+$/.test(egg.id) && (source === "own" || /^\d+$/.test(egg.usr)));
+  return [...new Map(valid.map(egg => [egg.id, egg])).values()];
+}
+
+// Tabs are opened a moment apart so an adaptive 10–15 page-load burst does not hit the game in
+// the same instant. Opens for one batch (the first window and every later top-up) share one
+// queue, so a top-up never doubles the opening rate while the first window is still staggering.
+let eggTabOpening = { batchId: null, run: Promise.resolve() };
+function openEggTabs(batchId, eggs, source) {
+  const previous = eggTabOpening.batchId === batchId ? eggTabOpening.run : Promise.resolve();
+  const run = previous.then(async () => {
+    for (const egg of eggs) {
+      await eggSleep(EGG_TAB_STAGGER_MS);
+      const tabId = await createEggTab(eggTabUrl(egg), source === "sweep");
+      const registered = await withEggState(state => {
+        if (state.batchId !== batchId) return false;
+        if (tabId == null) {
+          state.results[egg.id] = { state: "failed", reason: "tab-create-failed" };
+          eggDiag("error", "tab.create-failed", { batchId, eggId: egg.id });
+        } else {
+          state.tabs[String(tabId)] = { eggId: egg.id, openedAt: Date.now() };
+          eggDiag("info", "tab.opened", { batchId, tabId, eggId: egg.id });
+        }
+        return true;
+      });
+      if (registered && tabId != null) scheduleEggTabWatchdog(tabId);
+      if (registered && tabId == null) publishEggBatchProgress(batchId).catch(() => {});
+      // The batch was stopped while this tab was still being created: it is ours, close it.
+      if (!registered && tabId != null) await removeTabQuietly(tabId);
+    }
+  }).catch(error => console.error("[OviPets Helper] egg tab batch failed", error));
+  eggTabOpening = { batchId, run };
+  return run;
+}
+
 async function openEggBatch(message, sender) {
   const source = String(message.source || "sweep");
   if (!(await isEggBatchCoordinator(source, sender))) {
     eggDiag("warning", "batch.rejected", { source, reason: "not-egg-batch-coordinator", senderTabId: sender?.tab?.id ?? null });
     return { ok: false, reason: "not-egg-batch-coordinator" };
   }
-  const configured = Number((await chrome.storage.local.get({ owehEggTabConcurrency: EGG_TAB_DEFAULT })).owehEggTabConcurrency);
-  const limit = Math.max(1, Math.min(EGG_TAB_MAX, Number.isFinite(configured) ? Math.floor(configured) : EGG_TAB_DEFAULT));
-  const valid = (Array.isArray(message.eggs) ? message.eggs : [])
-    .map(egg => ({ id: String(egg?.id || ""), usr: String(egg?.usr || "") }))
-    .filter(egg => /^\d+$/.test(egg.id) && (source === "own" || /^\d+$/.test(egg.usr)));
-  const eggs = [...new Map(valid.map(egg => [egg.id, egg])).values()].slice(0, limit);
+  const limit = await eggTabLimit();
+  const eggs = validBatchEggs(message.eggs, source).slice(0, limit);
   if (!eggs.length) {
     eggDiag("warning", "batch.rejected", { source, reason: "no-valid-eggs" });
     return { ok: false, reason: "no-valid-eggs" };
@@ -318,7 +358,7 @@ async function openEggBatch(message, sender) {
     const startedAt = Date.now();
     Object.assign(state, {
       batchId, source, friendId: String(message.friendId || ""), coordinatorTabId: sender?.tab?.id ?? null, expected: eggs.length,
-      startedAt, eggIds: eggs.map(egg => egg.id), tabs: {}, results: {}
+      startedAt, extendedAt: 0, eggIds: eggs.map(egg => egg.id), tabs: {}, results: {}
     });
     return { ok: true, finished, previousBatchId, startedAt };
   });
@@ -332,30 +372,43 @@ async function openEggBatch(message, sender) {
   scheduleEggBatchWatchdog(batchId, admission.startedAt);
   for (const [id, eggId] of admission.finished) { clearEggAlarm(eggTabAlarmName(id)); await removeVerifiedEggTab(id, eggId); }
 
-  // Tabs are opened a moment apart so an adaptive 10–15 page-load burst does not hit the game in the same instant.
-  (async () => {
-    for (const egg of eggs) {
-      await eggSleep(EGG_TAB_STAGGER_MS);
-      const tabId = await createEggTab(eggTabUrl(egg), source === "sweep");
-      const registered = await withEggState(state => {
-        if (state.batchId !== batchId) return false;
-        if (tabId == null) {
-          state.results[egg.id] = { state: "failed", reason: "tab-create-failed" };
-          eggDiag("error", "tab.create-failed", { batchId, eggId: egg.id });
-        } else {
-          state.tabs[String(tabId)] = { eggId: egg.id, openedAt: Date.now() };
-          eggDiag("info", "tab.opened", { batchId, tabId, eggId: egg.id });
-        }
-        return true;
-      });
-      if (registered && tabId != null) scheduleEggTabWatchdog(tabId);
-      if (registered && tabId == null) publishEggBatchProgress(batchId).catch(() => {});
-      // The batch was stopped while this tab was still being created: it is ours, close it.
-      if (!registered && tabId != null) await removeTabQuietly(tabId);
-    }
-  })().catch(error => console.error("[OviPets Helper] egg tab batch failed", error));
-
+  openEggTabs(batchId, eggs, source);
   return { ok: true, batchId, expected: eggs.length };
+}
+
+// Rolling window (v5.4.0): instead of waiting for the slowest tab of a batch before the next
+// batch may start, the coordinator tops the running batch up as soon as tabs resolve. The batch
+// never has more than `limit` unresolved eggs, and a finished batch is never reopened.
+async function extendEggBatch(message, sender) {
+  const source = String(message.source || "sweep");
+  if (!(await isEggBatchCoordinator(source, sender))) return { ok: false, reason: "not-egg-batch-coordinator" };
+  const limit = await eggTabLimit();
+  const candidates = validBatchEggs(message.eggs, source);
+  if (!candidates.length) return { ok: false, reason: "no-valid-eggs" };
+  const batchId = String(message.batchId || "");
+  const outcome = await withEggState(state => {
+    if (!batchId || state.batchId !== batchId || state.source !== source) return { ok: false, reason: "unknown-batch" };
+    if (state.coordinatorTabId != null && Number(state.coordinatorTabId) !== Number(sender?.tab?.id)) return { ok: false, reason: "not-egg-batch-coordinator" };
+    const expected = Number(state.expected || 0);
+    const resolved = Object.keys(state.results || {}).length;
+    if (expected > 0 && resolved >= expected) return { ok: false, reason: "done" };
+    const room = Math.max(0, limit - (expected - resolved));
+    const known = new Set((state.eggIds || []).map(String));
+    const eggs = candidates.filter(egg => !known.has(egg.id)).slice(0, room);
+    if (!eggs.length) return { ok: true, eggs, expected };
+    const extendedAt = Date.now();
+    state.eggIds = [...(state.eggIds || []), ...eggs.map(egg => egg.id)];
+    state.expected = expected + eggs.length;
+    state.extendedAt = extendedAt;
+    return { ok: true, eggs, expected: state.expected, extendedAt };
+  });
+  if (!outcome.ok) return outcome;
+  if (outcome.eggs.length) {
+    scheduleEggBatchWatchdog(batchId, outcome.extendedAt);
+    eggDiag("info", "batch.extended", { source, batchId, added: outcome.eggs.length, expected: outcome.expected });
+    openEggTabs(batchId, outcome.eggs, source);
+  }
+  return { ok: true, batchId, added: outcome.eggs.length, addedIds: outcome.eggs.map(egg => egg.id), expected: outcome.expected };
 }
 
 async function eggTabAssignment(sender) {
@@ -460,7 +513,9 @@ async function expireEggBatch(batchId, reason = "batch watchdog exceeded 120s") 
 async function enforceEggWatchdogs() {
   const state = await readEggState();
   const now = Date.now();
-  if (state.batchId && state.startedAt && now - Number(state.startedAt) >= EGG_BATCH_WATCHDOG_MS) {
+  // A rolling batch is measured from its latest top-up; each tab keeps its own 60s watchdog.
+  const batchClock = Math.max(Number(state.startedAt || 0), Number(state.extendedAt || 0));
+  if (state.batchId && batchClock && now - batchClock >= EGG_BATCH_WATCHDOG_MS) {
     await expireEggBatch(state.batchId);
     return;
   }
@@ -524,6 +579,7 @@ chrome.runtime.onStartup?.addListener(() => {
 function handleEggTabMessage(message, sender, respond) {
   const handlers = {
     eggBatchOpen: () => openEggBatch(message, sender),
+    eggBatchExtend: () => extendEggBatch(message, sender),
     eggTabAssignment: () => eggTabAssignment(sender),
     eggTabResult: () => eggTabResult(message, sender),
     eggBatchStatus: () => eggBatchStatus(message),

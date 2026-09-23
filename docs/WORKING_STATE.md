@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-24
-Current release baseline: v5.3.17
+Current release baseline: v5.4.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.3.17 fixes the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
+Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
 ## Goal
 
@@ -198,6 +198,15 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
+
+### v5.4.0 silhouette species solver + rolling Fast Sweep
+
+- Root cause of flat species accuracy: `/img/pet/<id>/credit-challenge` renders a random species with random colors/genes, so the exact 16x16 luminance fingerprint never repeats (live stats 336 correct / 4,617 detected). The silhouette (alpha mask) is fixed per species.
+- New pure `domain/species-shape.js` (content + service worker): 32x32 alpha mask as 256 hex chars, Hamming distance, `rankOptions` (≤44 → `shape-match`; else an unlearned option → `shape-unknown`; else `shape-nearest`), dedupe ≤6, max 12 examples per species.
+- New `bg/species-shapes.js`: serialized writer for `owehSpeciesShapes` (`speciesShapeLearn`, `speciesShapeMerge`), plus a resumable one-time back-fill (`owehSpeciesShapesMigration`) that re-fetches confirmed credit-challenge URLs from `owehSpeciesMemory` (concurrency 3, retried up to 3 starts).
+- `jobs/species-answer.js` order: confirmed exact memory → silhouette ranking → random guess. Stats gain `shapeAnswers` / `shapeCorrect`. Inspector import/export includes `shapes`.
+- Full Sweep rolling window: new background `eggBatchExtend` tops up the running batch (room = limit − unresolved; refuses unknown/finished batches and non-coordinators); `extendedAt` restarts the batch watchdog; tab opens for one batch share one staggered queue. `jobs/friend-eggs.js` `topUpBatch` charges attempts before the request and un-charges refused eggs; the 2-minute coordinator timeout counts from the latest top-up; adaptive speed is normalized per window of `concurrency` eggs. Missing `eggBatchExtend` disables top-ups for that batch (plain batches).
+- New `tests/species-shape.test.js`; rolling-window cases added to `egg-tabs.test.js` and `friend-eggs.test.js`. Full suite **66/66 PASS**. Live smoke pending an extension reload.
 
 ### v5.3.17 breeding dependency-wiring hotfix
 

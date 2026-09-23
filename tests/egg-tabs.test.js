@@ -291,6 +291,34 @@ const eggs = count => Array.from({ length: count }, (_, i) => ({ id: String(9000
   await request({ type: "eggBatchStop", source: "sweep" });
   state.owehEggTabConcurrency = 10;
 
+  // Rolling window: the coordinator tops a running batch up to the limit of unresolved tabs.
+  await request({ type: "eggBatchStop" });
+  const rollBefore = created.length;
+  const rollOpen = await request({ type: "eggBatchOpen", source: "sweep", batchId: "roll", friendId: "555", eggs: eggs(3) }, fromTab(workerTabId));
+  assert(rollOpen.ok && rollOpen.expected === 3, "rolling test batch opens");
+  const foreignExtend = await request({ type: "eggBatchExtend", source: "sweep", batchId: "roll", friendId: "555", eggs: eggs(12) }, fromTab(FOREIGN_TAB));
+  assert(foreignExtend.ok === false && foreignExtend.reason === "not-egg-batch-coordinator", "only the coordinator may extend a batch");
+  const extended = await request({ type: "eggBatchExtend", source: "sweep", batchId: "roll", friendId: "555", eggs: eggs(12) }, fromTab(workerTabId));
+  assert(extended.ok && extended.added === 7 && extended.expected === 10, `extension fills up to 10 unresolved: ${JSON.stringify(extended)}`);
+  assert(JSON.stringify(extended.addedIds) === JSON.stringify(["9003", "9004", "9005", "9006", "9007", "9008", "9009"]), "eggs already in the batch are not added twice");
+  for (let i = 0; i < 200 && Object.keys(state.owehEggTabs?.tabs || {}).length < 10; i += 1) await sleep(5);
+  assert(created.length - rollBefore === 10, `one tab per egg across open + extension, got ${created.length - rollBefore}`);
+  const full = await request({ type: "eggBatchExtend", source: "sweep", batchId: "roll", friendId: "555", eggs: eggs(11) }, fromTab(workerTabId));
+  assert(full.ok && full.added === 0, "no room while 10 tabs are unresolved");
+  const rollTabs = Object.entries(state.owehEggTabs.tabs);
+  const [firstTabId, firstRecord] = rollTabs[0];
+  await request({ type: "eggTabResult", eggId: firstRecord.eggId, state: "turned" }, fromTab(Number(firstTabId)));
+  const refill = await request({ type: "eggBatchExtend", source: "sweep", batchId: "roll", friendId: "555", eggs: eggs(11) }, fromTab(workerTabId));
+  assert(refill.ok && refill.added === 1 && refill.expected === 11, `a resolved tab frees one slot: ${JSON.stringify(refill)}`);
+  assert(state.owehEggTabs.extendedAt > 0, "a top-up restarts the batch watchdog clock");
+  const wrongBatch = await request({ type: "eggBatchExtend", source: "sweep", batchId: "other", friendId: "555", eggs: eggs(12) }, fromTab(workerTabId));
+  assert(wrongBatch.ok === false && wrongBatch.reason === "unknown-batch", "an unknown batch cannot be extended");
+  await sleep(40);
+  await request({ type: "eggBatchExpire", batchId: "roll" });
+  const afterDone = await request({ type: "eggBatchExtend", source: "sweep", batchId: "roll", friendId: "555", eggs: [{ id: "9500", usr: "555" }] }, fromTab(workerTabId));
+  assert(afterDone.ok === false && afterDone.reason === "done", "a finished batch is never reopened");
+  await request({ type: "eggBatchStop", source: "sweep" });
+
   // Per-tab watchdog: a tab with no report after 60s (40ms in this test) is marked timeout and force-closed.
   await request({ type: "eggBatchStop" });
   const wdOpen = await request({ type: "eggBatchOpen", source: "sweep", batchId: "wd-tab", friendId: "555", eggs: eggs(2) }, fromTab(workerTabId));

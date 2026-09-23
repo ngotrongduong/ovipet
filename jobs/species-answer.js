@@ -1,10 +1,10 @@
 "use strict";
 
 // Automatic "Name the Species" answering — one of only two things this extension does on
-// its own (the other is passive data collection). Behavior is unchanged from v4.22.0–v5.0.x:
-// when the verification dialog appears, reuse a previously confirmed answer for that exact
-// image (never one recorded wrong), otherwise click a random option that hasn't been ruled
-// out, then click OK, exactly like a human would. Manual alert (tab focus + sound) remains
+// its own (the other is passive data collection). When the verification dialog appears, reuse
+// a previously confirmed answer for that exact image (never one recorded wrong); otherwise
+// (v5.4.0) pick the option whose learned silhouette is closest to the image, falling back to a
+// random option that hasn't been ruled out; then click OK, exactly like a human would. Manual alert (tab focus + sound) remains
 // only as a fallback when the OK button isn't there yet.
 //
 // Lives in its own file so the always-on watcher is independent of every job: nothing here
@@ -17,6 +17,9 @@ OWEH.register("species-answer", helpers => {
   // The dialog instance we're already handling; reset when it closes (see monitor()).
   let watchedContainer = null;
   let processing = false;
+  // { species, method } of the option autoAnswer is about to click, so pending knows how it
+  // was chosen ("memory", "shape-match", "shape-unknown", "shape-nearest", "guess").
+  let nextChoice = null;
 
   function dialogElement() {
     return [...document.querySelectorAll('[role="dialog"], .ui-dialog, .ui-dialog-content')]
@@ -76,7 +79,8 @@ OWEH.register("species-answer", helpers => {
       await storageSet({ owehSpeciesStats: stats });
     }
     const line = document.querySelector("#oweh-species-stats");
-    const text = `Species checks: ${stats.detected} detected · ${stats.correct} correct · ${stats.manualAlerts} manual prompt(s)`;
+    const shapeText = Number(stats.shapeAnswers || 0) ? ` · shape ${Number(stats.shapeCorrect || 0)}/${Number(stats.shapeAnswers)}` : "";
+    const text = `Species checks: ${stats.detected} detected · ${stats.correct} correct · ${stats.manualAlerts} manual prompt(s)${shapeText}`;
     if (line && line.textContent !== text) line.textContent = text;
     return stats;
   }
@@ -121,10 +125,12 @@ OWEH.register("species-answer", helpers => {
     }
   }
 
-  async function memoryKeys(container) {
+  // { keys, shape }: exact memory keys plus the Inspector's color-independent silhouette.
+  async function questionIdentity(container) {
     const keys = imageSources(container);
     const fingerprint = await imageFingerprint(container);
     if (fingerprint) keys.push(fingerprint);
+    let shape = null;
     // The Inspector can fingerprint a lazy/cross-origin challenge image through the guarded
     // background image fetcher. Reuse that exact identity so knowledge learned on one egg can
     // influence a visually identical challenge on another egg.
@@ -133,8 +139,13 @@ OWEH.register("species-answer", helpers => {
       if (inspector?.monitor) await inspector.monitor();
       const identity = await inspector?.getActiveQuestionIdentity?.();
       for (const key of identity?.keys || []) if (key) keys.push(key);
+      shape = identity?.shape || null;
     } catch {}
-    return [...new Set(keys)];
+    return { keys: [...new Set(keys)], shape };
+  }
+
+  async function memoryKeys(container) {
+    return (await questionIdentity(container)).keys;
   }
 
   // Small (64x64) JPEG thumbnail, not the full-size image, to keep chrome.storage.local's
@@ -156,8 +167,9 @@ OWEH.register("species-answer", helpers => {
   // Records what actually happened for this exact verification image — win or lose — under
   // every key that identifies it (source URLs plus the perceptual fingerprint), so repeat
   // sightings get smarter over time. A wrong guess is remembered too, so it's never retried.
-  async function recordOutcome(container, species, wasCorrect, reason = "") {
+  async function recordOutcome(container, species, wasCorrect, reason = "", method = "") {
     if (!species) return;
+    const methodPatch = wasCorrect && method === "shape-match" ? { shapeCorrect: 1 } : {};
     // The Inspector is the authoritative learner in normal builds because it can combine DOM,
     // network outcome, Answer IDs and a cross-origin-safe image fingerprint. Its write is
     // idempotent, so the UI observer and network recorder may both report the same outcome.
@@ -165,7 +177,8 @@ OWEH.register("species-answer", helpers => {
       const inspector = OWEH.get("species-inspector")?.api;
       const handled = await inspector?.recordOutcome?.(species, wasCorrect, reason || (wasCorrect ? "turn-confirmed" : "answer-rejected"));
       if (handled?.handled) {
-        await updateStats({});
+        // pending is cleared before this runs, so each submitted answer reaches here once.
+        await updateStats(methodPatch);
         return;
       }
     } catch {}
@@ -196,7 +209,7 @@ OWEH.register("species-answer", helpers => {
       };
     }
     await storageSet({ owehSpeciesMemory: memory });
-    await updateStats(wasCorrect ? { correct: 1 } : { wrong: 1 });
+    await updateStats(wasCorrect ? { correct: 1, ...methodPatch } : { wrong: 1 });
   }
 
   // Tracks the answer being submitted so its outcome can be recorded. Registered once, in
@@ -215,7 +228,9 @@ OWEH.register("species-answer", helpers => {
     // Selecting a different option is not evidence that the previous answer was wrong.
     // OviPets can reuse the same dialog node across retries/navigation, and only the explicit
     // incorrect Error/network response is authoritative negative evidence.
-    pending = { container, species: choice, submittedAt: 0 };
+    const method = nextChoice?.species === choice ? nextChoice.method : "manual";
+    nextChoice = null;
+    pending = { container, species: choice, submittedAt: 0, method };
   }, true);
 
   async function requestAttention(container) {
@@ -227,7 +242,7 @@ OWEH.register("species-answer", helpers => {
   async function autoAnswer(container) {
     const options = optionElements(container);
     if (!options.length || !okButton(container)) return false;
-    const keys = await memoryKeys(container);
+    const { keys, shape } = await questionIdentity(container);
     const memory = await storageGet("owehSpeciesMemory", {});
     const wrongForImage = new Set();
     let confidentSpecies = null;
@@ -239,7 +254,20 @@ OWEH.register("species-answer", helpers => {
     }
     const eligible = options.filter(({ text }) => !wrongForImage.has(text));
     const pool = eligible.length ? eligible : options;
-    const choice = pool.find(({ text }) => text === confidentSpecies) || pool[Math.floor(Math.random() * pool.length)];
+    // 1) the exact image was already answered correctly; 2) otherwise the closest learned
+    // silhouette among the options (domain/species-shape.js); 3) a random eligible option.
+    let choice = pool.find(({ text }) => text === confidentSpecies) || null;
+    let method = choice ? "memory" : "guess";
+    const shapeApi = OWEH.domain?.speciesShape;
+    if (!choice && shapeApi && shape) {
+      const library = await storageGet("owehSpeciesShapes", {});
+      const ranked = shapeApi.rankOptions({ shape, options: pool.map(({ text }) => text), library });
+      choice = pool.find(({ text }) => text === ranked?.species) || null;
+      if (choice) method = ranked.method;
+    }
+    if (!choice) choice = pool[Math.floor(Math.random() * pool.length)];
+    if (method === "shape-match") updateStats({ shapeAnswers: 1 }).catch(() => {});
+    nextChoice = { species: choice.text, method };
     choice.element.click();
     // Fast path: wait for the real OK control to become usable instead of sleeping for the
     // global page-load delay (historically ~1.5s on every quiz).
@@ -252,7 +280,7 @@ OWEH.register("species-answer", helpers => {
     if (!ok || ok.disabled) return false;
     await sleep(100);
     ok.click();
-    setStatus(`Name the Species — auto-selected "${choice.text}" and confirmed`);
+    setStatus(`Name the Species — auto-selected "${choice.text}" (${method}) and confirmed`);
     return true;
   }
 
@@ -336,7 +364,7 @@ OWEH.register("species-answer", helpers => {
     if (result?.ok && pending) {
       const answered = pending;
       pending = null;
-      await recordOutcome(answered.container, answered.species, true, result.reason || "turn-confirmed");
+      await recordOutcome(answered.container, answered.species, true, result.reason || "turn-confirmed", answered.method);
       return;
     }
     // Timeouts/navigation failures are not evidence that the selected species was wrong. The

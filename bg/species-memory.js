@@ -16,7 +16,9 @@
   const STATS_KEY = "owehSpeciesStats";
   const ANSWER_ID_KEY = "owehSpeciesAnswerIds";
   const MAX_MEMORY_KEYS = 900;
-  const STAT_FIELDS = ["detected", "learnedAnswers", "manualHandoffs", "manualAlerts", "correct", "wrong"];
+  // shapeAnswers/shapeCorrect: answers picked by a close silhouette match (v5.4.0) and how many
+  // of them the game confirmed.
+  const STAT_FIELDS = ["detected", "learnedAnswers", "manualHandoffs", "manualAlerts", "correct", "wrong", "shapeAnswers", "shapeCorrect"];
   const blankStats = () => Object.fromEntries(STAT_FIELDS.map(field => [field, 0]));
 
   let chain = Promise.resolve();
