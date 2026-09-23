@@ -42,9 +42,9 @@ DB/journal/worker/species/health services split; targeted pet reads added; migra
 
 **Automated local/package gates: VALIDATED. Manual/live/repository gates: OPEN.**
 
-Completed: syntax, manifest/load-order, release-version consistency and clean-package regression suite.
+Completed: syntax, manifest/load-order, release-version consistency, clean-package regression suite.
 
-Still required: Windows Chrome unpacked smoke, worker recovery/manual QA, two live OviPets DOM contracts, multi-hour soak, and GitHub clean-checkout CI after Phase 0 repository import.
+Still required: Windows Edge unpacked smoke, worker recovery/manual QA, two live OviPets DOM contracts, multi-hour soak, and GitHub clean-checkout CI after Phase 0 repository import.
 
 ## Change-size policy
 

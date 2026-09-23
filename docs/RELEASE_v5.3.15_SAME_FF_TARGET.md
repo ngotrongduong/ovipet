@@ -22,15 +22,19 @@ Add a second Breeding Campaign strategy whose goal is to improve an existing Bod
 
 The existing **Pure-line campaign** remains unchanged. It still seeks complementary Body 1 FF structure. The new **Same-FF target campaign** deliberately keeps the female on the same Body 1 FF line and optimizes the other colors.
 
+## Regression examples
+
+- A female and male with the same FF mask can pair even when stored in arbitrary enclosures.
+- A male with a different FF mask is excluded even if his secondary colors are perfect.
+- A related same-FF male is excluded.
+- A same-FF male with best secondary distance 12 beats another at 14.
+- A female with no exact Body 1 FF pair remains unpaired.
+
 ## Verification
 
 - JavaScript syntax: PASS
-- Release consistency: PASS
-- Full suite: 59/59 PASS
-- Focused Same-FF breeding soak: 20 rounds × 6 files = 120 executions, 0 failures
-- Clean-extracted final ZIP: 59/59 PASS
-- Final ZIP SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`
+- Full Node suite: 59/59 PASS before release packaging
 
 ## Runtime import
 
-The packaged publish helper targets `release/v5.3.15-runtime-import`. Issue #2 remains open until the complete runtime/test tree is imported and clean-checkout CI reproduces the same gates.
+The packaged publish helper targets `release/v5.3.15-runtime-import`.

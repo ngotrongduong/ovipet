@@ -1,6 +1,6 @@
 # OviPets Extension Architecture
 
-This is the durable target architecture for the v5.3.0+ stability/modularization program. It describes dependency direction and invariants; docs/WORKING_STATE.md describes what is actually implemented today.
+This is the durable target architecture for the v5.3.0+ stability/modularization program. docs/WORKING_STATE.md describes what is implemented today.
 
 ## Core invariants
 
@@ -12,158 +12,47 @@ This is the durable target architecture for the v5.3.0+ stability/modularization
 - Start is not considered running until an explicit ACK is received.
 - Only tabs created and still owned by the extension may be closed automatically.
 - MV3 service-worker memory is disposable; durable state is authoritative.
-- Feature cancellation/state is isolated unless coupling is explicitly documented.
-- A command being dispatched is not the same as a game mutation being confirmed.
+- Feature cancellation/state is isolated unless coupling is documented.
+- Dispatched commands are not confirmed mutations.
 
 ## Dependency direction
 
-UI / Jobs
-  -> Features
-  -> Core services + DOM adapters + Domain
-  -> Chrome APIs / page bridge / persisted state
-
-Dependencies should point downward. Domain code must not import browser/platform behavior.
-
-## Layers
+UI / Jobs -> Features -> Core services + DOM adapters + Domain -> Chrome APIs / page bridge / persisted state.
 
 ### domain/
-
-Pure deterministic calculations only.
-
-Target modules:
-
-- colors.js
-- pedigree.js
-- breeding-score.js
-- breeding-plan.js
-
-Forbidden here: document, window, chrome, timers, storage and game commands.
+Pure deterministic calculations: colors.js, pedigree.js, breeding-score.js, breeding-plan.js. No document/window/chrome/timers/storage/game commands.
 
 ### dom/
-
-Read external OviPets pages and return stable data.
-
-Target modules:
-
-- routes.js
-- hatchery.js
-- profile.js
-- overview.js
-- friends.js
-- chat.js
-
-DOM modules own selectors and interpretation, not automation policy.
+Route-specific OviPets readers: routes.js, hatchery.js, profile.js, overview.js, friends.js, chat.js. DOM modules own selectors/interpretation, not automation policy.
 
 ### core/
-
-Platform-facing reusable services:
-
-- config.js
-- storage-client.js
-- game-bridge.js
-- worker-client.js
-- scheduler.js
-
-These normalize Chrome/message behavior so feature modules do not depend on ad-hoc globals.
+config.js, storage-client.js, game-bridge.js, worker-client.js, scheduler.js.
 
 ### features/
-
-Longer state machines:
-
-- own-eggs.js
-- friend-sweep.js
-- hatchlings.js
-- pet-index.js
-- breeding-campaign.js
-
-Features own their state/cancellation and compose domain + DOM + core services.
+own-eggs.js, friend-sweep.js, hatchlings.js, pet-index.js, breeding-campaign.js.
 
 ### jobs/
+One-button tasks. Replace the broad legacy dependency bag with explicit services over time.
 
-One-button tasks. Existing jobs are already the first modularization boundary.
-
-Jobs should depend on explicit services. The temporary broad legacy dependency bag should shrink and disappear rather than simply move to another file.
+### services/
+Content-side orchestration composed by content.js: diagnostics.js, overview-catalog.js, pet-edit.js, friend-directory.js, retention.js. Each exports `OWEH.services.<name>.createX(deps)` with explicit dependencies (no content.js closure state, no shared bag). Loaded after ui/ and before content.js.
 
 ### ui/
-
-- panel.js
-- dashboard.js
-
-UI renders/dispatches intent. It must not become the authoritative automation state machine.
+panel.js, dashboard.js. UI renders/dispatches intent; it is not authoritative automation state.
 
 ### background/
-
-Target modules:
-
-- state-db.js
-- command-journal.js
-- worker-manager.js
-- egg-tabs.js
-- species-alert.js
-
-background.js should eventually contain top-level Chrome event registration and message routing only.
+state-db.js, command-journal.js, worker-manager.js, egg-tabs.js, species-alert.js. background.js eventually becomes event/message routing only.
 
 ## Shared worker state machine
 
-Expected durable states:
+idle -> claimed -> starting -> running -> stopping/completed/failed -> idle
 
-idle
-  -> claimed
-  -> starting
-  -> running
-  -> stopping / completed / failed
-  -> idle
-
-Required properties:
-
-- claim is atomic;
-- state records owner + generation;
-- start has a bounded deadline;
-- running requires start ACK;
-- heartbeat validates generation;
-- Stop/release/complete validate generation;
-- duplicate and stale messages are harmless;
-- service-worker restart can rehydrate from durable state;
-- dead worker tabs can be cleaned without relying on their content script.
-
-See the worker-state-machine skill and docs/TEST_STRATEGY.md.
+Claim is atomic; state records owner+generation; start has a deadline; running requires ACK; heartbeat/Stop/release/complete validate generation; stale messages are harmless; restart can rehydrate; dead tabs can be cleaned from durable state.
 
 ## DOM scheduling model
 
-The current global refresh model should evolve toward route-aware scheduling:
-
-MutationObserver / navigation
-  -> ignore extension-owned mutations
-  -> classify route + dirty reason
-  -> coalesce
-  -> invoke only relevant modules
-
-Examples:
-
-- Hatchery changes -> egg/hatchling modules.
-- Profile changes -> species/profile modules.
-- Overview changes -> catalog/feed/index modules.
-- Friends/chat changes -> friend/Ninja modules.
-
-## Data model direction
-
-IndexedDB remains the durable pet/task/command source of truth.
-
-Avoid repeatedly materializing the entire pet DB when a job needs only a subset. First optimize by reusing one snapshot per job; add focused query APIs/indexes only after measurement.
-
-Durable command/task history must have bounded retention where recovery no longer needs old rows.
+Mutation/navigation -> ignore extension-owned mutations -> classify route + dirty reason -> coalesce -> invoke only relevant modules.
 
 ## Refactor policy
 
-Move behavior before redesigning it.
-
-Every extraction must:
-
-1. retain/add regression coverage;
-2. preserve storage keys/schema unless migration is included;
-3. preserve DOM contracts unless separately audited;
-4. preserve owner/generation semantics;
-5. pass syntax + full tests;
-6. receive relevant specialist + regression review.
-
-Do not mix a large behavior redesign with a large file move in the same PR.
+Move behavior before redesigning it. Preserve storage/DOM/lifecycle contracts, keep tests green, and do not mix large behavior redesigns with large file moves.

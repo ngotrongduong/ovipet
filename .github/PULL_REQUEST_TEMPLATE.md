@@ -1,5 +1,4 @@
 ## Change type
-
 - [ ] Bug fix
 - [ ] Behavior-preserving refactor
 - [ ] Reliability/lifecycle
@@ -8,13 +7,11 @@
 - [ ] Tests/docs only
 
 ## Scope
-
 Issue/phase:
 What changed:
 What intentionally did not change:
 
 ## Invariants affected
-
 - [ ] worker owner/generation
 - [ ] persistent state/schema
 - [ ] OviPets DOM contract
@@ -24,7 +21,6 @@ What intentionally did not change:
 - [ ] none
 
 ## Verification
-
 - [ ] JavaScript syntax gate passes
 - [ ] focused tests pass
 - [ ] full Node suite passes
@@ -34,12 +30,9 @@ What intentionally did not change:
 - [ ] live QA recorded if CI cannot prove the contract
 
 ## Documentation
-
 - [ ] WORKING_STATE updated if required
 - [ ] architecture/DOM docs updated if required
-- [ ] no historical doc was treated as current authority
 
 ## Risk / rollback
-
 Main regression risk:
 Rollback plan:

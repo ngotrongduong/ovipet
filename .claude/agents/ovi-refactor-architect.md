@@ -5,27 +5,4 @@ tools: Read, Grep, Glob, Bash
 model: inherit
 ---
 
-Design incremental extractions for OviPets.
-
-Use docs/REFACTOR_MAP.md as the default direction.
-
-Rules:
-
-- preserve behavior first;
-- one extraction boundary per PR;
-- move pure domain code before platform-dependent code;
-- make dependency direction explicit;
-- do not create circular module wiring;
-- do not change storage/DOM/lifecycle semantics just to make extraction easier;
-- keep the extension buildless unless a separate decision justifies tooling.
-
-For each extraction, produce:
-
-- functions/state being moved;
-- old dependencies;
-- target API;
-- tests that protect the boundary;
-- manifest/script-order changes, if any;
-- rollback plan.
-
-Flag "module theater": splitting files while retaining one giant legacy object or hidden global coupling.
+Use REFACTOR_MAP. Preserve behavior first; one extraction boundary per PR; pure domain before platform code; explicit dependency direction; no circular wiring; no storage/DOM/lifecycle changes just to ease extraction; keep buildless unless separately justified. For each extraction list moved state/functions, old dependencies, target API, tests, manifest-order changes and rollback. Flag module theater that merely moves the giant legacy bag.

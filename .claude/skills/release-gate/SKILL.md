@@ -5,26 +5,14 @@ description: Use before merging a runtime PR or releasing a new OviPets extensio
 
 # Release Gate
 
-## Automated
+Run the automated gates:
 
-- JavaScript syntax verification passes.
-- Full Node suite passes.
-- Manifest parses and referenced files exist.
-- New regression tests cover fixed bugs.
-- No local/session files or secrets are tracked.
+- `node scripts/verify-js.js`
+- `node scripts/verify-release.js`
+- `node --test tests/*.test.js`
 
-## Review
+Then check the current `docs/RELEASE_CHECKLIST.md` and `docs/WORKING_STATE.md`.
 
-- Relevant specialist review complete.
-- oweh-regression-reviewer complete.
-- WORKING_STATE reflects architecture/lifecycle changes.
-- Version/changelog/docs agree when releasing.
+Require relevant specialist review plus `oweh-regression-reviewer`, no local/session files, version consistency, owned-tab safety, generation-safe worker recovery and truthful mutation confirmation.
 
-## Manual when applicable
-
-- Complete relevant LIVE_QA_CHECKLIST items.
-- Verify Start/Stop/recovery.
-- Verify owned tabs are the only tabs closed.
-- Verify dispatched commands are not treated as confirmed without evidence.
-
-Do not release with unresolved P0/P1 issues.
+A green automated gate does not replace live OviPets verification. Do not call a release production-ready while required live/manual checks, repository clean-checkout CI, or P0/P1 issues remain open.

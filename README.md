@@ -6,34 +6,45 @@ Current release: **v5.3.17**
 
 ## Engineering objective
 
-The project prioritizes long-running stability/recoverability, then incremental modularization and measured efficiency improvements.
+The project prioritizes long-running stability and recoverability, then incremental modularization and measured efficiency improvements.
+
+Key goals:
+
+- safe/recoverable background automation;
+- no duplicate, stale or cross-tab worker actions;
+- conservative confirmation of game mutations;
+- efficient handling of large pet/friend sets;
+- small modules with regression coverage;
+- explicit live-DOM contracts.
 
 ## v5.3.17 Breeding dependency-wiring hotfix
 
-Live v5.3.16 QA found an integration-only crash immediately after pedigree re-indexing completed: `features/breeding.js` called `pedigree.pedigreeCompatibility(...)`, but the real `content.js` boot helper omitted `OWEH.domain.pedigree`.
+Live v5.3.16 QA found an integration-only crash immediately after pedigree re-indexing completed: the breeding feature called `pedigree.pedigreeCompatibility(...)`, but `content.js` had not injected `OWEH.domain.pedigree` into the shared helper object. Feature-unit tests had mocked that dependency directly, so the missing real boot wiring escaped the previous suite.
 
-- `content.js` now injects `pedigree: OWEH.domain.pedigree` into the shared domain helper object.
-- `features/breeding.js` also has a manifest-order-backed global fallback and explicit dependency assertion.
-- A new `content-domain-wiring.test.js` verifies manifest dependency order and the actual `OWEH.boot(...)` wiring.
-- `database-breeding.test.js` now requires the exact pedigree injection contract.
-- v5.3.16 pedigree safety remains unchanged: unknown ancestry fails closed, shared/direct ancestors are rejected, and rejected males still fall through to the next safe candidate.
+- `content.js` now injects `pedigree: OWEH.domain.pedigree` alongside the other breeding-domain modules.
+- `features/breeding.js` includes a manifest-order-backed global fallback plus an explicit dependency assertion, preventing a long indexing pass from ending in an undefined-module crash.
+- A dedicated `content-domain-wiring.test.js` regression verifies manifest load order and the real `OWEH.boot(...)` helper wiring.
+- `database-breeding.test.js` now also requires the exact pedigree injection contract.
+- Pedigree safety behavior from v5.3.16 is unchanged: unverified/shared/direct ancestry remains fail-closed, and rejected males still fall through to the next safe candidate.
 
-Verification: full suite **60/60 PASS**; focused wiring/pedigree/breeding soak **20 rounds × 8 files = 160 executions, 0 failures**; clean-extracted final ZIP **60/60 PASS**. SHA-256: `df388ba98c7298e2a293d56623b090ce4c2d55db111e5a546ed370cb215b5df9`.
+Verification: full suite **60/60 PASS**; focused wiring/pedigree/breeding soak **20 rounds × 8 files = 160 executions, 0 failures**. Final clean-ZIP hash is reported in the release handoff after packaging.
 
 ## v5.3.16 Pedigree Guard + male fallback
 
-Live v5.3.15 breeding exposed a pedigree-cache race: the Pedigree tab is lazy-loaded, but indexing previously waited a fixed 350 ms and could cache an empty ancestor list as complete. v5.3.16 makes pedigree safety fail-closed and adds server-rejection fallback.
+Breeding campaigns now fail closed on pedigree data and recover automatically when OviPets rejects a cached pair.
 
-- `pedigreeVerified=true` is set only after the actual lazy Pedigree ancestor payload exists and its ancestor-ID signature is stable for 300 ms.
-- Pet database schema metadata is bumped to **4**, forcing legacy v5.3.15 rows through a one-time pedigree refresh before breeding.
-- Unknown/partial pedigree is never treated as unrelated. Direct ancestors and shared ancestors are hard exclusions.
-- Both Pure-line and Same-FF planners retain the full ordered safe-male list for each female.
-- Runtime re-checks pedigree immediately before each direct breed command.
-- OviPets `Unable to breed pets.` is detected immediately, dismissed, returned as `unable-to-breed-pets`, and that female retries with her next safe male instead of being skipped.
-- Legacy `command-timeout` also falls through to the next male as a compatibility safety net.
-- Campaign execution format is now `database-direct-v2`; old in-progress campaigns stop safely and must be restarted after upgrade.
+- Pedigree is treated as verified only after the lazy-loaded `section#pedigree fieldset.ancestors` payload is actually present and its ancestor ID signature remains stable for 300 ms.
+- Cached records now require `pedigreeVerified=true` to be complete. Database schema metadata is bumped to **4**, so legacy v5.3.15 rows are refreshed before breeding.
+- Unknown/partial pedigree no longer means unrelated: pair compatibility fails closed until both pets have verified pedigree payloads.
+- Shared ancestors and direct ancestor relationships are rejected before any breeding UI command is sent.
+- Each female queue row now retains the full ordered list of safe male candidates instead of only one chosen male.
+- Immediately before dispatch, the runtime re-checks the female and male pedigree from the current database.
+- If OviPets renders **Unable to breed pets.**, the MAIN-world bridge reports `unable-to-breed-pets` immediately, dismisses the dialog, marks that male rejected for the current female, and tries the next safe male. A legacy `command-timeout` also falls through to the next male rather than abandoning the female.
+- Campaign mode is bumped to `database-direct-v2`; an in-progress older campaign stops safely and must be restarted after upgrading.
 
-Verification: full suite **59/59 PASS**; focused pedigree/breeding soak **20 rounds × 7 files = 140 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `d4fa19b3a8fc6caca656350aeca0b78078e54bf6639890d3a49e3d203d9d4860`.
+This hardening applies to both **Pure-line** and **Same-FF target** strategies.
+
+Verification: full suite **59/59 PASS** before packaging; focused pedigree/breeding regression includes unverified-pedigree fail-closed, shared-ancestor exclusion, OviPets error-dialog detection, and alternate-male retry.
 
 ## v5.3.15 Same-FF target-improvement breeding strategy
 
@@ -44,26 +55,26 @@ Breeding Campaign now offers a second, independent strategy for improving a colo
 - A male is eligible only when his exact Body 1 target-FF mask matches the female's mask. This keeps the pair on the same FF line instead of deliberately adding a different FF pair.
 - Females with no exact Body 1 FF pair remain unpaired in this strategy.
 - Related pairs are excluded with the existing pedigree/ancestor-overlap guard.
-- Among safe same-FF males, Body 2, Scales, Extra 1 and Extra 2 are measured independently against target. The male's primary score is the **single lowest** of those four distances.
+- Among the safe same-FF males, Body 2, Scales, Extra 1 and Extra 2 are measured independently against target. The male's primary score is the **single lowest** of those four distances.
 - Example: secondary distances `20 / 14 / 40 / 25` score **14**; a safe same-FF male whose best slot is **12** wins.
-- Equal best-slot scores prefer lower recent male usage, then lower lineage usage, then lower total secondary distance.
+- Equal best-slot scores prefer lower recent male usage, then lower lineage usage, then lower total secondary distance for deterministic target-focused tie-breaking.
 - The strategy does not use the normal male shortlist: every safe same-FF male for that female is considered.
 
-Verification: full suite **59/59 PASS**; focused Same-FF breeding soak **20 rounds × 6 files = 120 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `09664328ada07c3e7ee2a1e645a70f33d12f941da066b86ce475b51721c485b8`.
+Verification: full suite **59/59 PASS** before packaging.
 
 ## v5.3.14 Breeding male diversity
 
-Breeding Campaign now treats very similar Body 1 males as an eligible pool instead of letting a tiny Body 1 edge repeatedly collapse the program onto one ancestor line.
+Breeding Campaign no longer lets a tiny Body 1 advantage automatically collapse the whole program onto one male lineage.
 
-- Two males are Body-1 near-equivalent when they have the same exact target-endpoint mask (`FF`/`00`) and every remaining non-exact Body 1 RGB channel differs by at most **15 points**.
-- Example: `FF FF FA` and `FF FF FC` stay eligible together instead of always letting `FC` win before other traits are considered.
-- Inside that pool, Body 2, Scales, Extra 1 and Extra 2 are measured separately against target. Each male's secondary score is the **single lowest slot distance**, not a sum or average.
-- Therefore `[20, 14, 40, 25]` scores **14**; an equivalent male whose best secondary slot is **12** wins.
-- Equal secondary scores fall back to the existing recent-male-use and lineage-use tie-breaks, then the normal pair-purity comparator.
-- Different endpoint masks or >15-point remaining Body 1 differences keep the strict legacy Body 1 ranking.
-- Near-equivalent alternatives are retained even if the normal shortlist cut would otherwise drop one.
+- Male candidates with the same exact Body 1 endpoint mask (`FF`/`00` target channels) are treated as **near-equivalent** when every remaining non-exact Body 1 channel differs by at most **15 RGB points**.
+- Example: `FF FF FA` and `FF FF FC` remain in the same eligible Body 1 pool instead of always preferring `FC` before other traits can be considered.
+- Inside that near-equivalent pool, the planner scores **Body 2, Scales, Extra 1 and Extra 2 separately** against the target and takes the **single lowest slot distance** for each male. It is not a sum or average: `[20, 14, 40, 25]` scores **14**. A male whose best secondary slot is 12 therefore beats one whose best slot is 14.
+- If that secondary score is tied, the existing recent-male-use and lineage-use tie-breaks remain active to spread ancestry where quality is otherwise equal.
+- A genuinely different Body 1 endpoint mask, or a remaining Body 1 difference greater than 15, still uses the normal strict Body 1 ranking.
+- Near-equivalent males are retained even when the normal shortlist limit would otherwise cut one just outside the shortlist.
+- Queue diagnostics now record the chosen male's best secondary slot/distance and the size of the equivalent Body 1 pool.
 
-Verification: full suite **59/59 PASS**; focused breeding/planner soak **20 rounds × 6 files = 120 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `a124923cddfdac4e2dbef7c575dc4fb6bfb6213a1093bda2d88894869c44b863`.
+Automated verification: full suite **59/59 PASS**; focused breeding/planner soak **20 rounds × 6 files = 120 executions, 0 failures**.
 
 ## v5.3.13 Own Hatchery Turn + Hatch
 
@@ -75,119 +86,134 @@ Verification: full suite **59/59 PASS**; focused breeding/planner soak **20 roun
 - Generic `pet_turn_egg` bridge calls remain blocked. Normal Turn Egg still opens extension-owned profile tabs so Name the Species can be observed and resolved before the tab closes.
 - Friend Hatcheries never use the direct hatch path.
 - Hatch commands are paced at 100 ms in bounded batches, followed by one Hatchery reload/recheck.
+- The existing own-egg run tracks both confirmed turns and unique hatch-command dispatches.
 
-Verification: full suite **59/59 PASS**; focused own-Hatchery/bridge soak **20 rounds × 7 files = 140 executions, 0 failures**; clean-extracted final ZIP **59/59 PASS**. SHA-256: `c34b741e5f9880c2e25c45975a7f574b89d66051d8952ce5d38e300142435dd4`.
+Verification: full suite **59/59 PASS**; focused own-Hatchery/bridge soak **20 rounds × 7 files = 140 executions, 0 failures**.
 
 ## v5.3.12 Ninja + Ads friend discovery
 
-The standalone Ninja friend-discovery scan now reads both OviPets profile posts on `#!/OviPets`: **Ninja please** and **Ads post**.
+The standalone Ninja friend-discovery scan now reads both official OviPets profile posts on `#!/OviPets`: **Ninja please** and **Ads post**. The posts are found by identity/title rather than vertical position, so it does not matter which one appears above the other.
 
-- Both posts are scanned independently over the rolling last 24 hours.
-- Candidates are merged globally by stable OviPets User ID.
-- Duplicate IDs across/repeated within either post are queued once, keeping the newest qualifying comment.
-- Existing `owehFriendRequestHistory` remains the single global do-not-resend history for both sources.
-- Existing self/no-request/history filters remain in place.
-- A missing source is fail-soft; the other source is still scanned.
-- Scan remains separate from **Send friend requests** and performs no friend-request mutation itself.
+- Both posts are expanded independently until the scan reaches the rolling 24-hour boundary.
+- Candidate users are merged globally by stable OviPets User ID; repeated comments and the same user appearing in both posts produce only one queue entry.
+- When the same ID appears more than once, the newest qualifying comment is retained.
+- The existing `owehFriendRequestHistory` remains the single global do-not-resend history for both sources. No second Ads-specific history is introduced.
+- Explicit “no friend requests” comments, the current account, comments older than 24 hours, future/invalid times, and IDs already in request history remain excluded.
+- If either target post is unavailable, the other post is still scanned; the scan fails only when neither target can be found.
+- **Scan Ninja + Ads** still only builds `owehChatQueue`; **Send friend requests** remains a separate action.
 
-Validated v5.3.12 artifact: full suite **59/59 PASS**, focused Ninja/chat soak **40/40 PASS**, clean-extracted ZIP **59/59 PASS**. SHA-256: `69e474dc38260991df3d833ca2c41d6d25046b18e8fc356c128e73762ed252d7`.
+Regression coverage extends the chat DOM tests for reversed post order, cross-post ID dedupe, 24-hour filtering and shared request-history exclusion. Full suite: **59/59 PASS**; focused Ninja/chat soak: **20 rounds × 2 files = 40/40 PASS**.
 
 ## v5.3.11 Fast Sweep + Lightweight Tabs
 
-Full Sweep now prioritizes throughput without weakening watchdog/recovery safety.
+Fast Sweep removes the largest throughput bottlenecks while keeping the existing 60-second per-tab watchdog, 120-second batch watchdog, protected coordinator and orphan self-healing behavior.
 
-- Snapshot a friend's turnable egg queue once, then drain consecutive batches without reloading the Hatchery after every 10 eggs.
-- Adaptive egg concurrency starts at 10, promotes to 12 and then 15 after clean batches, and steps down on timeout/system failure.
-- Adaptive speed now also reacts to latency: repeated batches around 35s back off a level, and a 50s+ batch backs off immediately even before watchdog timeout.
-- Egg-tab stagger is 175ms; successful child tabs close after 250ms.
-- Batch completion is event-driven from background to coordinator, with a 2s polling fallback.
-- One final Hatchery reload/verification occurs after the captured queue is drained.
-- Name-the-Species waits for the real OK button to become usable instead of a fixed page-load delay; retry delay is reduced while explicit server outcome rules remain unchanged.
-- 60s per-tab and 120s per-batch watchdogs, protected/self-healing coordinator, 10-minute friend cooldown, Species DB and Diagnostic Logbook remain intact.
+- One friend Hatchery is snapshotted once, then drained through back-to-back adaptive batches; only one final verification reload remains.
+- Concurrency starts at 10, promotes to 12 and 15 after clean full-batch streaks, and now also backs off when batch latency itself becomes slow even before a watchdog timeout.
+- Egg tabs stagger at 175 ms, close 250 ms after reporting, and batch completion is pushed event-first with 2-second polling only as recovery fallback.
+- Friend page readiness uses stable-DOM detection rather than the old fixed empty-Hatchery wait.
+- Name-the-Species confirmation/retry waits are condition-based/shortened.
 
-**Lightweight owned tabs:** the Full Sweep coordinator and sweep-created egg tabs use a tab-scoped Declarative Net Request session rule that blocks only `image`, `media` and `font` resources. HTML, JavaScript, CSS, forms and XHR/fetch continue loading. The Name-the-Species challenge image is still fetched through the guarded background species-image service for fingerprinting, so the solver does not depend on page image rendering.
+**Lightweight owned tabs:** Full Sweep coordinator and sweep-created egg tabs are now created through a tab-scoped `declarativeNetRequest` session rule that blocks only `image`, `media` and `font` resources. HTML, JavaScript, CSS, forms, XHR/fetch and real buttons remain available. The Name-the-Species challenge image is still fetched by the guarded background image service for fingerprinting, so the solver does not depend on the page rendering that image. Rules are removed when owned tabs close.
 
-**Long-run I/O fix:** the Diagnostic Logbook no longer rewrites the entire retained 5,000-event timeline on every event. New events are stored in a fixed ring of 200-entry chunks while legacy log data remains readable/exportable.
+**Long-run memory/I/O fix:** the Diagnostic Logbook previously rewrote the entire retained log (up to 5,000 entries) on every event. v5.3.11 stores new diagnostics in a fixed ring of small 200-entry chunks, preserving the same export/retention behavior while removing that progressively heavier storage write. Combined with resource-light tabs, this targets the main long-run Edge slowdown observed during sustained sweep runs.
 
-Regression includes a 130-egg scenario with adaptive batch sizes `10,10,10,10,10,12,12,12,12,12,15,5` and only one final Hatchery reload.
-
-Verification: full suite **59/59 PASS**; focused Fast Sweep/lightweight/recovery soak **20 rounds × 8 files = 160 executions, 0 failures**; clean-extracted ZIP **59/59 PASS**.
+Focused Fast Sweep/lightweight/recovery soak: **20 rounds × 8 files = 160 executions, 0 failures**. Full suite: **59/59 PASS**.
 
 ## v5.3.10 Self-healing Full Sweep coordinator
 
-Diagnostic Logbook live data captured an orphaned-sweep state: `owehSweep.active=true` remained persisted after the protected coordinator tab disappeared and the shared-worker row was released. The UI therefore looked active while no worker existed to advance the friend cursor.
+Diagnostic Logbook live data exposed an orphaned-sweep state: `owehSweep.active` could remain true after the protected coordinator tab disappeared and the shared-worker row was released. The dashboard therefore looked active while no worker existed to advance the friend cursor.
 
-v5.3.10 automatically replaces/reclaims the sweep coordinator. Missing protected tabs are replaced and sent `recoverSharedWorker`; if the worker row is already stopped while the sweep is still active, the next health check claims a fresh generation, creates a new coordinator, and resumes from the durable cycle/index. The dashboard shows `recovering` instead of `this tab` while no live worker exists, and stale sweep timeout notices expire after 15 seconds.
+v5.3.10 adds automatic coordinator replacement:
 
-Verification: full suite 57/57 PASS; focused self-healing soak 20 rounds × 7 files = 140 executions, 0 failures.
+- if Full Sweep is still active but no live sweep worker exists, the background reclaims the shared-worker slot automatically;
+- a fresh inactive OviPets coordinator tab is created and receives `recoverSharedWorker`;
+- recovery preserves the durable `cycle` / `index` cursor and reopens the current friend rather than resetting to pass 1;
+- if the current protected coordinator disappears, the health check first tries an in-generation replacement and falls back to a fresh generation if required;
+- the dashboard shows `recovering` instead of the misleading `this tab` while sweep state is active without a live worker;
+- stale sweep notices now expire after 15 seconds instead of remaining visible for up to an hour.
+
+This is specifically intended to keep Continuous Full Sweep moving after coordinator crashes, tab loss, failed recovery reloads, or similar browser/network faults.
+
+Focused self-healing soak: **20 rounds × 7 files = 140 test-file executions, 0 failures**. Full suite: **59/59 PASS**.
 
 ## v5.3.9 Extension reload soft-shutdown
 
-Reloading an unpacked Edge/Chromium extension invalidates the old content-script context still attached to already-open OviPets tabs. A direct `chrome.runtime.sendMessage(...)` can throw synchronously before the callback/lastError path runs.
+Reloading an unpacked Chromium/Edge extension invalidates the old content-script context that remains attached to already-open OviPets tabs. v5.3.9 treats that as an expected shutdown condition instead of an unhandled runtime failure.
 
-v5.3.9 handles this as an expected shutdown condition:
-- synchronous runtime-message throws are caught;
+- synchronous `chrome.runtime.sendMessage(...)` throws are caught;
 - once invalidated, the old content script stops calling runtime/storage APIs;
-- storage reads return fallbacks/defaults and writes become no-ops;
-- worker/species/relay sends use the same guarded runtime client;
-- Diagnostic Log calls no longer create recursive `Uncaught (in promise)` noise;
+- storage reads return fallback/default values and writes become no-ops;
+- worker/species/relay messages use the same guarded runtime client;
+- Diagnostic Log calls cannot recursively create `Uncaught (in promise)` noise;
 - the stale heartbeat timer self-stops after invalidation is detected.
 
-After pressing **Reload** in `edge://extensions`, refresh already-open OviPets pages once so Edge injects the new content scripts.
-
-Verification: full suite **56/56 PASS**; focused invalidation/worker/diagnostic soak **20 × 6 = 120 executions, 0 failures**.
+After pressing **Reload** in `edge://extensions`, refresh already-open OviPets pages once so Edge injects the new v5.3.9 content scripts.
 
 ## v5.3.8 Protected Full Sweep Coordinator
 
-Live QA found that the shared-worker health watchdog could close the Full Sweep coordinator tab when its 45-second heartbeat lease expired during a stall. v5.3.8 makes owner `sweep` a protected worker:
+The Full Sweep worker tab is now a protected coordinator. A 45-second heartbeat lapse is treated as a recoverable infrastructure fault, not permission to close the tab. Background health checks revive the lease and ask the same coordinator tab to resume; if the content script does not answer, the same tab is reloaded in place and recovery is retried. Durable sweep pass/index state is preserved.
 
-- heartbeat expiry revives the matching generation/tab lease instead of closing the tab;
-- the same coordinator receives a recovery command;
-- if the content script does not acknowledge, the same tab is reloaded in place, not removed;
-- durable `owehSweep.cycle` and `owehSweep.index` are preserved;
-- egg-tab cleanup hard-blocks any attempt to close `coordinatorTabId`, even under corrupted/stale registry state.
+Egg-tab cleanup also has a hard guard: even corrupted/stale egg registry state cannot close the coordinator tab when its id matches `coordinatorTabId`.
 
-Only explicit Stop, a valid generation-scoped `workerDone`, or startup failure before the worker becomes live may close the Full Sweep coordinator.
+Only explicit Stop, a valid generation-scoped worker completion, or startup failure before the coordinator becomes live may close the Full Sweep coordinator.
 
-Verification: full suite **55/55 PASS**; focused worker/sweep/egg/diagnostic soak **20 rounds × 7 files = 140 executions, 0 failures**.
+Focused worker/sweep/egg/diagnostic soak: **20 rounds × 7 files = 140 test-file executions, 0 failures**. Full suite: **55/55 PASS**.
 
 ## v5.3.7 Diagnostic Logbook
 
-A persistent privacy-scoped black-box recorder now captures worker lifecycle, Full Sweep passes, egg batch/tab lifecycle, watchdog timeouts, fail-open recovery, runtime/module exceptions and important failure/stopped status messages.
+A persistent privacy-scoped black-box recorder now captures worker lifecycle, Full Sweep passes, egg batch/tab lifecycle, watchdog timeouts, fail-open recovery, runtime/module exceptions and important failure/stopped status messages. The panel can **Export Diagnostic Log** as JSON or clear only the retained diagnostic timeline.
 
-Retention is bounded to the newest **5,000 events / 14 days**. The panel provides **Export Diagnostic Log** and **Clear Diagnostic Log**. Export includes a sanitized snapshot of current worker/sweep/egg/job state so later analysis can reconstruct why automation stopped or stalled.
+Retention is bounded to the newest 5,000 events and 14 days. Diagnostic/worker/sweep focused soak passed **20 rounds × 7 files = 140 test-file executions, 0 failures**. Export also includes a sanitized snapshot of current worker/sweep/egg/job state, making it possible to reconstruct why a long-running automation stopped or stalled.
 
-Focused diagnostic/worker/sweep soak: **20 rounds × 7 files = 140 test-file executions, 0 failures**. Clean package full suite: **55/55 PASS**.
+## v5.3.6 fail-open watchdogs
 
-## v5.3.5
+Full Sweep now treats extension-created egg tabs as disposable workers rather than blockers. Each owned egg tab has a **60-second watchdog**. If no terminal result arrives, background marks it `timeout` and force-closes that owned tab. Each egg batch has a separate **120-second watchdog**; any unresolved owned tabs are force-closed, missing results become timeouts, and Full Sweep advances instead of stopping.
 
-**Continuous Full Sweep** runs friend passes repeatedly until Stop while preserving the 10-minute per-friend cooldown.
+The background uses persisted deadlines plus Chrome Alarms, and every parent status poll re-checks the same deadlines, so MV3 service-worker sleep cannot turn a lost tab into an indefinite stall. Random batch-open/status/network/page errors are fail-open: the current friend is skipped safely (`skipRemoval`) and Continuous Full Sweep proceeds to the next friend. Only tabs present in the extension-owned egg registry are eligible for watchdog closure; user-opened tabs remain outside that registry.
 
-**Name the Species** now follows the live server behavior captured by Species Inspector:
+## v5.3.5 species learning + continuous Full Sweep
 
-- `The answer is incorrect, please try again.` is retryable. Learn the wrong species, dismiss Error, Turn Egg again on the same egg, and exclude that species.
-- `The egg can no longer be turned.` is terminal. Only then is the extension-owned egg tab closed as exhausted.
+### Leftover-tab recovery
 
-The Inspector learns from real `pet_turn_egg` success/failed responses and Answer IDs. A strict background image fetcher allows a perceptual challenge-image fingerprint that the solver also consumes, so learned knowledge can transfer across matching visual challenges.
+Name-the-Species failures can no longer accumulate into a permanent `too-many-leftover-tabs` stop. Retryable incorrect answers keep using untried species choices; a blocking Error overlay exits as a bounded `abandoned` result; and every new egg batch reconciles old extension-owned leftovers before admission. Tabs the player navigated away are only forgotten, never auto-closed.
 
-The panel includes **Export Species DB** and **Import Species DB**. Backups merge idempotently and can restore knowledge on another computer or after reinstall. Previous full Inspector JSON exports are also accepted; v5.3.5 can mine their trace/network sessions to recover outcomes and Answer IDs even when historical learned-memory fields were empty.
 
-## Leftover-tab recovery
+`Start full sweep` now loops continuously until **Stop**. After the last queued friend, the sweep wraps back to the first eligible friend and increments a durable pass counter. The existing 10-minute per-friend cooldown is preserved: if the next pass reaches the boundary before any friend is eligible, the worker remains active and waits until the earliest cooldown expires instead of reporting completion.
 
-Live Full Sweep exposed `too-many-leftover-tabs`, mainly from Name-the-Species tabs that reached the old retry cap or stayed blocked by an Error overlay. v5.3.5 removes this permanent admission lock: retryable species failures can continue through untried choices, a blocking species Error exits as a bounded `abandoned` owned-tab result, and each new batch reconciles old leftovers first. Exact owned egg tabs are closed; tabs the player navigated away are only forgotten from ownership state.
+The dashboard shows `pass N`; Stop during a cooldown wait prevents the next pass from opening. A one-friend queue reloads the same Hatchery when its next pass begins so the SPA actually re-runs the scan.
+
+## v5.3.5 species verification
+
+Turn Egg remains real-UI-only. Live Edge data confirmed two distinct server outcomes:
+
+- `The answer is incorrect, please try again.` is retryable. The wrong species is learned, the Error is dismissed, the same egg is turned again, and that species is excluded from the next guess.
+- `The egg can no longer be turned.` is terminal. Only then is the extension-owned tab closed as exhausted.
+
+The Species Inspector now learns directly from the real `pet_turn_egg` network result, captures Answer-ID mappings, and obtains a cross-origin-safe visual fingerprint through the guarded background image fetcher. This allows correct/wrong knowledge to transfer across different eggs when their challenge image matches.
+
+The panel includes **Export Species DB** and **Import Species DB**. Backups merge idempotently, so knowledge can survive reinstall/update or move to another computer. Old Inspector exports can also be imported: v5.3.5 mines their recorded trace/network sessions to recover answer outcomes and Answer IDs even if the older `learnedMemory` was empty. **Export Species JSON** remains available for deeper offline analysis.
 
 ## Current status
 
-See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative state. GitHub is not yet the runtime source-of-truth until Issue #2 imports the complete runtime/test tree and clean-checkout CI is green.
+See [docs/WORKING_STATE.md](docs/WORKING_STATE.md) for the authoritative current engineering state.
+
+Phases 1–5 have been validated on the managed local runtime baseline. Phase 6 automated release gates are being completed. The two remaining live OviPets contracts still require manual verification before release.
+
+The GitHub repository is not yet the authoritative runtime source: Issue #2 remains open until the complete source/test tree is imported and CI reproduces the same results from a clean checkout.
 
 ## Project docs
 
 - [Working state](docs/WORKING_STATE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture](ARCHITECTURE.md)
+- [Refactor map](docs/REFACTOR_MAP.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Live QA checklist](docs/LIVE_QA_CHECKLIST.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
 - [Diagnostic Logbook](docs/DIAGNOSTIC_LOGBOOK.md)
-- [Species Inspector](docs/SPECIES_INSPECTOR.md)
+- [Windows Edge QA](docs/WINDOWS_QA.md)
 - [Agent workflow](docs/AGENT_WORKFLOW.md)
+- [Agent/skill research](docs/AGENT_SKILL_RESEARCH.md)
+
+Historical v5.3.0 README/CLAUDE material is retained under docs/archive/ for reference only.

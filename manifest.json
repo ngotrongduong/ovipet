@@ -1,0 +1,88 @@
+{
+  "manifest_version": 3,
+  "name": "OviPets Hatchery Helper",
+  "version": "5.3.17",
+  "description": "One button per job (catalog, profiles, sort, feed, Ninja + Ads friend discovery, friend requests), automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ovipets.com/*",
+        "https://app.ovipets.com/*"
+      ],
+      "js": [
+        "page-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://ovipets.com/*",
+        "https://app.ovipets.com/*"
+      ],
+      "js": [
+        "jobs/core.js",
+        "core/storage-client.js",
+        "core/game-bridge.js",
+        "core/worker-client.js",
+        "core/scheduler.js",
+        "dom/routes.js",
+        "dom/profile.js",
+        "dom/hatchery.js",
+        "dom/tabs.js",
+        "dom/overview.js",
+        "dom/friends.js",
+        "dom/chat.js",
+        "domain/colors.js",
+        "domain/pet-record.js",
+        "domain/pedigree.js",
+        "domain/breeding-score.js",
+        "domain/breeding-plan.js",
+        "core/game-actions.js",
+        "jobs/species-inspector.js",
+        "jobs/species-answer.js",
+        "jobs/runner.js",
+        "jobs/catalog.js",
+        "jobs/profiles.js",
+        "jobs/sort.js",
+        "jobs/feed.js",
+        "jobs/ninja.js",
+        "jobs/requests.js",
+        "jobs/friend-eggs.js",
+        "jobs/egg-turn-tab.js",
+        "features/own-eggs.js",
+        "features/pet-index.js",
+        "features/friend-sweep.js",
+        "features/hatchlings.js",
+        "features/breeding.js",
+        "ui/dashboard.js",
+        "ui/panel.js",
+        "services/diagnostics.js",
+        "services/overview-catalog.js",
+        "services/pet-edit.js",
+        "services/friend-directory.js",
+        "services/retention.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "tabs",
+    "alarms",
+    "offscreen",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://ovipets.com/*",
+    "https://app.ovipets.com/*"
+  ]
+}
