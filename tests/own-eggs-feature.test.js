@@ -159,6 +159,35 @@ function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], 
     assert.deepEqual(env.log.taskReleases[0], ["egg-run", "stopped"]);
   }
 
+  // A safety stop (eggs exhausted after MAX_ATTEMPTS) or a user Stop must not be undone by the
+  // next Hatchery refresh; otherwise attempts reset and the same failing tabs reopen forever.
+  {
+    const env = setup({ eggs: [{ id: "40", href: "?pet=40" }] });
+    env.store.owehEggRun = {
+      active: true, hatchery: env.page.hash, count: 0, attempts: { 40: 2 }, batchId: null,
+      ownerInstance: "instance-1", ownerTabId: 42
+    };
+    await env.api.process();
+    assert.ok(env.log.status.some(text => text.includes("could not be confirmed after 2 tries")));
+    assert.equal(env.store.owehEggRun.active, false);
+    const claimsAfterStop = env.log.claims.length;
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, claimsAfterStop, "auto-start must stay off after a stop");
+    assert.equal(env.store.owehEggRun.active, false);
+    assert.equal(env.log.opened.length, 0);
+
+    await env.api.start();
+    assert.equal(env.log.claims.length, claimsAfterStop + 1, "explicit Start re-enables the run");
+  }
+
+  {
+    const env = setup({ eggs: [{ id: "50", href: "?pet=50" }] });
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, 1, "fresh Hatchery open still auto-starts own eggs");
+  }
+
   console.log("own egg feature UI-tab behavior tests passed");
 })().catch(error => {
   console.error(error);

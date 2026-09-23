@@ -59,7 +59,7 @@ if (!friendSweepSource.includes('return OWEH.get("friend-eggs")?.api || null;')
 if (/if (sweep.active && currentFriendId() === id) startEggRun()/.test(runtimeSource)) {
   throw new Error("The sweep must not turn friend eggs directly from its own tab (startEggRun)");
 }
-if (!ownEggsSource.includes('if (autoStarting || !routes.isOwnHatchery()) return;')) {
+if (!ownEggsSource.includes('if (autoStarting || autoStartSuppressed || !routes.isOwnHatchery()) return;')) {
   throw new Error("Own-egg auto-start must NEVER activate while browsing a friend Hatchery");
 }
 if (!ownEggsSource.includes("gameActions.hatchOwnEgg(egg.id)")) {

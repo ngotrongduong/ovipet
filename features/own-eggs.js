@@ -25,6 +25,11 @@ OWEH.register("feature-own-eggs", helpers => {
   let processing = false;
   let autoStarting = false;
   let runToken = 0;
+  // Set by stop() (user Stop, Stop All, or a safety stop such as exhausted attempts). Hatchery-
+  // open auto-start must not undo it on the next DOM refresh: that would ignore the user's Stop
+  // and, after a safety stop, restart with fresh attempt counters and reopen the same failing
+  // egg tabs forever. Cleared by an explicit Start; a page reload is a fresh Hatchery open.
+  let autoStartSuppressed = false;
 
   function defaultRun() {
     return {
@@ -65,6 +70,7 @@ OWEH.register("feature-own-eggs", helpers => {
       }
     }
 
+    autoStartSuppressed = false;
     const existing = await read();
     if (existing.active && !ownEggsService.ownedByThisTab(existing)) return;
     await storageSet({ owehAutoTurn: true });
@@ -85,6 +91,7 @@ OWEH.register("feature-own-eggs", helpers => {
 
   async function stop(message = "Egg turn/hatch stopped") {
     runToken += 1;
+    autoStartSuppressed = true;
     await storageSet({ owehEggRun: defaultRun(), owehAutoTurn: false });
     await runtimeRequest({ type: "eggBatchStop", source: "own" });
     await releaseTask("egg-run", "stopped");
@@ -263,13 +270,13 @@ OWEH.register("feature-own-eggs", helpers => {
   async function maybeAutoStart() {
     // Never auto-turn while merely browsing a friend's Hatchery. Friend eggs belong exclusively
     // to the explicit Start full sweep workflow, which opens one owned profile tab per egg.
-    if (autoStarting || !routes.isOwnHatchery()) return;
+    if (autoStarting || autoStartSuppressed || !routes.isOwnHatchery()) return;
     autoStarting = true;
     try {
       if (!hatcheryDom.getHatcheryEggs().length
         && !(hatcheryDom.getHatcheryHatchableEggs?.().length || 0)) return;
       const run = await read();
-      if (!run.active && !processing) start();
+      if (!run.active && !processing && !autoStartSuppressed) start();
     } finally {
       autoStarting = false;
     }
