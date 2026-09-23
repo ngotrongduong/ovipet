@@ -46,7 +46,7 @@ function createFakeIndexedDB() {
 
   function open(name, version) {
     const request = {};
-    setTimeout(() => {
+    setImmediate(() => {
       const db = {
         objectStoreNames: { contains: storeName => stores.has(storeName) },
         createObjectStore(storeName, options = {}) {
@@ -59,7 +59,7 @@ function createFakeIndexedDB() {
           // Real IndexedDB fires oncomplete only once every request issued during this
           // transaction's synchronous phase has resolved; scheduling via setTimeout (a
           // macrotask) after the request callbacks (microtasks) reproduces that ordering.
-          setTimeout(() => tx.oncomplete?.(), 0);
+          setImmediate(() => tx.oncomplete?.());
           return Object.assign(tx, { objectStore: storeApi });
         },
         close() {}

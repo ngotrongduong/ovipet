@@ -16,7 +16,7 @@ const tabUrls = {};
 let messageListener;
 let nextTabId = 700;
 const nativeSetTimeout = setTimeout;
-const later = callback => nativeSetTimeout(callback, 0);
+const later = callback => setImmediate(callback);
 // Keep production delays intact except the 15s-ish start deadline, which is shortened for test.
 const testSetTimeout = (callback, ms, ...args) => nativeSetTimeout(callback, ms >= 10000 ? 30 : ms, ...args);
 

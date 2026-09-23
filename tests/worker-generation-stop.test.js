@@ -13,7 +13,7 @@ let blockIndexFlagRead = false;
 const sent = [];
 const tabUrls = {};
 const removed = [];
-const later = callback => setTimeout(callback, 0);
+const later = callback => setImmediate(callback);
 
 const chrome = {
   runtime: {

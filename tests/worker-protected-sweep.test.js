@@ -20,7 +20,7 @@ const sent = [];
 const tabUrls = {};
 let nextTabId = 99;
 let messageListener;
-const later = callback => setTimeout(callback, 0);
+const later = callback => setImmediate(callback);
 
 const chrome = {
   runtime: {

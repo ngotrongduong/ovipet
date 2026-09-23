@@ -26,7 +26,7 @@ const tabUrls = {};
 let nextTabId = 100;
 let messageListener;
 let context;
-const later = callback => setTimeout(callback, 0);
+const later = callback => setImmediate(callback);
 
 const chrome = {
   runtime: {
