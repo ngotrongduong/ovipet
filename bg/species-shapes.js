@@ -113,5 +113,15 @@
     return migrating;
   }
 
-  OWEH_BG.speciesShapes = Object.freeze({ learn, merge, shapeFromUrl, migrateFromMemory, SHAPES_KEY });
+  // v5.4.3: an imported (older) Species DB carries confirmed challenge URLs but no silhouettes;
+  // re-arm the back-fill so they are masked too. Runs in the background (resumable, see above);
+  // already-known silhouettes are deduplicated by addExample.
+  async function rescanMemory() {
+    if (migrating) await migrating.catch(() => {});
+    await chrome.storage.local.set({ [MIGRATION_KEY]: { done: false, runs: 0, processed: [], updatedAt: Date.now() } });
+    migrateFromMemory().catch(() => {});
+    return { ok: true, started: true };
+  }
+
+  OWEH_BG.speciesShapes = Object.freeze({ learn, merge, shapeFromUrl, migrateFromMemory, rescanMemory, SHAPES_KEY });
 })();

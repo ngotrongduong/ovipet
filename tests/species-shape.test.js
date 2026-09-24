@@ -190,6 +190,16 @@ function loadDomain(extra = {}) {
   assert.deepEqual(Object.keys(store.owehSpeciesShapes).sort(), ["Bird", "Cat"]);
   assert.equal((await shapes.migrateFromMemory()).skipped, true, "a finished back-fill never runs again");
 
+  // v5.4.3: an import re-arms the back-fill so newly imported confirmed URLs are masked.
+  images["https://app.ovipets.com/img/pet/5/credit-challenge"] = { status: 200, rgba: rgbaRect({ x0: 0, y0: 16, x1: 32, y1: 32 }) };
+  store.owehSpeciesMemory["https://app.ovipets.com/img/pet/5/credit-challenge"] = { species: "Fish", votes: { Fish: 1 }, wrong: {} };
+  fetched.length = 0;
+  assert.equal((await shapes.rescanMemory()).started, true);
+  const rescan = await shapes.migrateFromMemory();
+  assert.equal(rescan.done, true);
+  assert.deepEqual(Object.keys(store.owehSpeciesShapes).sort(), ["Bird", "Cat", "Fish"]);
+  assert.equal(store.owehSpeciesShapes.Cat.examples.length, 1, "re-scanned known silhouettes are deduplicated");
+
   console.log("species shape tests passed");
 })().catch(error => {
   console.error(error);

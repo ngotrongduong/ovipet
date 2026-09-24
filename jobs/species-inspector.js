@@ -866,6 +866,9 @@ OWEH.register("species-inspector", helpers => {
         shapeSpecies = Object.keys(library).length;
       }
     }
+    // v5.4.3: confirmed challenge URLs in the imported memory are masked into the silhouette
+    // library in the background (older exports carry no shapes).
+    if (Object.keys(incoming.memory || {}).length) viaBackground({ type: "speciesShapeRescan" });
     setStatus(`Imported Species database — ${Object.keys(mergedMemory).length} learned image key(s), ${Object.keys(mergedAnswerIds).length} species ID mapping(s)`);
     return {
       memoryKeys: Object.keys(mergedMemory).length,
