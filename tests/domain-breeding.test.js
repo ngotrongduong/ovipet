@@ -218,6 +218,45 @@ const noFfPlan = breedingPlan.buildDatabaseBreedPlan(
 assert.equal(noFfPlan.queue[0].maleId, null, "a female without a target FF pair has no Same-FF line to reinforce");
 assert.equal(noFfPlan.unpaired, 1);
 
+// v5.5.2: the partner list OviPets shows on a female's Breeding tab is authoritative. It
+// replaces the local pedigree check for that female (even an unverified one); an unlisted male
+// is excluded, and a female without a list keeps the fail-closed local rule.
+const unverifiedFemale = { ...female, id: "fU", pedigreeVerified: false, ancestors: [], parentIds: [] };
+const unverifiedMale = { ...complement, id: "mU", pedigreeVerified: false, ancestors: [], parentIds: [] };
+const gamePlan = breedingPlan.buildDatabaseBreedPlan(
+  { fU: unverifiedFemale, f1: female, m0: related, m2: sameMetricsLessUsed, mU: unverifiedMale },
+  target, [],
+  { now, shortlistSize: 40, gameEligible: { fU: ["m0", "mU"] } }
+);
+const gameRow = gamePlan.queue.find(row => String(row.id) === "fU");
+assert.ok(gameRow, "an unverified female with a game partner list must be planned");
+assert.deepEqual(gameRow.maleCandidates.map(item => item.maleId).sort(), ["m0", "mU"], "only game-listed males are candidates");
+assert.ok(gameRow.maleCandidates.every(item => item.gameListed === true));
+const localRow = gamePlan.queue.find(row => String(row.id) === "f1");
+assert.deepEqual(localRow.maleCandidates.map(item => item.maleId), ["m2"], "a female without a game list keeps the pedigree rule");
+assert.ok(localRow.maleCandidates.every(item => item.gameListed === false));
+
+const gameSameFf = breedingPlan.buildDatabaseBreedPlan(
+  { lf1: { ...lineFemale, pedigreeVerified: false }, lm12: lineMale12, lmRelated: relatedSameFfMale },
+  target, [],
+  { now, strategy: breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET, gameEligible: { lf1: ["lmRelated"] } }
+);
+assert.deepEqual(gameSameFf.queue[0].maleCandidates.map(item => item.maleId), ["lmRelated"], "Same-FF trusts the game list too");
+assert.equal(gameSameFf.queue[0].maleCandidates[0].gameListed, true);
+
+assert.deepEqual(
+  breedingPlan.plannableFemales({ fU: unverifiedFemale, lf1: lineFemale, m2: sameMetricsLessUsed }, target, breedingPlan.BREEDING_STRATEGIES.PURE_LINE).map(pet => pet.id),
+  ["fU"], "pure-line reads only breeding-enclosure females, verified or not"
+);
+assert.deepEqual(
+  breedingPlan.plannableMaleEnclosures({ m2: sameMetricsLessUsed, lm12: lineMale12 }, target, breedingPlan.BREEDING_STRATEGIES.PURE_LINE),
+  ["Males"]
+);
+assert.deepEqual(
+  breedingPlan.plannableMaleEnclosures({ m2: sameMetricsLessUsed, lm12: lineMale12 }, target, breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET).sort(),
+  ["Another enclosure", "Males"]
+);
+
 assert.equal(breedingPlan.classifyNewbornName("FFFFFF-anything").target, "FF FF FF");
 assert.equal(breedingPlan.desiredProgramEnclosure({ gender: "Male" }), "Males");
 

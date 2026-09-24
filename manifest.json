@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OviPets Hatchery Helper",
-  "version": "5.5.1",
+  "version": "5.5.2",
   "description": "Command-first helper: one Update database pass (catalog, profiles, rename, sort, feed), one Hatchery run (turn, hatch, name, sort newborns), Ninja + Ads friend discovery and requests, automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
   "background": {
     "service_worker": "background.js"
@@ -29,6 +29,7 @@
         "core/game-bridge.js",
         "core/worker-client.js",
         "core/scheduler.js",
+        "core/wake-sleep.js",
         "dom/routes.js",
         "dom/markup.js",
         "dom/profile.js",

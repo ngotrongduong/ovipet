@@ -132,13 +132,22 @@ OWEH.register("friend-eggs", helpers => {
     return value;
   }
 
+  function eggTabCap(value) {
+    const cap = Math.floor(Number(value));
+    return Number.isFinite(cap) && cap >= 1 ? Math.min(SPEED_LEVELS[SPEED_LEVELS.length - 1], cap) : SPEED_LEVELS[SPEED_LEVELS.length - 1];
+  }
+
   async function speedProfile() {
     const stored = await storageGet("owehEggSpeedProfile", {});
     const existingConcurrency = Number(await storageGet("owehEggTabConcurrency", 10));
     const requested = Number(stored.concurrency || existingConcurrency || 10);
-    const concurrency = requested >= 15 ? 15 : requested >= 12 ? 12 : 10;
+    const level = requested >= 15 ? 15 : requested >= 12 ? 12 : 10;
+    // v5.5.2: the player's Egg tabs cap (Eco/Balanced/Fast) bounds the adaptive level so a
+    // sweep never opens more tabs than the CPU budget allows; the level itself keeps adapting.
+    const cap = eggTabCap(await storageGet("owehEggTabCap", 0));
     return {
-      concurrency,
+      level,
+      concurrency: Math.min(level, cap),
       cleanStreak: Math.max(0, Number(stored.cleanStreak || 0)),
       slowStreak: Math.max(0, Number(stored.slowStreak || 0)),
       avgBatchMs: Math.max(0, Number(stored.avgBatchMs || 0)),
@@ -149,7 +158,7 @@ OWEH.register("friend-eggs", helpers => {
   async function updateAdaptiveSpeed(status, elapsedMs = 0) {
     if (!status?.expected) return;
     const profile = await speedProfile();
-    const currentIndex = Math.max(0, SPEED_LEVELS.indexOf(profile.concurrency));
+    const currentIndex = Math.max(0, SPEED_LEVELS.indexOf(profile.level));
     const problems = Number(status.timedOut || 0) + Number(status.systemFailed || 0);
     // A rolling batch (v5.4.0) can drain several windows' worth of eggs. Judge it per window of
     // `concurrency` eggs so a long friend is neither called "slow" for its size nor demoted for
@@ -193,9 +202,9 @@ OWEH.register("friend-eggs", helpers => {
       owehEggTabConcurrency: concurrency,
       owehEggSpeedProfile: { concurrency, cleanStreak, slowStreak, avgBatchMs, lastBatchMs: elapsed, updatedAt: Date.now() }
     });
-    if (concurrency !== profile.concurrency || slow || problems > 0) {
-      diagnosticLog?.(concurrency < profile.concurrency ? "warning" : "info", "friend-eggs", "speed.profile-updated", {
-        from: profile.concurrency, to: concurrency, timedOut: status.timedOut || 0,
+    if (concurrency !== profile.level || slow || problems > 0) {
+      diagnosticLog?.(concurrency < profile.level ? "warning" : "info", "friend-eggs", "speed.profile-updated", {
+        from: profile.level, to: concurrency, timedOut: status.timedOut || 0,
         systemFailed: status.systemFailed || 0, cleanStreak, slowStreak, elapsedMs: elapsed, avgBatchMs
       });
     }

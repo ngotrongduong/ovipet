@@ -112,7 +112,13 @@
   let ownUserId = null;
   let currentTabId = null;
 
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  if (!OWEH.core?.wakeSleep) {
+    console.error("[OviPets Helper] core/wake-sleep.js did not load before content.js — check manifest.json script order");
+    return;
+  }
+  // A hidden tab that owns the worker lease (or an egg tab holding awake) sleeps on the service
+  // worker's clock, so Full sweep keeps going behind a fullscreen window or another program.
+  const { sleep, holdAwake } = OWEH.core.wakeSleep.createWakeSleep({ isBusy: () => workerClient.hasOwner() });
 
   if (!OWEH.services?.status || !OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
     || !OWEH.services?.friendDirectory || !OWEH.services?.retention || !OWEH.services?.partnerRanking
@@ -160,7 +166,7 @@
 
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
     storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
-    comparePairPureMetrics, formatPureProbability, ancestorsOverlap, STRICT_PURE_TARGET
+    comparePairPureMetrics, formatPureProbability, STRICT_PURE_TARGET
   });
 
   async function friendBlacklist() {
@@ -328,7 +334,7 @@
   // adapters are injected explicitly; only orchestration that still lives in content.js is grouped
   // behind narrow feature services. This keeps jobs from depending on one giant legacy object.
   const modules = OWEH.boot({
-    storageGet, storageSet, storageGetMany, getPetsByIds, sleep, setStatus, runtimeRequest, sendGameCommand, diagnosticLog,
+    storageGet, storageSet, storageGetMany, getPetsByIds, sleep, holdAwake, setStatus, runtimeRequest, sendGameCommand, diagnosticLog,
     waitForGameReady, waitForStableValue, getPageLoadDelayMs: () => pageLoadDelayMs,
     requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone, isWorkerOwner, workerClient,
     routes: OWEH.dom.routes,

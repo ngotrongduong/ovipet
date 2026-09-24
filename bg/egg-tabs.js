@@ -288,8 +288,12 @@ async function isEggBatchCoordinator(source, sender) {
 }
 
 async function eggTabLimit() {
-  const configured = Number((await chrome.storage.local.get({ owehEggTabConcurrency: EGG_TAB_DEFAULT })).owehEggTabConcurrency);
-  return Math.max(1, Math.min(EGG_TAB_MAX, Number.isFinite(configured) ? Math.floor(configured) : EGG_TAB_DEFAULT));
+  const stored = await chrome.storage.local.get({ owehEggTabConcurrency: EGG_TAB_DEFAULT, owehEggTabCap: 0 });
+  const configured = Number(stored.owehEggTabConcurrency);
+  // v5.5.2: the player's Egg tabs cap (0 = no cap) bounds the adaptive level to save CPU.
+  const cap = Math.floor(Number(stored.owehEggTabCap));
+  const max = Number.isFinite(cap) && cap >= 1 ? Math.min(EGG_TAB_MAX, cap) : EGG_TAB_MAX;
+  return Math.max(1, Math.min(max, Number.isFinite(configured) ? Math.floor(configured) : EGG_TAB_DEFAULT));
 }
 
 function validBatchEggs(list, source) {

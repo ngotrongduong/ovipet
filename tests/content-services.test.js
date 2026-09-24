@@ -71,7 +71,9 @@ function load(file, extra = {}) {
     };
     const statuses = [];
     let parent = { id: "1" };
-    const pets = { 2: { id: "2", name: "Near", d: 5 }, 3: { id: "3", name: "Kin", d: 1 }, 4: { id: "4", name: "Far", d: 9 } };
+    const colors = { body1: "#000000" };
+    // Pet 3 is offered by the game but has no database record with colors yet.
+    const pets = { 2: { id: "2", name: "Near", d: 5, colors }, 3: { id: "3", name: "Unindexed", d: 1 }, 4: { id: "4", name: "Far", d: 9, colors } };
     const { partnerRanking } = load("partner-ranking.js", { document });
     assert.equal(partnerRanking.BREEDING_CANDIDATE_SELECTOR, "section#breeding a[onclick*=\"ui_action_cmdExec('pet_breed'\"]");
     const service = partnerRanking.createPartnerRanking({
@@ -87,7 +89,6 @@ function load(file, extra = {}) {
       }),
       comparePairPureMetrics: (a, b) => a.pure.distance - b.pure.distance,
       formatPureProbability: p => `${p * 100}% pure`,
-      ancestorsOverlap: (a, b) => b.id === "3",
       STRICT_PURE_TARGET: { body1: "000000" }
     });
 
@@ -99,9 +100,12 @@ function load(file, extra = {}) {
     assert.equal(selectors[0], partnerRanking.BREEDING_CANDIDATE_SELECTOR);
 
     await service.rankPartners();
-    assert.equal(statuses.at(-1), "Best indexed partner: Near", "the inbred closer partner is skipped");
-    assert.equal(anchors[1].style.outline, "3px solid #d9534f");
+    // v5.5.2: game-offered partners are never flagged as related; only an unindexed one is marked.
+    assert.equal(statuses.at(-1), "Best of 3 partner(s) OviPets offers: Near · 1 partner(s) not in the database yet");
+    assert.equal(anchors[1].style.outline, "");
     assert.equal(anchors[1].children[0].className, "oweh-warning");
+    assert.match(anchors[1].children[0].textContent, /Not in the database yet/);
+    assert.equal(anchors[2].style.outline, "3px solid #ffd166");
     assert.equal(anchors[0].children[0].className, "oweh-recommended");
     assert.match(anchors[0].children[0].textContent, /Body 1 3\/3 reachable, \+1 new FF · 50% pure · 2 locked/);
 

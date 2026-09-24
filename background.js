@@ -41,6 +41,7 @@ diagnostic("info", "runtime", "service-worker.loaded", { version: chrome.runtime
 
 
 const DAILY_MAINTENANCE_ALARM = "oweh-daily-maintenance";
+const WAKE_AFTER_MAX_MS = 20 * 1000;
 function disableLegacyDailyAlarm() {
   // v4.9.0 makes the combined maintenance/friend-request run explicitly user-started.
   // Clear the old recurring alarm when upgrading from v4.8.x.
@@ -124,6 +125,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "diagnosticLogClear") {
     diagnosticLog.clear().then(() => sendResponse({ ok: true }))
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "wakeAfter") {
+    // v5.5.2: a hidden tab's own timers are throttled to 1 Hz and, after five minutes hidden,
+    // to about once a minute. The service worker's timers are not, so a hidden worker/egg tab
+    // sleeps here instead. One request is capped well under the service worker's idle limit.
+    const ms = Math.max(0, Math.min(WAKE_AFTER_MAX_MS, Math.floor(Number(message.ms) || 0)));
+    setTimeout(() => sendResponse({ ok: true, ms }), ms);
     return true;
   }
   if (message?.type === "stateGetTabIdentity") {

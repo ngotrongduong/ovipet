@@ -136,9 +136,11 @@ OWEH.register("feature-breeding", helpers => {
       }
 
       const history = await storageGet("owehBreedHistory", []);
+      const gameEligible = await readGameEligible(pets, target, strategy, nextOwnUserId);
       const plan = breedingPlan.buildDatabaseBreedPlan(pets, target, history, {
         now,
         strategy,
+        gameEligible,
         shortlistSize: breedingScore.DEFAULT_MALE_SHORTLIST_SIZE
       });
       if (!plan.femaleCount) {
@@ -173,6 +175,46 @@ OWEH.register("feature-breeding", helpers => {
     } finally {
       planning = false;
     }
+  }
+
+  // v5.5.2: read each plannable female's own Breeding tab (read-only JSONP) for the enclosures
+  // that hold candidate males. The partners OviPets lists there already passed the game's
+  // relatedness and cooldown checks, so the plan uses that list instead of the local pedigree
+  // (which is often unverified). A failed or empty read leaves that female on the local rule.
+  const GAME_ELIGIBLE_MAX_READS = 400;
+  async function readGameEligible(pets, target, strategy, ownUserId) {
+    const petFetch = helpers.petFetch;
+    if (!petFetch?.readBreedingPartners || !breedingPlan.plannableFemales) return {};
+    const enclosureIds = await storageGet("owehEnclosureIds", {});
+    const idFor = label => {
+      const wanted = breedingPlan.normalizeEnclosureLabel(label);
+      const key = Object.keys(enclosureIds || {}).find(name => breedingPlan.normalizeEnclosureLabel(name) === wanted);
+      return key === undefined ? null : enclosureIds[key];
+    };
+    const enclosures = breedingPlan.plannableMaleEnclosures(pets, target, strategy)
+      .map(idFor).filter(id => id !== null && id !== undefined && /^\d+$/.test(String(id)));
+    const females = breedingPlan.plannableFemales(pets, target, strategy);
+    const result = {};
+    if (!enclosures.length || !females.length) return result;
+    let reads = 0;
+    for (let index = 0; index < females.length; index += 1) {
+      if (reads + enclosures.length > GAME_ELIGIBLE_MAX_READS) break;
+      const female = females[index];
+      setStatus(`Reading OviPets' own partner list ${index + 1}/${females.length}: ${female.name || female.id}`);
+      const partners = new Set();
+      let failed = false;
+      for (const enclosureId of enclosures) {
+        reads += 1;
+        try {
+          (await petFetch.readBreedingPartners(female.id, enclosureId, ownUserId)).forEach(id => partners.add(String(id)));
+        } catch {
+          failed = true;
+          break;
+        }
+      }
+      if (!failed && partners.size) result[String(female.id)] = [...partners];
+    }
+    return result;
   }
 
   async function requestStart(strategy = BREEDING_STRATEGIES.PURE_LINE) {
@@ -355,7 +397,10 @@ OWEH.register("feature-breeding", helpers => {
       if (!maleId || rejected.has(maleId)) continue;
       const male = pets[maleId];
       if (!male || male.gender !== "Male" || male.onCooldown) continue;
-      const compatibility = pedigree.pedigreeCompatibility(female, male);
+      // Game-listed candidates came from this female's own Breeding tab at planning time.
+      const compatibility = candidate?.gameListed === true
+        ? { safe: true, reason: "game-listed", overlapIds: [] }
+        : pedigree.pedigreeCompatibility(female, male);
       if (!compatibility.safe) continue;
       return { candidate, index, male, compatibility, total: candidates.length };
     }
@@ -426,7 +471,8 @@ OWEH.register("feature-breeding", helpers => {
       const candidateIds = candidates.map(item => String(item?.maleId || "")).filter(Boolean);
       const pets = await getPetsByIds([String(current.id), ...candidateIds]);
       const female = pets[current.id];
-      if (!female || female.gender !== "Female" || female.onCooldown || female.pedigreeVerified !== true) {
+      const gameVouched = candidates.some(item => item?.gameListed === true);
+      if (!female || female.gender !== "Female" || female.onCooldown || (female.pedigreeVerified !== true && !gameVouched)) {
         campaign.unpaired = (campaign.unpaired || 0) + 1;
         setStatus(`${current.name}: female pedigree/state is not safely breedable; skipped without sending a command`);
         await advance(campaign, queue);

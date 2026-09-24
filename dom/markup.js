@@ -193,6 +193,19 @@
     };
   }
 
+  // v5.5.2: the Breeding tab (`sec=breeding&enclosure=<id>`) lists only the partners OviPets
+  // itself allows — related and cooling-down pets are already filtered out by the game. Each
+  // card carries `pet_breed` with `MotherID=..&FatherID=..`; returns the partner ids of `petId`.
+  function parseBreedingPartners(output, petId) {
+    const self = String(petId || "");
+    const partners = new Set();
+    for (const match of String(output || "").matchAll(/MotherID=(\d+)&(?:amp;)*FatherID=(\d+)/g)) {
+      const other = match[1] === self ? match[2] : match[1];
+      if (other && other !== self) partners.add(other);
+    }
+    return [...partners];
+  }
+
   // Combines a parsed profile and pedigree into the record shape OWEH.dom.profile.readPet
   // produces, so the pet database cannot tell a fetched record from a navigated one.
   function petRecord({ id, profile, pedigree, url, now = Date.now() }) {
@@ -230,6 +243,7 @@
     parseProfile,
     parsePedigree,
     parseHatchery,
+    parseBreedingPartners,
     petRecord
   });
 })();

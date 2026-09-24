@@ -13,6 +13,7 @@
 
   const profilePath = (id, usr) => `/?src=pets&sub=profile&usr=${/^\d+$/.test(String(usr || "")) ? usr : 0}&pet=${id}`;
   const pedigreePath = id => `/?src=pets&sub=profile&sec=pedigree&pet=${id}`;
+  const breedingPath = (id, enclosureId, usr) => `/?src=pets&sub=profile&sec=breeding&usr=${/^\d+$/.test(String(usr || "")) ? usr : 0}&pet=${id}&enclosure=${enclosureId}`;
 
   function createPetFetch(deps) {
     const {
@@ -132,7 +133,13 @@
       return markup.parseHatchery(await fetchPanel(HATCHERY_PATH));
     }
 
-    return Object.freeze({ fetchPanel, collectCatalog, readPet, readHatchery, mergePetRecord });
+    // v5.5.2: the partners OviPets offers for `id` in one enclosure — the game's own
+    // relatedness/cooldown filter, read-only. Throws on a failed fetch so callers fail closed.
+    async function readBreedingPartners(id, enclosureId, usr = null) {
+      return markup.parseBreedingPartners(await fetchPanel(breedingPath(id, enclosureId, usr)), id);
+    }
+
+    return Object.freeze({ fetchPanel, collectCatalog, readPet, readHatchery, readBreedingPartners, mergePetRecord });
   }
 
   // A fresh read never downgrades a verified pedigree to an unverified one (the pedigree
@@ -149,5 +156,5 @@
   }
 
   OWEH.services = OWEH.services || {};
-  OWEH.services.petFetch = Object.freeze({ createPetFetch, mergePetRecord, profilePath, pedigreePath });
+  OWEH.services.petFetch = Object.freeze({ createPetFetch, mergePetRecord, profilePath, pedigreePath, breedingPath });
 })();
