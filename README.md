@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.4.3**
+Current release: **v5.4.4**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.4.4 Species Review tab
+
+- **Review species images** (Hatchery & Eggs) opens a separate tab with every saved Name the Species image, one card per image (URL and visual keys merged), showing the answers the game confirmed or rejected, the options that were offered and a silhouette suggestion. Filter by unresolved / all / game-confirmed / my labels and by species; sort by date or wrong tries.
+- Clicking an answer on an unresolved image saves a manual label into the Species DB (`manual` marker, one vote) and teaches its silhouette to the matcher; relabeling moves both, clicking the label again clears it. The game verdict always wins: a game-confirmed image or a game-rejected species cannot be labeled.
 
 ## v5.4.3 Threshold re-measured on real challenges + back-fill on import
 

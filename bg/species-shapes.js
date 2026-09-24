@@ -49,6 +49,23 @@
     });
   }
 
+  // Species Review relabel: drops the exact silhouette a human label added to the old species.
+  function remove(message) {
+    const species = String(message?.species || "").trim();
+    const target = String(message?.shape || "");
+    if (!species || !shapeApi()?.validShape(target)) return Promise.resolve({ ok: false, reason: "invalid-shape" });
+    return serialized(async () => {
+      const library = await read(SHAPES_KEY, {});
+      const examples = Array.isArray(library[species]?.examples) ? library[species].examples : [];
+      const next = examples.filter(example => example !== target);
+      if (next.length === examples.length) return { ok: true, removed: false };
+      if (next.length) library[species] = { ...library[species], examples: next, updatedAt: Date.now() };
+      else delete library[species];
+      await chrome.storage.local.set({ [SHAPES_KEY]: library });
+      return { ok: true, removed: true };
+    });
+  }
+
   // Service-worker side mask: fetch the guarded challenge image and draw it at 32x32.
   async function shapeFromUrl(url) {
     const shape = shapeApi();
@@ -123,5 +140,5 @@
     return { ok: true, started: true };
   }
 
-  OWEH_BG.speciesShapes = Object.freeze({ learn, merge, shapeFromUrl, migrateFromMemory, rescanMemory, SHAPES_KEY });
+  OWEH_BG.speciesShapes = Object.freeze({ learn, merge, remove, shapeFromUrl, migrateFromMemory, rescanMemory, SHAPES_KEY });
 })();

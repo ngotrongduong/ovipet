@@ -78,6 +78,31 @@ chrome.alarms.onAlarm.addListener(alarm => {
   }
 });
 
+// Species Review (review/species-review.html): a human label for an unresolved challenge image.
+// The silhouette comes from the page (inspector trace) or is re-fetched from the credit-challenge
+// URL; it is added to the shape library under the chosen species and, on a relabel, removed from
+// the previous one so a corrected mistake does not keep steering the answerer.
+async function labelSpeciesReview(message) {
+  const keys = (Array.isArray(message?.keys) ? message.keys : []).map(String);
+  const species = message?.species ? String(message.species).trim() : "";
+  const shapeApi = globalThis.OWEH_SPECIES_SHAPE;
+  let shape = shapeApi?.validShape(message?.shape) ? message.shape : null;
+  if (!shape && species) {
+    const url = keys.find(key => speciesImage.allowedSpeciesImageUrl(key));
+    if (url) shape = await speciesShapes.shapeFromUrl(url).catch(() => null);
+  }
+  const result = await speciesMemory.label({ keys, species, shape });
+  if (!result.ok) return result;
+  const previous = result.previous;
+  if (previous?.species && previous.shape && previous.species !== species) {
+    await speciesShapes.remove({ species: previous.species, shape: previous.shape }).catch(() => null);
+  }
+  let shapeLearned = false;
+  if (species && shape) shapeLearned = Boolean((await speciesShapes.learn({ species, shape }))?.ok);
+  diagnostic("info", "species", "review.label", { species: species || null, previous: previous?.species || null, shapeLearned });
+  return { ok: true, species: species || null, shapeLearned, hasShape: Boolean(shape) };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "diagnosticLogAppend") {
     const entry = message.entry || {};
@@ -197,8 +222,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message),
     speciesShapeLearn: () => speciesShapes.learn(message),
     speciesShapeMerge: () => speciesShapes.merge(message),
-    speciesShapeRescan: () => speciesShapes.rescanMemory()
+    speciesShapeRescan: () => speciesShapes.rescanMemory(),
+    speciesReviewLabel: () => labelSpeciesReview(message)
   };
+  if (message?.type === "openSpeciesReview") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("review/species-review.html") });
+    sendResponse({ ok: true });
+    return;
+  }
   if (speciesMemoryHandlers[message?.type]) {
     speciesMemoryHandlers[message.type]().then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));

@@ -64,7 +64,7 @@ try {
     Write-Host "== Overlay validated runtime/test tree (GitHub docs remain authoritative) ==" -ForegroundColor Cyan
     $paths = @(
         "background.js", "content.css", "content.js", "manifest.json", "offscreen.html", "offscreen.js", "page-bridge.js",
-        "bg", "core", "dom", "domain", "features", "jobs", "ui", "scripts", "tests",
+        "bg", "core", "dom", "domain", "features", "jobs", "review", "services", "ui", "scripts", "tests",
         ".github/workflows/ci.yml",
         ".claude/skills/bump-version/SKILL.md", ".claude/skills/eyes-ai-brief/SKILL.md",
         "docs/archive",

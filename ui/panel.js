@@ -5,7 +5,7 @@
 // in features/* and are injected here as actions so the panel cannot become authoritative
 // application state.
 OWEH.register("ui-panel", helpers => {
-  const { storageGet, storageGetMany, storageSet, setStatus, uiPanelActions } = helpers;
+  const { storageGet, storageGetMany, storageSet, setStatus, runtimeRequest, uiPanelActions } = helpers;
   const {
     panelId: PANEL_ID,
     tooltipId: TOOLTIP_ID,
@@ -189,7 +189,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.4.3</span>
+          <span class="oweh-version">v5.4.4</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -258,6 +258,7 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from your saved pets and from the Adoption Center (read-only, no clicks). More learned shapes make Name the Species answers more accurate.">Learn Species Shapes</button>
               <button id="oweh-species-seed-stop" class="oweh-secondary" type="button" data-tip="Stop Learn Species Shapes after the current pet.">Stop</button>
             </div>
+            <button id="oweh-species-review" class="oweh-primary-wide" type="button" data-tip="Open a separate tab with every saved Name the Species image (correct and wrong). Label the unresolved ones yourself; each label is saved to the species database and teaches the silhouette matcher.">Review species images</button>
             <div class="oweh-actions">
               <button id="oweh-export-species"class="oweh-secondary" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export Species JSON</button>
               <button id="oweh-export-species-db" class="oweh-secondary" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Export Species DB</button>
@@ -402,6 +403,11 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-export-species-db", "Exporting Species database", async () => {
       await exportSpeciesDatabase();
       await updateSpeciesInspectorStats(true);
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-species-review", "Opening Species Review", async () => {
+      const result = await runtimeRequest({ type: "openSpeciesReview" });
+      if (!result?.ok) throw new Error(result?.error || "Species Review tab could not be opened");
+      setStatus("Species Review opened in a new tab");
     }, missingControls);
     const importSpeciesFile = panel.querySelector("#oweh-import-species-file");
     bindPanelAction(panel, "#oweh-import-species-db", "Choosing Species database backup", async () => {
