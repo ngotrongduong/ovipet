@@ -79,19 +79,19 @@ OWEH.register("species-seed", helpers => {
     const library = await storageGet(SHAPES_KEY, {});
     const counts = {};
     for (const [species, record] of Object.entries(library || {})) counts[species] = record?.examples?.length || 0;
-    const full = species => (counts[species] || 0) >= shapeApi.MAX_EXAMPLES;
+    // A full species still learns: the library drops its most redundant silhouette instead.
     const totals = { scanned: 0, added: 0, failed: 0 };
     const report = source => setStatus(`Learn Species Shapes (${source}) — ${totals.scanned} pet(s) checked, ${totals.added} new silhouette(s), ${Object.keys(counts).length} species known`);
 
     const process = async (id, species, source) => {
       seen.add(id);
       totals.scanned += 1;
-      if (!species || full(species)) return;
+      if (!species) return;
       const shape = await shapeOfImage(petImageUrl(id));
       if (!shape) { totals.failed += 1; return; }
       if (await learn(species, shape)) {
         totals.added += 1;
-        counts[species] = (counts[species] || 0) + 1;
+        counts[species] = Math.min((counts[species] || 0) + 1, shapeApi.MAX_EXAMPLES);
       }
       report(source);
     };

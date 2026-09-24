@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.4.1**
+Current release: **v5.4.2**
 
 ## Engineering objective
 
@@ -16,6 +16,10 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.4.2 Bigger, more diverse silhouette library
+
+- Up to 150 silhouettes per species (was 40). When a species is full, the most redundant silhouette (the older of the closest pair) is dropped instead of the oldest, so rare mutation outlines survive a flood of common ones. Learn Species Shapes keeps learning species that are already full.
 
 ## v5.4.1 Learn Species Shapes + tuned silhouette threshold
 
