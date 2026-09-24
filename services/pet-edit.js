@@ -73,10 +73,10 @@
       // ui_action_cmdExec('pet_rename', `PetID=${id}`, form), with input[name="Name"].
       // Use that same rendered UI dispatcher first; retain the inspected button flow below
       // as a compatibility fallback if the game changes or the dispatcher is unavailable.
-      if (!isUnnamed) {
-        const direct = await sendGameCommand("pet_rename", pet.id, { Name: desiredName });
-        if (direct.ok) return { changed: true, name: desiredName, fast: true };
-      }
+      // Confirmed live 2026-09-24: an Unnamed newborn's Name button calls
+      // ui_action_cmdExec('pet_name', `PetID=${id}`, form) with the same Name field.
+      const direct = await sendGameCommand(isUnnamed ? "pet_name" : "pet_rename", pet.id, { Name: desiredName });
+      if (direct.ok) return { changed: true, name: desiredName, fast: true };
       // A live newly hatched pet exposes Name in the profile Actions block and keeps its
       // Enclosure select disabled until naming succeeds. Older named pets expose Rename from
       // Edit. Support both flows, preferring the directly visible Name action.

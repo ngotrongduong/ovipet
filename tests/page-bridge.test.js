@@ -235,6 +235,14 @@ function request(payload) {
   assert.deepEqual(hints.scriptSources, ["https://ovipets.com/js/app.js"]);
   assert.equal(hints.pageRuntime.dispatcherPresent, true);
 
+  // v5.5.0: naming an Unnamed newborn is the confirmed pet_name command with a Name field.
+  result = await request({ requestId: "name", command: "pet_name", targetId: "530491258", fields: { Name: "A-B-C" } });
+  assert.equal(result.ok, true);
+  assert.equal(calls[7].command, "pet_name");
+  assert.equal(calls[7].params, "PetID=530491258");
+  assert.equal(calls[7].form.children[0].name, "Name");
+  assert.equal(calls[7].form.children[0].value, "A-B-C");
+
   console.log("page bridge tests passed");
 })().catch(error => {
   console.error(error);

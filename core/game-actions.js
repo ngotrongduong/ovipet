@@ -40,6 +40,26 @@
     return { moved: false, reason: direct.reason || "direct-command-failed" };
   }
 
+  // Enclosure move when the caller already knows the target id (from a fetched profile's
+  // Enclosure options), so no stored label lookup or Overview fallback is needed.
+  async function movePetToEnclosureId(petId, enclosureId) {
+    if (!/^\d+$/.test(String(petId)) || !/^\d+$/.test(String(enclosureId))) {
+      return { moved: false, reason: "invalid-move" };
+    }
+    const direct = await sendGameCommand("pets_enclosure", petId, { Enclosure: String(enclosureId) }, 10000);
+    return direct.ok ? { moved: true, fast: true } : { moved: false, reason: direct.reason || "direct-command-failed" };
+  }
+
+  // Confirmed live 2026-09-24: an Unnamed newborn's Name button calls
+  // ui_action_cmdExec('pet_name', `PetID=${id}`, form) with input[name="Name"] (maxlength 25);
+  // a named pet's Edit > Rename calls pet_rename with the same field.
+  async function namePet(petId, name, { unnamed = false } = {}) {
+    const value = String(name || "").trim();
+    if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
+    if (!value || value.length > 25) return { ok: false, reason: "invalid-name" };
+    return sendGameCommand(unnamed ? "pet_name" : "pet_rename", petId, { Name: value }, 10000);
+  }
+
   async function feedPet(petId) {
     if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
     // Confirmed live 2026-09-19 on a hungry owned pet. This is the free per-pet Feed
@@ -78,6 +98,8 @@
 
   OWEH.core.gameActions = Object.freeze({
     fastMovePetToEnclosure,
+    movePetToEnclosureId,
+    namePet,
     feedPet,
     hatchOwnEgg,
     requestFriend,

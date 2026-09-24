@@ -15,11 +15,11 @@ const source = [
 for (const required of [
   "const RECENT_FULL_FOOD_MS = 20 * 60 * 60 * 1000",
   "function petProfileNeedsRefresh(cached, item, autoRename = false)",
-  "profile(s) are up to date",
+  "petRecord.petProfileNeedsRefresh(cached, item, false)",
   "knownFullRecently",
   "fedRecently",
   "dispatchedRecently",
-  "pet.feedDispatchedAt = Date.now()",
+  "feedDispatchedAt: Date.now()",
   "body1UnionExactChannels",
   "body1NewExactChannels",
   "body1ReachableChannels",

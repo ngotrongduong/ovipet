@@ -28,19 +28,26 @@ const missing = [...new Set(bindings.filter(id => !htmlIds.has(id)))];
 
 if (missing.length) throw new Error(`Bindings reference missing controls: ${missing.join(", ")}`);
 for (const id of [
-  "oweh-catalog-start", "oweh-profiles-start", "oweh-sort-start", "oweh-feed-start",
+  "oweh-maintain-start", "oweh-start", "oweh-start-hatchlings",
   "oweh-ninja-start", "oweh-requests-start", "oweh-start-sweep", "oweh-start-breed", "oweh-start-breed-target"
 ]) {
   if (!bindings.includes(id)) throw new Error(`Critical button is not bound: ${id}`);
 }
 for (const id of [
-  "oweh-catalog-stop", "oweh-profiles-stop", "oweh-sort-stop", "oweh-feed-stop",
+  "oweh-maintain-stop", "oweh-stop",
   "oweh-ninja-stop", "oweh-requests-stop"
 ]) {
   if (!bindings.includes(id)) throw new Error(`Every job needs its own Stop button: ${id}`);
 }
 if (/id="oweh-(run|stop)-daily"|>Run Daily Maintenance</.test(panelSource)) {
-  throw new Error("The chained Daily Maintenance button must not come back — every button is one job");
+  throw new Error("The old chained Daily Maintenance button must not come back — Update database replaces it");
+}
+// v5.5.0: catalog, profiles, sort and feed are steps of one Update database job.
+if (/id="oweh-(catalog|profiles|sort|feed)-(start|stop)"/.test(panelSource)) {
+  throw new Error("The retired per-step job buttons must not come back");
+}
+for (const step of ["catalog", "profiles", "sort", "feed"]) {
+  if (!panelSource.includes(`data-maintain-step="${step}"`)) throw new Error(`Update database needs a ${step} step toggle`);
 }
 // Every job with a Start button in the panel must have a matching Stop button next to it.
 for (const start of htmlIds) {

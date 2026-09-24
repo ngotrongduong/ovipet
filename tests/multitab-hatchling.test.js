@@ -24,10 +24,11 @@ for (const required of [
   'message?.type === "startSharedWorker"',
   "reportWorkerDone",
   'waitForButtonText("Name", 5000)',
-  "card.unnamed",
+  "unnamed.has(id) || force",
   "Number(b.unnamed) - Number(a.unnamed)",
-  "catalogModified: item.modified || null",
-  "pets[pet.id] = { ...(existingPet || {}), ...pet }"
+  "gameActions.namePet(pet.id, desiredName, { unnamed })",
+  "owehPets: { [pet.id]: merged }",
+  "ownEggsService.onRunFinished?.("
 ]) {
   if (!runtime.includes(required)) throw new Error(`Multi-tab/Hatchling behavior missing: ${required}`);
 }

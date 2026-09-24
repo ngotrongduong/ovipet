@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..");
-const jobFiles = ["catalog.js", "profiles.js", "sort.js", "feed.js", "ninja.js", "requests.js", "friend-eggs.js", "egg-turn-tab.js"];
+const jobFiles = ["maintain.js", "ninja.js", "requests.js", "friend-eggs.js", "egg-turn-tab.js"];
 for (const name of jobFiles) {
   const source = fs.readFileSync(path.join(root, "jobs", name), "utf8");
   assert.equal(/\blegacy\b/.test(source), false, `${name} must not depend on the legacy helper bag`);
@@ -19,7 +19,7 @@ for (const required of [
   "hatcheryDom: OWEH.dom.hatchery",
   "gameActions: OWEH.core.gameActions",
   "catalogService:",
-  "profileIndexService:",
+  "petFetch,",
   "ninjaService:",
   "sweepService:"
 ]) {

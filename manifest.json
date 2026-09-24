@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OviPets Hatchery Helper",
-  "version": "5.4.4",
-  "description": "One button per job (catalog, profiles, sort, feed, Ninja + Ads friend discovery, friend requests), automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
+  "version": "5.5.0",
+  "description": "Command-first helper: one Update database pass (catalog, profiles, rename, sort, feed), one Hatchery run (turn, hatch, name, sort newborns), Ninja + Ads friend discovery and requests, automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
   "background": {
     "service_worker": "background.js"
   },
@@ -30,6 +30,7 @@
         "core/worker-client.js",
         "core/scheduler.js",
         "dom/routes.js",
+        "dom/markup.js",
         "dom/profile.js",
         "dom/hatchery.js",
         "dom/tabs.js",
@@ -47,10 +48,7 @@
         "jobs/species-answer.js",
         "jobs/species-seed.js",
         "jobs/runner.js",
-        "jobs/catalog.js",
-        "jobs/profiles.js",
-        "jobs/sort.js",
-        "jobs/feed.js",
+        "jobs/maintain.js",
         "jobs/ninja.js",
         "jobs/requests.js",
         "jobs/friend-eggs.js",
@@ -70,6 +68,7 @@
         "services/retention.js",
         "services/partner-ranking.js",
         "services/worker-control.js",
+        "services/pet-fetch.js",
         "content.js"
       ],
       "css": [
