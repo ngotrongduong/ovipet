@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.5.0**
+Current release: **v5.5.1**
 
 ## Engineering objective
 
@@ -16,6 +16,10 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.5.1 Learn species shapes — Adoption Center only
+
+- **Learn species shapes** now reads only the Adoption Center (on ovipets.com). Own pets were dropped as a source: a collection is usually one or two species, so they added little variety. Images labelled in Species review still teach their silhouette directly.
 
 ## v5.5.0 Panel v2 — command-first, fewer buttons
 

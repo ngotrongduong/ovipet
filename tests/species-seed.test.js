@@ -1,6 +1,6 @@
 "use strict";
 
-// jobs/species-seed.js: seeds the silhouette library from own pets and the Adoption Center.
+// jobs/species-seed.js: seeds the silhouette library from the Adoption Center only.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -86,12 +86,13 @@ function setup({ hostname = "ovipets.com", store = {} } = {}) {
   assert.ok(job.buttons["#oweh-species-seed-start"] && job.buttons["#oweh-species-seed-stop"]);
 
   const totals = await job.api.start();
-  // Own pets (11, 12) first, then Adoption Center pets 21 (Lupus) and 22 (image fails); 11 is not re-checked.
-  assert.deepEqual(learned.map(entry => entry.species), ["Feline", "Avi", "Lupus"]);
-  assert.equal(totals.added, 3);
-  assert.equal(totals.failed, 1, "a pet image without a silhouette is counted as failed");
-  assert.deepEqual(Object.keys(store.owehSpeciesShapes).sort(), ["Avi", "Feline", "Lupus"]);
-  assert.deepEqual([...store.owehSpeciesSeedSeen].sort(), ["11", "12", "21", "22"]);
+  // v5.5.1: only the Adoption Center is a source. Own pets (11, 12) are ignored; adoption pets
+  // 21 (Lupus), 22 (image fails) and 11 (profile has no species) are checked.
+  assert.deepEqual(learned.map(entry => entry.species), ["Lupus"]);
+  assert.equal(totals.added, 1);
+  assert.equal(totals.failed, 2, "a failed profile or a pet image without a silhouette is counted as failed");
+  assert.deepEqual(Object.keys(store.owehSpeciesShapes), ["Lupus"]);
+  assert.deepEqual([...store.owehSpeciesSeedSeen].sort(), ["11", "21", "22"]);
   assert.ok(fetched.every(url => url.startsWith("/?src=")), "only same-origin OviPets pages are fetched");
   assert.ok(/finished/.test(statuses.at(-1)));
 
@@ -101,11 +102,11 @@ function setup({ hostname = "ovipets.com", store = {} } = {}) {
   assert.equal(again.scanned, 0);
   assert.equal(learned.length, 0);
 
-  // Outside ovipets.com only own pets are used; the Adoption Center is never fetched.
+  // Outside ovipets.com nothing is fetched or learned; the status says where to run it.
   const away = setup({ hostname: "app.ovipets.com", store: { owehPets: { 11: { species: "Feline" } } } });
   await away.job.api.start();
   assert.equal(away.fetched.length, 0);
-  assert.deepEqual(away.learned.map(entry => entry.species), ["Feline"]);
+  assert.equal(away.learned.length, 0);
   assert.ok(/open ovipets\.com/.test(away.statuses.at(-1)));
 
   // Stop ends the run early.
