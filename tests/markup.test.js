@@ -59,6 +59,11 @@ assert.equal(unnamed.gender, "Male");
 assert.equal(unnamed.canName, true, "a newborn is named with pet_name, not pet_rename");
 assert.equal(unnamed.canRename, false);
 assert.equal(unnamed.enclosureLabel, "Newborn");
+assert.equal(named.generated, false);
+const generatedProfile = samples.unnamedProfile.replace(/(<ui:section\b[^>]*\bid\s*=\s*["']profile["'][^>]*>)/,
+  "$1<ui:i><img title = \"Male\" src = \"/static/icons/male.png\"></ui:i><ui:i><img title=\"Generated\" src=\"/static/icons/wand.png\"></ui:i>");
+assert.notEqual(generatedProfile, samples.unnamedProfile, "fixture has a profile section to inject into");
+assert.equal(markup.parseProfile(generatedProfile).generated, true, "the wand icon marks a Generated pet");
 assert.equal(markup.parseProfile("<ui:section title = \"Pets\" id = \"pets\"></ui:section>"), null);
 
 // ---- pedigree
@@ -83,7 +88,7 @@ assert.deepEqual([...hatchery.unnamedIds], ["530491258"]);
 // ---- record compatible with dom/profile.js readPet
 const record = markup.petRecord({ id: "157155269", profile: named, pedigree: graph, now: 1000 });
 assert.deepEqual(Object.keys(record).sort(), [
-  "ancestors", "colors", "foodCheckedAt", "foodPercent", "gender", "id", "name", "parentIds",
+  "ancestors", "colors", "foodCheckedAt", "foodPercent", "gender", "generated", "id", "name", "parentIds",
   "pedigree", "pedigreeVerified", "species", "updatedAt", "url"
 ]);
 assert.deepEqual([...record.parentIds], ["154320984", "155631245"]);

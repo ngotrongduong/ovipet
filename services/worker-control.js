@@ -8,7 +8,7 @@
   if (!globalThis.OWEH) throw new Error("jobs/core.js must load before services/worker-control.js");
 
   const STRAIGHT_JOB_LABELS = Object.freeze({
-    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", cull: "Male cull"
   });
 
   function createWorkerControl(deps) {

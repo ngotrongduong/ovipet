@@ -9,7 +9,7 @@ OWEH.register("ui-dashboard", helpers => {
   const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
   const STRAIGHT_JOB_LABELS = {
-    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", cull: "Male cull"
   };
   let updating = false;
   let timer = null;
@@ -199,6 +199,114 @@ OWEH.register("ui-dashboard", helpers => {
     }));
   }
 
+  // v5.6.0 male cull review: the meta line under Breeding and a second side window listing the
+  // males a cull would move. Presentation only — Plan/Confirm live in features/male-cull.js.
+  let cullViewKey = "";
+  let cullViewSignature = "";
+
+  function cullPreviewState(preview) {
+    const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
+    const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+    const queued = rows.filter(row => row?.status === "queued").length;
+    const running = Boolean(preview?.running) && Date.now() - Number(preview.updatedAt || 0) < 60 * 1000;
+    return { age, rows, queued, running, fresh: Boolean(preview) && (running || age <= BREED_PREVIEW_MAX_AGE_MS) };
+  }
+
+  function cullCoverageText(summary) {
+    const missing = Object.entries(summary?.coverage || {})
+      .filter(([, row]) => row?.missing?.length)
+      .map(([name, row]) => `${name}: ${row.missing.join(", ")}`);
+    return missing.length ? `no exact pet yet for ${missing.join(" | ")}` : "every target channel has an exact pet";
+  }
+
+  function cullBreakdownText(summary) {
+    return [
+      `${Number(summary?.noPair || 0)} no FF/00 pair`,
+      `${Number(summary?.dominated || 0)} covered by ≥${Number(summary?.minDominators || 2)} better`,
+      summary?.generated ? `${summary.generated} Generated kept` : "",
+      summary?.unchecked ? `${summary.unchecked} unchecked — run Update database` : ""
+    ].filter(Boolean).join(", ");
+  }
+
+  function renderCullPreview(panel, preview) {
+    const box = panel.querySelector("#oweh-cull-preview");
+    if (!box) return;
+    const { age, rows, queued, running, fresh } = cullPreviewState(preview);
+    let text = "No cull plan yet — press Plan cull";
+    if (preview && !fresh) text = "The last cull plan expired (older than 15 minutes) — plan again";
+    if (preview && fresh) {
+      const summary = preview.summary || {};
+      const moved = rows.filter(row => row?.status === "moved").length;
+      text = `${rows.length} of ${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${queued} queued${running ? " · moving now" : ` · built ${Math.max(0, Math.round(age / 60000))}m ago`} · ${cullCoverageText(summary)}${preview.enclosureMissing ? " · run Update database so the Males discard enclosure is known" : ""}`;
+    }
+    if (box.textContent !== text) box.textContent = text;
+    const confirm = panel.querySelector("#oweh-cull-confirm");
+    const discard = panel.querySelector("#oweh-cull-discard");
+    const opener = panel.querySelector("#oweh-view-cull");
+    if (confirm) confirm.disabled = !fresh || !queued || running;
+    if (discard) discard.disabled = !preview || running;
+    if (opener) opener.disabled = !preview || !rows.length;
+  }
+
+  function renderCullView(state, panelHidden) {
+    const view = document.getElementById("oweh-cull-view");
+    if (!view) return false;
+    const preview = state.owehCullPreview;
+    const { rows } = cullPreviewState(preview);
+    if (!preview || !rows.length) {
+      view.classList.add("oweh-hidden");
+      cullViewKey = "";
+      cullViewSignature = "";
+      return false;
+    }
+    const key = String(preview.createdAt || 0);
+    if (key !== cullViewKey) {
+      cullViewKey = key;
+      view.dataset.dismissed = "";
+    }
+    const hidden = panelHidden || view.dataset.dismissed === "1";
+    view.classList.toggle("oweh-hidden", hidden);
+    const summary = preview.summary || {};
+    const moved = rows.filter(row => row?.status === "moved").length;
+    const heading = `${rows.length}/${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${cullCoverageText(summary)}`;
+    const signature = JSON.stringify([heading, rows.map(row => [row.id, row.status])]);
+    if (signature !== cullViewSignature) {
+      cullViewSignature = signature;
+      const meta = view.querySelector("#oweh-cull-view-meta");
+      if (meta) meta.textContent = heading;
+      const body = view.querySelector("#oweh-cull-view-rows");
+      if (body) {
+        body.replaceChildren(...rows.map((row, index) => {
+          const tr = document.createElement("tr");
+          tr.className = `oweh-plan-row oweh-cull-${String(row.status || "queued")}`;
+          const male = planViewCell("td", row.name || row.id);
+          male.title = `Male ID ${row.id}`;
+          const dominators = (row.dominators || []).map(item => item.name || item.id).join(", ");
+          const noPair = row.reason === "no-endpoint-pair";
+          const better = planViewCell("td", noPair
+            ? "no FF/00 pair in any slot"
+            : `${dominators}${Number(row.dominatorCount || 0) > (row.dominators || []).length ? ` +${Number(row.dominatorCount) - (row.dominators || []).length}` : ""}`);
+          better.title = noPair
+            ? "No aligned FF or 00 pair (RR|GG|BB) in Body, Scales or Extra"
+            : (row.dominators || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
+          tr.append(
+            planViewCell("td", String(index + 1), "oweh-plan-num"),
+            male,
+            planViewCell("td", row.species || ""),
+            planViewCell("td", row.enclosure || ""),
+            planViewCell("td", `${Number(row.exactChannels || 0)}/15`),
+            planViewCell("td", String(Number(row.distance || 0))),
+            better,
+            planViewCell("td", row.status === "error" ? `error: ${row.error || "?"}`
+              : (row.status === "skipped" && row.error ? `skipped: ${row.error}` : String(row.status || "queued")), "oweh-plan-status")
+          );
+          return tr;
+        }));
+      }
+    }
+    return !hidden;
+  }
+
   async function update() {
     if (updating) return;
     const panel = document.getElementById(panelId);
@@ -223,7 +331,8 @@ OWEH.register("ui-dashboard", helpers => {
         owehDatabaseMeta: { catalogCount: 0, completeProfiles: 0, missingProfiles: 0, enclosureCount: 0, catalogAt: 0 },
         owehSweepNotice: null,
         owehBreedPreview: null,
-        owehBreedPairLimit: 0
+        owehBreedPairLimit: 0,
+        owehCullPreview: null
       });
       const notice = state.owehSweepNotice;
       if (notice?.text && notice.at > lastShownSweepNotice && Date.now() - notice.at < 15000) {
@@ -237,6 +346,7 @@ OWEH.register("ui-dashboard", helpers => {
       }
       refreshHealth(false);
       renderBreedPreview(panel, state.owehBreedPreview, state.owehBreedCampaign);
+      renderCullPreview(panel, state.owehCullPreview);
       // A new plan or a finished pairing changes cooldowns: recount right away instead of in 30s.
       const nextReadinessKey = `${state.owehBreedPreview?.createdAt || 0}|${state.owehBreedCampaign?.active}|${state.owehBreedCampaign?.bredCount || 0}|${state.owehDatabaseMeta?.catalogAt || 0}`;
       const readinessChanged = nextReadinessKey !== readinessKey;
@@ -291,7 +401,9 @@ OWEH.register("ui-dashboard", helpers => {
       lastJobCount = jobs.length;
       const panelHidden = !isPanelVisible(lastJobCount);
       panel.classList.toggle("oweh-hidden", panelHidden);
-      renderBreedPlanView(state, panelHidden);
+      // Both side windows share one spot; an open cull review takes it over the pair list.
+      const cullVisible = renderCullView(state, panelHidden);
+      renderBreedPlanView(state, panelHidden || cullVisible);
       const summaryText = lastJobCount ? `${lastJobCount} automation${lastJobCount === 1 ? "" : "s"} running` : "No automation running";
       if (summary.textContent !== summaryText) summary.textContent = summaryText;
       const headerText = lastJobCount ? `${lastJobCount} active` : "Idle";
