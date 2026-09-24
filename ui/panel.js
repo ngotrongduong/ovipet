@@ -122,6 +122,15 @@ OWEH.register("ui-panel", helpers => {
       storageSet({ owehBreedingStockMaxDistance: value });
     });
 
+    const eggTabCapInput = panel.querySelector("#oweh-egg-tab-cap");
+    const clampEggTabCap = raw => Math.min(15, Math.max(1, Math.floor(Number(raw)) || 15));
+    storageGet("owehEggTabCap", 15).then(raw => { eggTabCapInput.value = String(clampEggTabCap(raw)); });
+    eggTabCapInput.addEventListener("change", () => {
+      const value = clampEggTabCap(eggTabCapInput.value);
+      eggTabCapInput.value = String(value);
+      storageSet({ owehEggTabCap: value });
+    });
+
     const speciesSoundInput = panel.querySelector("#oweh-species-sound");
     storageGet("owehSpeciesAlertSound", true).then(value => { speciesSoundInput.checked = value !== false; });
     speciesSoundInput.addEventListener("change", () => storageSet({ owehSpeciesAlertSound: speciesSoundInput.checked }));
@@ -202,7 +211,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.5.1</span>
+          <span class="oweh-version">v5.5.2</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -354,6 +363,7 @@ OWEH.register("ui-panel", helpers => {
             <div class="oweh-row" data-tip="Optional wait between individual egg-turn actions."><label for="oweh-delay">Turn delay</label><input id="oweh-delay" type="number" min="0" max="30" step="0.5" value="0"><span>s</span></div>
             <div class="oweh-row" data-tip="Time allowed for OviPets page content to render before the next workflow step."><label for="oweh-page-delay">Page load</label><input id="oweh-page-delay" type="number" min="0.25" max="10" step="0.25" value="1.5"><span>s</span></div>
             <div class="oweh-row" data-tip="Females with no FF/00 color pair and an average target distance at or below this value are routed to Breeding Stock."><label for="oweh-stock-distance">Stock distance</label><input id="oweh-stock-distance" type="number" min="0" max="765" step="1" value="96"><span>max</span></div>
+            <div class="oweh-row" data-tip="Most egg tabs Full sweep and own-Hatchery turning may open at once. Lower it (4–8) to save CPU; 15 lets the adaptive 10 → 12 → 15 speed run uncapped."><label for="oweh-egg-tab-cap">Egg tabs</label><input id="oweh-egg-tab-cap" type="number" min="1" max="15" step="1" value="15"><span>max</span></div>
             <label class="oweh-check" data-tip="Play a sound and focus the exact tab whenever an unknown Name the Species verification needs your answer."><input id="oweh-species-sound" type="checkbox" checked> Species verification alert</label>
             <div class="oweh-target-title">Fixed pure target</div>
             <div class="oweh-grid" data-tip="The breeding score is fixed to this project's target colors.">

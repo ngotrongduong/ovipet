@@ -112,12 +112,59 @@
     return values.length ? values.reduce((sum, value) => sum + value, 0) : Infinity;
   }
 
+  // v5.5.2: options.gameEligible = { [femaleId]: [maleId, ...] } read from each female's own
+  // Breeding tab — the partners OviPets itself offers (related and cooling-down pets already
+  // removed by the game). When a female has that list it is authoritative; otherwise the local
+  // 3-generation pedigree check is the fail-closed fallback.
+  function eligibilityIndex(gameEligible) {
+    const index = new Map();
+    for (const [femaleId, ids] of Object.entries(gameEligible || {})) {
+      if (Array.isArray(ids)) index.set(String(femaleId), new Set(ids.map(String)));
+    }
+    return index;
+  }
+
+  function pairCompatibility(female, male, eligible) {
+    const listed = eligible.get(String(female?.id || ""));
+    if (!listed) return pedigreeCompatibility(female, male);
+    if (!female || !male || String(female.id) === String(male.id)) return { safe: false, reason: "same-pet", overlapIds: [] };
+    return listed.has(String(male.id))
+      ? { safe: true, reason: "game-listed", overlapIds: [] }
+      : { safe: false, reason: "not-offered-by-game", overlapIds: [] };
+  }
+
+  // Pedigree-verified, or the game already vouched for this female's partners.
+  const pedigreeUsable = (pet, eligible) => pet?.pedigreeVerified === true || eligible.has(String(pet?.id || ""));
+
+  // Females a plan may consider before the species focus / pedigree step, so the feature can
+  // read their Breeding tab once. Same filters as the plans below minus pedigreeVerified.
+  function plannableFemales(pets, target, strategy) {
+    const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
+    return Object.values(pets || {})
+      .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
+        && (sameFf || isBreedingFemaleEnclosure(pet.enclosure))
+        && completeForTarget(pet, target));
+  }
+
+  // Enclosure labels holding at least one male a plan may pick (pure-line: Males only).
+  function plannableMaleEnclosures(pets, target, strategy) {
+    const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
+    const labels = new Set();
+    for (const pet of Object.values(pets || {})) {
+      if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || !completeForTarget(pet, target)) continue;
+      if (!sameFf && normalizeEnclosureLabel(pet.enclosure) !== normalizeEnclosureLabel(MALES_ENCLOSURE)) continue;
+      if (pet.enclosure) labels.add(String(pet.enclosure));
+    }
+    return [...labels];
+  }
+
   function candidateSnapshot(item) {
     if (!item?.male) return null;
     const total = secondaryTotalDistance(item.secondary);
     return {
       maleId: item.male.id,
       maleName: item.male.name || String(item.male.id || ""),
+      gameListed: item.pedigree?.reason === "game-listed",
       pure: item.pure || null,
       maleUsageBefore: Number(item.usageCount || 0),
       maleLineageUseBefore: Number(item.lineageUse || 0),
@@ -142,13 +189,14 @@
     // regardless of enclosure. For each female, evaluate every breedable male of the
     // same species across the snapshot. The male must carry the exact same Body-1
     // target-endpoint mask (for the current target this is the same FF pair/set).
+    const eligible = eligibilityIndex(options.gameEligible);
     const females = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
-        && pet.pedigreeVerified === true && completeForTarget(pet, target));
+        && pedigreeUsable(pet, eligible) && completeForTarget(pet, target));
     sortByPureMetrics(females, target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
-        && pet.pedigreeVerified === true && completeForTarget(pet, target));
+        && (pet.pedigreeVerified === true || eligible.size > 0) && completeForTarget(pet, target));
 
     const usage = recentMaleUsage(history, now);
     const lineageUsage = new Map();
@@ -168,7 +216,7 @@
           male,
           pure: pairPureMetrics(female, male, target),
           secondary: bestSecondaryTargetDistance(male, target),
-          pedigree: pedigreeCompatibility(female, male),
+          pedigree: pairCompatibility(female, male, eligible),
           usageCount: usage.get(String(male.id)) || 0,
           lineageUse: lineageUsage.get(lineageKey(male)) || 0
         }))
@@ -237,9 +285,10 @@
     if (strategy === BREEDING_STRATEGIES.SAME_FF_TARGET) {
       return buildSameFfTargetPlan(pets, target, history, options, now);
     }
+    const eligible = eligibilityIndex(options.gameEligible);
     const breedableFemales = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
-        && pet.pedigreeVerified === true && isBreedingFemaleEnclosure(pet.enclosure)
+        && pedigreeUsable(pet, eligible) && isBreedingFemaleEnclosure(pet.enclosure)
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
     const speciesCounts = breedableFemales.reduce((counts, pet) => {
       const key = pet.species || "Unknown";
@@ -252,7 +301,7 @@
       .filter(pet => (pet.species || "Unknown") === focusSpecies), target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
-        && pet.pedigreeVerified === true
+        && (pet.pedigreeVerified === true || eligible.size > 0)
         && normalizeEnclosureLabel(pet.enclosure) === normalizeEnclosureLabel(MALES_ENCLOSURE)
         && (pet.species || "Unknown") === focusSpecies
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
@@ -270,7 +319,7 @@
         male,
         pure: pairPureMetrics(female, male, target),
         secondary: bestSecondaryTargetDistance(male, target),
-        pedigree: pedigreeCompatibility(female, male),
+        pedigree: pairCompatibility(female, male, eligible),
         usageCount: usage.get(String(male.id)) || 0,
         lineageUse: lineageUsage.get(lineageKey(male)) || 0
       })).filter(item => item.pedigree.safe && Number.isFinite(item.pure.distance))
@@ -380,6 +429,8 @@
     recentMaleUsage,
     normalizeBreedingStrategy,
     buildDatabaseBreedPlan,
+    plannableFemales,
+    plannableMaleEnclosures,
     breedingReadiness
   });
 })();

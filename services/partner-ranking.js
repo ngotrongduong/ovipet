@@ -12,7 +12,7 @@
   function createPartnerRanking(deps) {
     const {
       storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
-      comparePairPureMetrics, formatPureProbability, ancestorsOverlap, STRICT_PURE_TARGET
+      comparePairPureMetrics, formatPureProbability, STRICT_PURE_TARGET
     } = deps;
 
     function hatchMaleMetrics(pet, target) {
@@ -51,6 +51,10 @@
       const pets = await storageGet("owehPets", {});
       if (!parent) return setStatus("Open the parent profile with its Colors table visible");
       if (!Object.values(target).some(Boolean)) return setStatus("Enter at least one target color");
+      // v5.5.2: every card on the Breeding tab is a partner OviPets itself offers — the game has
+      // already removed related and cooling-down pets. The old local pedigree check read the
+      // parent from this page, where the lazy Pedigree tab is not loaded, so it failed closed and
+      // flagged every male. Only a partner missing from the database is marked now.
       const ranked = breedingCandidates(parent.id).map(({ anchor, otherId }) => {
         const partner = pets[otherId];
         return {
@@ -59,19 +63,19 @@
           otherId,
           pure: pairPureMetrics(parent, partner, target),
           offTarget: petOffTarget(partner, target),
-          inbred: ancestorsOverlap(parent, partner)
+          unindexed: !partner?.colors
         };
       }).sort(comparePairPureMetrics);
-      const best = ranked.find(x => Number.isFinite(x.pure.distance) && !x.inbred);
+      const best = ranked.find(x => Number.isFinite(x.pure.distance) && !x.unindexed);
       document.querySelectorAll(".oweh-recommended, .oweh-warning").forEach(e => e.remove());
+      const unindexed = ranked.filter(item => item.unindexed).length;
       ranked.forEach((item, index) => {
-        item.anchor.style.outline = item.inbred
-          ? "3px solid #d9534f"
-          : (index < 3 && Number.isFinite(item.pure.distance) ? "3px solid #ffd166" : "");
-        if (item.inbred) {
+        item.anchor.style.outline = index < 3 && Number.isFinite(item.pure.distance) && !item.unindexed
+          ? "3px solid #ffd166" : "";
+        if (item.unindexed) {
           const warning = document.createElement("span");
           warning.className = "oweh-warning";
-          warning.textContent = "Shares a visible ancestor — likely won't breed";
+          warning.textContent = "Not in the database yet — run Update database";
           item.anchor.appendChild(warning);
           return;
         }
@@ -86,7 +90,10 @@
           item.anchor.appendChild(badge);
         }
       });
-      setStatus(best ? `Best indexed partner: ${best.partner?.name || "unknown"}` : "No matching partner has been indexed yet");
+      const missingText = unindexed ? ` · ${unindexed} partner(s) not in the database yet` : "";
+      setStatus(best
+        ? `Best of ${ranked.length} partner(s) OviPets offers: ${best.partner?.name || "unknown"}${missingText}`
+        : `No indexed partner among the ${ranked.length} OviPets offers${missingText}`);
     }
 
     return { rankPartners, breedingCandidates, hasBreedingCandidates, hatchMaleMetrics };

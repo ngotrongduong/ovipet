@@ -170,7 +170,7 @@
     const entries = await readAllEntries();
     const keys = [
       "owehWorker", "owehSweep", "owehEggTabs", "owehFriendEggState", "owehEggRun",
-      "owehEggTabConcurrency", "owehEggSpeedProfile",
+      "owehEggTabConcurrency", "owehEggSpeedProfile", "owehEggTabCap",
       "owehBreedCampaign", "owehPetIndex", "owehHatchlingRun", "owehSweepNotice"
     ];
     const snapshot = await chrome.storage.local.get(keys);

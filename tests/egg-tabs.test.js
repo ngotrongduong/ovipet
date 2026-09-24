@@ -289,6 +289,17 @@ const eggs = count => Array.from({ length: count }, (_, i) => ({ id: String(9000
   for (let i = 0; i < 100 && created.length - fastBefore < 15; i += 1) await sleep(10);
   assert(created.length - fastBefore === 15, "15 child tabs are created when adaptive concurrency reaches 15");
   await request({ type: "eggBatchStop", source: "sweep" });
+
+  // v5.5.2: the Egg tabs cap bounds the background limit even at adaptive level 15.
+  state.owehEggTabCap = 6;
+  const cappedBefore = created.length;
+  const cappedOpen = await request({ type: "eggBatchOpen", source: "sweep", batchId: "capped", friendId: "555", eggs: eggs(16) }, fromTab(workerTabId));
+  assert(cappedOpen.ok && cappedOpen.expected === 6, `the Egg tabs cap limits a batch: ${JSON.stringify(cappedOpen)}`);
+  for (let i = 0; i < 100 && created.length - cappedBefore < 6; i += 1) await sleep(10);
+  await sleep(30);
+  assert(created.length - cappedBefore === 6, "only the capped number of tabs is created");
+  await request({ type: "eggBatchStop", source: "sweep" });
+  delete state.owehEggTabCap;
   state.owehEggTabConcurrency = 10;
 
   // Rolling window: the coordinator tops a running batch up to the limit of unresolved tabs.

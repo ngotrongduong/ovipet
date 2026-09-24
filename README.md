@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.5.1**
+Current release: **v5.5.2**
 
 ## Engineering objective
 
@@ -16,6 +16,13 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.5.2 Game-approved partners, background-proof Full sweep
+
+- **Rank visible partners** trusts the Breeding tab: every male OviPets shows there already passed the game's pedigree filter, so none is flagged "likely won't breed". It picks the closest indexed male, outlines the top 3, and marks males missing from the database.
+- **Plan Pure-line / Same-FF target** read OviPets' own partner list for each female (read-only Breeding tab fetch) and use it instead of the local pedigree guess. Females whose list cannot be read keep the old pedigree-verified rule.
+- **Full sweep keeps running in the background.** A hidden worker or egg tab (behind a fullscreen window or another program) now sleeps on the service worker's clock (`wakeAfter`, `core/wake-sleep.js`) instead of Chrome's throttled page timers, and holds a Web Lock so Chrome does not freeze it.
+- **Egg tabs** setting (Settings, 1–15, default 15) caps how many egg tabs open at once; 4–8 saves CPU. Turn Egg stays UI-only in a real tab, because Name the Species must be seen and answered on the page.
 
 ## v5.5.1 Learn species shapes — Adoption Center only
 

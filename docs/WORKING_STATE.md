@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-24
-Current release baseline: v5.5.1
+Current release baseline: v5.5.2
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
@@ -247,7 +247,7 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Pet indexing waits for Pedigree content and a stable ancestor-ID signature for 300 ms, retries the tab load once, and caches unresolved profiles as unverified instead of silently treating them as unrelated.
 - `domain/pet-record.js` requires verified pedigree and bumps database metadata schema from 3 to 4, forcing legacy v5.3.15 records through a one-time safe refresh.
 - `domain/pedigree.js` exposes `pedigreeCompatibility()` and fails closed on unverified ancestry; direct ancestors/shared ancestors remain hard exclusions.
-- Both Pure-line and Same-FF planners consider only pedigree-verified females/males and persist an ordered `maleCandidates` fallback list for each female.
+- Both Pure-line and Same-FF planners first read OviPets' own Breeding-tab partner list for each plannable female (`petFetch.readBreedingPartners`, v5.5.2); a listed male is game-approved (`gameListed`) and needs no local pedigree check. A female whose list could not be read falls back to the old rule: only pedigree-verified females/males. Both persist an ordered `maleCandidates` fallback list for each female.
 - Breeding runtime mode is `database-direct-v2` and revalidates pedigree immediately before every direct breed command.
 - OviPets `Unable to breed pets.` dialogs are detected by the MAIN-world bridge and returned as `unable-to-breed-pets` instead of a 15-second `command-timeout`; the dialog is dismissed before continuing.
 - Rejected male IDs are persisted on the current female queue row and the campaign tries the next safe male without advancing the female.

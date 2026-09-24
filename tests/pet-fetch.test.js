@@ -13,7 +13,7 @@ delete globalThis.OWEH;
 require("../jobs/core.js");
 require("../dom/markup.js");
 require("../services/pet-fetch.js");
-const { createPetFetch, mergePetRecord, profilePath } = globalThis.OWEH.services.petFetch;
+const { createPetFetch, mergePetRecord, profilePath, breedingPath } =globalThis.OWEH.services.petFetch;
 
 const emptyEnclosure = id => `<ui:section title = "Pets-${id}" id = "pets-${id}"></ui:section>`;
 
@@ -123,6 +123,15 @@ function harness(routes, initial = {}) {
   // ---- hatchery
   const hatchery = await harness({ "/?src=pets&sub=hatchery&!=cb": samples.hatchery }).service.readHatchery();
   assert.deepEqual([...hatchery.unnamedIds], ["530491258"]);
+
+  // ---- v5.5.2: the game's own partner list for one female in one enclosure
+  const card = (mother, father) => `<a onclick="ui_action_cmdExec('pet_breed','MotherID=${mother}&amp;FatherID=${father}',this)">x</a>`;
+  const partnerReader = harness({
+    [breedingPath("500", "9", "4973830")]: `<section id="breeding">${card("500", "11")}${card("500", "12")}${card("500", "11")}</section>`
+  });
+  assert.deepEqual(await partnerReader.service.readBreedingPartners("500", "9", "4973830"), ["11", "12"]);
+  await assert.rejects(harness({}).service.readBreedingPartners("500", "9"), /panel-http-404/, "a failed read throws so callers fail closed");
+  assert.deepEqual(globalThis.OWEH.dom.markup.parseBreedingPartners(card("7", "500"), "500"), ["7"], "works from the male's side too");
 
   // ---- merge keeps a verified pedigree
   const previous = { id: "1", name: "old", pedigreeVerified: true, ancestors: ["2"], pedigree: [{ id: "2" }], parentIds: ["2"], enclosure: "males" };

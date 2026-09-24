@@ -5,7 +5,7 @@
 // species module answer/confirm it, and reports success only after the Turn Egg button is gone.
 // Tabs not registered by bg/egg-tabs.js receive no assignment and do nothing.
 OWEH.register("egg-turn-tab", helpers => {
-  const { waitForGameReady, runtimeRequest, sleep, setStatus, routes, profileDom } = helpers;
+  const { waitForGameReady, runtimeRequest, sleep, holdAwake, setStatus, routes, profileDom } = helpers;
   const TURN_ATTEMPT_MS = 150000;
   const BUTTON_WAIT_MS = 10000;
   const POST_CLICK_SETTLE_MS = 250;
@@ -117,11 +117,15 @@ OWEH.register("egg-turn-tab", helpers => {
     if (!/[?&]pet=\d+/.test(location.hash)) return;
     const owned = await assignment();
     if (!owned) return;
+    // Egg tabs open inactive: keep this one on the service worker's clock and unfrozen (v5.5.2).
+    const release = holdAwake?.() || (() => {});
     try {
       await run(String(owned.eggId));
     } catch (error) {
       console.error("[OviPets Helper] egg tab failed", error);
       await report(String(owned.eggId), "failed", `error: ${error?.message || error}`);
+    } finally {
+      release();
     }
   }
 

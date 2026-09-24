@@ -283,6 +283,16 @@ function setup({ eggCount = 25, sweepActive = true, turnStrategy = "all", initia
     assert.equal(env.log.finished, 1);
   }
 
+  // v5.5.2: the player's Egg tabs cap bounds every batch while the adaptive level keeps its value.
+  {
+    const env = setup({ eggCount: 30 });
+    env.store.owehEggTabCap = 4;
+    await env.api.process();
+    assert.ok(env.log.opened.length >= 1);
+    assert.ok(env.log.opened.every(request => request.eggs.length <= 4), "no batch exceeds the Egg tabs cap");
+    assert.ok([10, 12, 15].includes(env.store.owehEggTabConcurrency), "the stored adaptive level stays a speed level");
+  }
+
   // Rolling window: freed slots are topped up inside the running batch, so 25 eggs need ONE
   // batch open instead of three, never more than 10 unresolved tabs, every egg charged once.
   {
