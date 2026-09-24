@@ -598,3 +598,135 @@
     transition: none;
   }
 }
+
+/* Breeding pair list: a wide side window left of the panel (the panel is 340px at right 16px). */
+#oweh-breed-plan-view {
+  --oweh-line: #333c48;
+  --oweh-muted: #97a3b0;
+  --oweh-accent: #d07a98;
+  position: fixed;
+  z-index: 2147483646;
+  right: 372px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  width: min(820px, calc(100vw - 404px));
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  border: 1px solid #3d4653;
+  border-top: 3px solid var(--oweh-accent);
+  border-radius: 14px;
+  background: #171b21;
+  color: #eef2f6;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font: 13px/1.35 "Segoe UI", Arial, sans-serif;
+}
+
+#oweh-breed-plan-view.oweh-hidden {
+  display: none;
+}
+
+#oweh-breed-plan-view .oweh-plan-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--oweh-line);
+  background: linear-gradient(180deg, #252c36 0%, #1d232b 100%);
+}
+
+#oweh-breed-plan-view .oweh-plan-view-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+#oweh-breed-plan-view .oweh-plan-view-title span {
+  color: var(--oweh-muted);
+  font-size: 12px;
+}
+
+#oweh-breed-plan-view .oweh-icon-button {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--oweh-line);
+  border-radius: 8px;
+  background: #262d37;
+  color: #eef2f6;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#oweh-breed-plan-view .oweh-plan-view-scroll {
+  overflow: auto;
+}
+
+#oweh-breed-plan-view .oweh-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#oweh-breed-plan-view .oweh-plan-table th,
+#oweh-breed-plan-view .oweh-plan-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--oweh-line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+#oweh-breed-plan-view .oweh-plan-table th {
+  position: sticky;
+  top: 0;
+  background: #1f252d;
+  color: var(--oweh-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+#oweh-breed-plan-view .oweh-plan-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+#oweh-breed-plan-view .oweh-plan-num {
+  color: var(--oweh-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#oweh-breed-plan-view .oweh-plan-status {
+  color: var(--oweh-muted);
+  font-size: 12px;
+}
+
+#oweh-breed-plan-view .oweh-plan-no-safe-male,
+#oweh-breed-plan-view .oweh-plan-over-limit {
+  opacity: 0.5;
+}
+
+#oweh-breed-plan-view .oweh-plan-breeding {
+  background: color-mix(in srgb, var(--oweh-accent) 18%, transparent) !important;
+}
+
+#oweh-breed-plan-view .oweh-plan-breeding .oweh-plan-status {
+  color: #f3c75d;
+  font-weight: 700;
+}
+
+#oweh-breed-plan-view .oweh-plan-done .oweh-plan-status {
+  color: #7fcf97;
+}
+
+@media (max-width: 760px) {
+  #oweh-breed-plan-view {
+    top: 16px;
+    right: 16px;
+    bottom: auto;
+    left: 16px;
+    width: auto;
+    max-height: 45vh;
+  }
+}

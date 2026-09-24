@@ -77,6 +77,128 @@ OWEH.register("ui-dashboard", helpers => {
     if (discard) discard.disabled = !preview;
   }
 
+  // Side window next to the panel: the full pair list of the current plan (or of the confirmed
+  // campaign while/after it runs). Read-only presentation of durable storage; it never plans,
+  // confirms or breeds. The window opens by itself once per new plan/campaign; after the user
+  // closes it, the "View pairs" button reopens it.
+  const SECONDARY_LABELS = { body2: "Body 2", scales: "Scales", extra1: "Extra 1", extra2: "Extra 2" };
+  let planViewKey = "";
+  let planViewSignature = "";
+
+  function formatChance(pure) {
+    const value = Number(pure?.pureProbability);
+    if (!Number.isFinite(value) || value <= 0) return "—";
+    const percent = value * 100;
+    return percent >= 0.01 ? `${percent.toFixed(2)}%` : `${percent.toExponential(1)}%`;
+  }
+
+  function planViewSource(state) {
+    const preview = state.owehBreedPreview;
+    const campaign = state.owehBreedCampaign || {};
+    const queue = Array.isArray(state.owehBreedQueue) ? state.owehBreedQueue : [];
+    const strategyName = value => value === "same-ff-target" ? "Same-FF target" : "Pure-line";
+    if (campaign.active && queue.length) {
+      return { key: `campaign:${campaign.startedAt || 0}`, mode: "running", rows: queue, strategy: strategyName(campaign.strategy), species: campaign.species, progress: Number(campaign.femaleIndex || 0), campaign };
+    }
+    const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
+    if (preview?.queue?.length && age <= BREED_PREVIEW_MAX_AGE_MS) {
+      return { key: `plan:${preview.createdAt || 0}`, mode: "plan", rows: preview.queue, strategy: strategyName(preview.strategy), species: preview.species, limit: Number(state.owehBreedPairLimit || 0), preview };
+    }
+    if (campaign.confirmedAt && queue.length) {
+      return { key: `campaign:${campaign.startedAt || 0}`, mode: "finished", rows: queue, strategy: strategyName(campaign.strategy), species: campaign.species, progress: queue.length, campaign };
+    }
+    return null;
+  }
+
+  function planViewRows(source) {
+    return source.rows.map((row, index) => {
+      const pure = row?.pure || null;
+      const candidates = Array.isArray(row?.maleCandidates) ? row.maleCandidates : [];
+      const chosen = candidates[Number(row?.maleCandidateIndex || 0)] || candidates[0] || null;
+      let status = "queued";
+      if (!row?.maleId) status = "no safe male";
+      if (source.mode === "plan" && source.limit && index >= source.limit) status = "over limit";
+      if (source.mode !== "plan") {
+        if (index < source.progress) status = "done";
+        else if (index === source.progress && source.mode === "running") status = "breeding";
+      }
+      const secondaryDistance = Number(row?.maleSecondaryBestDistance);
+      return {
+        index: index + 1,
+        female: row?.name || String(row?.id || "?"),
+        femaleId: String(row?.id || ""),
+        male: row?.maleId ? (row.maleName || String(row.maleId)) : "—",
+        maleId: row?.maleId ? String(row.maleId) : "",
+        body1: pure ? `${Number(pure.body1ReachableChannels || 0)}/3 · +${Number(pure.body1NewExactChannels || 0)} FF` : "—",
+        chance: formatChance(pure),
+        secondary: row?.maleSecondaryBestDistance !== null && Number.isFinite(secondaryDistance)
+          ? `${SECONDARY_LABELS[row.maleSecondaryBestKey] || row.maleSecondaryBestKey || "slot"} ${secondaryDistance}`
+          : "—",
+        candidates: candidates.length ? `${Math.min(Number(row?.maleCandidateIndex || 0) + 1, candidates.length)}/${candidates.length}` : "0",
+        gameListed: chosen?.gameListed === true ? "yes" : "",
+        status
+      };
+    });
+  }
+
+  function planViewCell(tag, text, className) {
+    const cell = document.createElement(tag);
+    cell.textContent = text;
+    if (className) cell.className = className;
+    return cell;
+  }
+
+  function renderBreedPlanView(state, panelHidden) {
+    const view = document.getElementById("oweh-breed-plan-view");
+    if (!view) return;
+    const source = planViewSource(state);
+    const opener = document.querySelector("#oweh-view-breed-plan");
+    if (opener) opener.disabled = !source;
+    if (!source) {
+      view.classList.add("oweh-hidden");
+      planViewKey = "";
+      planViewSignature = "";
+      return;
+    }
+    if (source.key !== planViewKey) {
+      planViewKey = source.key;
+      view.dataset.dismissed = "";
+    }
+    view.classList.toggle("oweh-hidden", panelHidden || view.dataset.dismissed === "1");
+    const rows = planViewRows(source);
+    const pairs = rows.filter(row => row.maleId).length;
+    const heading = source.mode === "plan"
+      ? `${source.strategy} plan · ${source.species || "all species"} · ${pairs} pair(s) / ${rows.length} female(s)${source.limit ? ` · limit ${source.limit}` : ""} · waiting for Confirm`
+      : `${source.strategy} campaign · ${source.species || "all species"} · ${Math.min(source.progress, rows.length)}/${rows.length} processed · ${Number(source.campaign?.bredCount || 0)} bred${source.mode === "finished" ? " · finished" : ""}`;
+    const signature = JSON.stringify([heading, rows]);
+    if (signature === planViewSignature) return;
+    planViewSignature = signature;
+    const meta = view.querySelector("#oweh-plan-view-meta");
+    if (meta) meta.textContent = heading;
+    const body = view.querySelector("#oweh-plan-view-rows");
+    if (!body) return;
+    body.replaceChildren(...rows.map(row => {
+      const tr = document.createElement("tr");
+      tr.className = `oweh-plan-row oweh-plan-${row.status.replace(/\s+/g, "-")}`;
+      const female = planViewCell("td", row.female);
+      female.title = `Female ID ${row.femaleId}`;
+      const male = planViewCell("td", row.male);
+      if (row.maleId) male.title = `Male ID ${row.maleId}`;
+      tr.append(
+        planViewCell("td", String(row.index), "oweh-plan-num"),
+        female,
+        male,
+        planViewCell("td", row.body1),
+        planViewCell("td", row.chance),
+        planViewCell("td", row.secondary),
+        planViewCell("td", row.candidates),
+        planViewCell("td", row.gameListed),
+        planViewCell("td", row.status, "oweh-plan-status")
+      );
+      return tr;
+    }));
+  }
+
   async function update() {
     if (updating) return;
     const panel = document.getElementById(panelId);
@@ -100,7 +222,8 @@ OWEH.register("ui-dashboard", helpers => {
         owehFriendRemoval: { active: false },
         owehDatabaseMeta: { catalogCount: 0, completeProfiles: 0, missingProfiles: 0, enclosureCount: 0, catalogAt: 0 },
         owehSweepNotice: null,
-        owehBreedPreview: null
+        owehBreedPreview: null,
+        owehBreedPairLimit: 0
       });
       const notice = state.owehSweepNotice;
       if (notice?.text && notice.at > lastShownSweepNotice && Date.now() - notice.at < 15000) {
@@ -166,7 +289,9 @@ OWEH.register("ui-dashboard", helpers => {
         }));
       }
       lastJobCount = jobs.length;
-      panel.classList.toggle("oweh-hidden", !isPanelVisible(lastJobCount));
+      const panelHidden = !isPanelVisible(lastJobCount);
+      panel.classList.toggle("oweh-hidden", panelHidden);
+      renderBreedPlanView(state, panelHidden);
       const summaryText = lastJobCount ? `${lastJobCount} automation${lastJobCount === 1 ? "" : "s"} running` : "No automation running";
       if (summary.textContent !== summaryText) summary.textContent = summaryText;
       const headerText = lastJobCount ? `${lastJobCount} active` : "Idle";

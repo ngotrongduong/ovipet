@@ -197,6 +197,47 @@ OWEH.register("ui-panel", helpers => {
     });
   }
 
+  // Wide side window for the breeding pair list; ui/dashboard.js fills it from storage.
+  function ensureBreedPlanView(panel) {
+    document.getElementById("oweh-breed-plan-view")?.remove();
+    const view = document.createElement("aside");
+    view.id = "oweh-breed-plan-view";
+    view.className = "oweh-plan-view oweh-hidden";
+    view.dataset.owehUi = "1";
+    view.innerHTML = `
+      <header class="oweh-plan-view-header">
+        <div class="oweh-plan-view-title"><strong>Breeding pairs</strong><span id="oweh-plan-view-meta"></span></div>
+        <button id="oweh-plan-view-close" class="oweh-icon-button" type="button" aria-label="Close pair list" title="Close" data-tip="Close the pair list. View pairs under Breeding opens it again.">×</button>
+      </header>
+      <div class="oweh-plan-view-scroll">
+        <table class="oweh-plan-table">
+          <thead><tr>
+            <th title="Order the pairs are bred in (best-ranked first)">#</th>
+            <th>Female</th>
+            <th>Male</th>
+            <th title="Body 1 channels that can reach the target this generation, and new FF channels the male adds">Body 1</th>
+            <th title="Estimated chance of a fully pure egg">Pure chance</th>
+            <th title="The male&#39;s closest secondary slot (Body 2 / Scales / Extra 1 / Extra 2) and its distance to target">Best secondary</th>
+            <th title="Chosen male / number of safe male candidates">Males</th>
+            <th title="Male appears in the female&#39;s own OviPets Breeding tab">Game-listed</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="oweh-plan-view-rows"></tbody>
+        </table>
+      </div>
+    `;
+    view.querySelector("#oweh-plan-view-close").addEventListener("click", () => {
+      view.dataset.dismissed = "1";
+      view.classList.add("oweh-hidden");
+    });
+    panel.querySelector("#oweh-view-breed-plan")?.addEventListener("click", () => {
+      view.dataset.dismissed = "";
+      view.classList.remove("oweh-hidden");
+    });
+    document.body.appendChild(view);
+    return view;
+  }
+
   function ensure() {
     const existing = document.getElementById(PANEL_ID);
     if (existing?.dataset.owehInstance === PANEL_INSTANCE) return existing;
@@ -211,7 +252,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.5.2</span>
+          <span class="oweh-version">v5.5.3</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -278,6 +319,7 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-confirm-breed" class="oweh-primary" type="button" disabled data-tip="Breed the planned pairs shown above (up to the pair limit) in the shared background tab.">Confirm &amp; breed</button>
               <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
             </div>
+            <button id="oweh-view-breed-plan" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every planned pair (or the confirmed campaign and its progress) in a full-size table.">View pairs</button>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
               <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the lowest-ranked retention review as CSV. This never removes pets automatically.">Copy retention CSV</button>
@@ -378,6 +420,7 @@ OWEH.register("ui-panel", helpers => {
       </div>
     `;
     document.body.appendChild(panel);
+    ensureBreedPlanView(panel);
     attachTooltip(panel);
     loadPanelSettings(panel);
 
