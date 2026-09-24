@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.5.2**
+Current release: **v5.5.3**
 
 ## Engineering objective
 
@@ -16,6 +16,10 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.5.3 Breeding pair list side window
+
+- **Breeding pairs side window.** Once a Plan button finishes, a wide window opens beside the panel with every planned pair in a table: female, male, Body 1 reach / new FF, pure chance, best secondary slot, safe male candidates, game-listed and status (queued / over the pair limit / no safe male). After **Confirm & breed** it follows the campaign (done / breeding / queued). Close it with ×; **View pairs** under Breeding opens it again. Read-only: it never plans, confirms or breeds.
 
 ## v5.5.2 Game-approved partners, background-proof Full sweep
 
