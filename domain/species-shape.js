@@ -9,8 +9,15 @@
 // in the same 500x500 frame. Measured live on 129 Adoption Center pets (31 species), 32x32 alpha
 // mask (alpha > 127): nearest same-species distance p10/p50/p90 = 64/114/217 of 1024 bits,
 // nearest other-species 135/175/216; leave-one-out nearest-neighbour with 4 options = ~87%.
-// A 44-bit threshold (v5.4.0) almost never fired; 150 is the measured sweet spot. This module is
-// pure (no DOM/chrome), shared by the content world and the service worker.
+// A 44-bit threshold (v5.4.0) almost never fired. v5.4.3 re-measured on 47 REAL confirmed
+// challenge images (the challenge pool looks limited to ~10 species): same-species 103/171/259
+// against an Adoption-only library, so at 150 the "unknown option" branch fired on most images
+// and was right only 16% of the time. Accuracy by threshold (4 options):
+//   library              T=150  T=200  T=250  nearest-only
+//   adoption only        52%    69%    72%    74%
+//   adoption+challenges  86%    85%    86%    86%
+// 250 is robust across library mixes. This module is pure (no DOM/chrome), shared by the
+// content world and the service worker.
 (() => {
   const SIZE = 32;
   const BITS = SIZE * SIZE;
@@ -18,7 +25,7 @@
   const ALPHA_THRESHOLD = 127;
   // A known species closer than this is taken as the answer; beyond it, an option with no
   // examples yet is the better bet (the image is probably a species we have never learned).
-  const MATCH_DISTANCE = 150;
+  const MATCH_DISTANCE = 250;
   const DEDUPE_DISTANCE = 6;
   // Mutations change the outline a lot, so many variants per species are kept (~38 KB per species).
   const MAX_EXAMPLES = 150;

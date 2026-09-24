@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-09-24
-Current release baseline: v5.4.2
+Current release baseline: v5.4.3
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
@@ -198,6 +198,11 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
+
+### v5.4.3 MATCH_DISTANCE 250 + back-fill on import
+
+- Evaluated in the live page against 47 real confirmed `credit-challenge` images (user's exported DB; the challenge pool looked limited to 10 species: Gekko, Mantis, Raptor, Equus, Feline, Slime, Canis, Vulpes, Draconis, Lupus) and 94 Adoption pets. Accuracy with 4 options — adoption-only library: T150 52%, T200 69%, T250 72%, pure nearest 74%; adoption + challenges: 84–87% at every threshold. `MATCH_DISTANCE` 150 → 250.
+- `bg/species-shapes.js` `rescanMemory()` re-arms the one-time back-fill; `speciesShapeRescan` message; `importDatabase` fires it after merging memory. Imported DB thumbnails (`image` JPEG data URLs) have no alpha and are not usable as masks.
 
 ### v5.4.2 bigger, redundancy-evicting silhouette library
 

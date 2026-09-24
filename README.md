@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.4.2**
+Current release: **v5.4.3**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.4.3 Threshold re-measured on real challenges + back-fill on import
+
+- Re-measured on 47 real confirmed challenge images from an exported Species DB: against an Adoption-only library the same-species distance is 103/171/259, so the 150 threshold sent most images to the "never-learned option" branch, which was right only 16% of the time (52% overall). `MATCH_DISTANCE` is now 250: 72% with an Adoption-only library, ~86% once real challenges are in the library.
+- **Import Species DB** now also masks every confirmed challenge URL in the imported memory into the silhouette library (in the background), so an export from before v5.4.0 contributes its answers as silhouettes.
 
 ## v5.4.2 Bigger, more diverse silhouette library
 

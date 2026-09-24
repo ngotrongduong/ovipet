@@ -196,7 +196,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     speciesStatsBump: () => speciesMemory.bumpStats(message),
     speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message),
     speciesShapeLearn: () => speciesShapes.learn(message),
-    speciesShapeMerge: () => speciesShapes.merge(message)
+    speciesShapeMerge: () => speciesShapes.merge(message),
+    speciesShapeRescan: () => speciesShapes.rescanMemory()
   };
   if (speciesMemoryHandlers[message?.type]) {
     speciesMemoryHandlers[message.type]().then(sendResponse)
