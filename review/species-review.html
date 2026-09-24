@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Species Review</title>
+  <link rel="stylesheet" href="species-review.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Species Review</h1>
+      <p class="sub">Every "Name the Species" image the helper has saved, with what the game confirmed or rejected. Label the unresolved ones to teach the silhouette matcher.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="pool" aria-label="Species pool">
+    <h2>Species pool <span class="muted" id="pool-note"></span></h2>
+    <div class="pool-grid" id="pool"></div>
+  </section>
+
+  <nav class="toolbar" aria-label="Filters">
+    <div class="segmented" id="filters" role="tablist">
+      <button type="button" data-filter="unresolved" class="active">Unresolved</button>
+      <button type="button" data-filter="all">All</button>
+      <button type="button" data-filter="confirmed">Game-confirmed</button>
+      <button type="button" data-filter="manual">My labels</button>
+    </div>
+    <label class="select">Species
+      <select id="species-filter"><option value="">Any</option></select>
+    </label>
+    <label class="select">Sort
+      <select id="sort">
+        <option value="new">Newest first</option>
+        <option value="old">Oldest first</option>
+        <option value="wrong">Most wrong tries</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="full-images" checked> Load full-size images</label>
+    <span class="muted" id="count"></span>
+  </nav>
+
+  <main id="grid" class="grid" aria-live="polite"></main>
+  <p class="empty" id="empty" hidden>Nothing to show for this filter.</p>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="../domain/species-shape.js"></script>
+  <script src="species-review.js"></script>
+</body>
+</html>

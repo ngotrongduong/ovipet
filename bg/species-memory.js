@@ -57,6 +57,7 @@
         hits: totalVotes,
         confidence: winner && totalVotes ? Number(winner[1]) / totalVotes : Number(previous.confidence || 0),
         image: previous.image || image || null,
+        ...(previous.manual ? { manual: previous.manual } : {}),
         updatedAt: at
       };
     }
@@ -117,5 +118,66 @@
     });
   }
 
-  OWEH_BG.speciesMemory = Object.freeze({ learn, bumpStats, mergeAnswerIds, learnInto, addStats, pruneMemory });
+  // v5.4.4 Species Review: a human label for an image the game never confirmed. It is stored as
+  // one extra vote plus record.manual ({ species, shape, at }) so it can be changed or cleared
+  // later. A game-confirmed answer is authoritative and cannot be relabelled, and a species the
+  // game already rejected for this image cannot be chosen.
+  function gameConfirmedSpecies(record) {
+    const manual = record?.manual?.species || null;
+    return Object.entries(record?.votes || {})
+      .find(([species, count]) => Number(count || 0) - (species === manual ? 1 : 0) > 0)?.[0] || null;
+  }
+
+  function applyManualLabel(memory, keys, species, shape, at) {
+    const records = keys.map(key => memory[key]).filter(Boolean);
+    if (!records.length) return { ok: false, reason: "unknown-image" };
+    const confirmed = records.map(gameConfirmedSpecies).find(Boolean);
+    if (confirmed) return { ok: false, reason: "game-confirmed", species: confirmed };
+    if (species && records.some(record => Number(record.wrong?.[species] || 0) > 0)) {
+      return { ok: false, reason: "game-rejected", species };
+    }
+    const previous = records.find(record => record.manual?.species)?.manual || null;
+    for (const key of keys) {
+      const record = memory[key];
+      if (!record) continue;
+      const votes = { ...(record.votes || {}) };
+      const old = record.manual?.species;
+      if (old && votes[old]) {
+        votes[old] = Number(votes[old]) - 1;
+        if (votes[old] <= 0) delete votes[old];
+      }
+      if (species) votes[species] = Number(votes[species] || 0) + 1;
+      const winner = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+      const totalVotes = Object.values(votes).reduce((sum, value) => sum + Number(value || 0), 0);
+      const next = {
+        ...record,
+        species: winner?.[0] || null,
+        votes,
+        hits: totalVotes,
+        confidence: winner && totalVotes ? Number(winner[1]) / totalVotes : 0,
+        updatedAt: at
+      };
+      if (species) next.manual = { species, shape: shape || null, at };
+      else delete next.manual;
+      memory[key] = next;
+    }
+    return { ok: true, previous };
+  }
+
+  function label(message) {
+    const keys = [...new Set((Array.isArray(message?.keys) ? message.keys : []).map(String).filter(Boolean))];
+    const species = message?.species == null ? "" : String(message.species).trim();
+    const shape = typeof message?.shape === "string" ? message.shape : null;
+    if (!keys.length) return Promise.resolve({ ok: false, reason: "invalid-label" });
+    return serialized(async () => {
+      const memory = await read(MEMORY_KEY, {});
+      const result = applyManualLabel(memory, keys, species || null, shape, Date.now());
+      if (result.ok) await chrome.storage.local.set({ [MEMORY_KEY]: memory });
+      return result;
+    });
+  }
+
+  OWEH_BG.speciesMemory = Object.freeze({
+    learn, bumpStats, mergeAnswerIds, label, learnInto, addStats, pruneMemory, applyManualLabel, gameConfirmedSpecies
+  });
 })();
