@@ -1,17 +1,30 @@
+/* v5.5.0 panel design: one dark surface, one accent colour per module, primary / secondary /
+   danger / link button tiers. Every rule is scoped to the panel except the partner badges and
+   the tooltip, which live outside it. */
 #ovipets-hatchery-helper {
+  --oweh-bg: #171b21;
+  --oweh-surface: #1f252d;
+  --oweh-surface-2: #262d37;
+  --oweh-line: #333c48;
+  --oweh-text: #eef2f6;
+  --oweh-muted: #97a3b0;
+  --oweh-gold: #f3c75d;
+  --oweh-green: #3f9a5c;
+  --oweh-red: #b24a52;
+  --oweh-accent: #6aa9e0;
   position: fixed;
   z-index: 2147483646;
   right: 16px;
   bottom: 16px;
-  width: 330px;
+  width: 340px;
   max-height: calc(100vh - 32px);
   overflow: hidden;
-  border: 1px solid #46515e;
-  border-radius: 12px;
-  background: #1d2229;
-  color: #f5f7fa;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
-  font: 13px/1.35 Arial, sans-serif;
+  border: 1px solid #3d4653;
+  border-radius: 14px;
+  background: var(--oweh-bg);
+  color: var(--oweh-text);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font: 13px/1.35 "Segoe UI", Arial, sans-serif;
 }
 
 #ovipets-hatchery-helper.oweh-hidden {
@@ -22,38 +35,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 42px;
-  padding: 0 10px 0 12px;
-  border-bottom: 1px solid #343d47;
-  background: linear-gradient(180deg, #29313a 0%, #222831 100%);
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--oweh-line);
+  background: linear-gradient(180deg, #252c36 0%, #1d232b 100%);
 }
 
 #ovipets-hatchery-helper .oweh-brand {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 7px;
+  gap: 8px;
 }
 
 #ovipets-hatchery-helper .oweh-title {
   overflow: hidden;
   font-weight: 700;
+  letter-spacing: 0.2px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 #ovipets-hatchery-helper .oweh-version {
-  color: #f5c85b;
+  color: var(--oweh-gold);
   font-size: 10px;
   font-weight: 700;
 }
 
 #ovipets-hatchery-helper .oweh-header-state {
-  padding: 2px 6px;
-  border: 1px solid #56616d;
+  padding: 2px 7px;
+  border: 1px solid #4f5a67;
   border-radius: 999px;
   color: #b8c2cc;
-  background: #252c34;
+  background: #232a33;
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
@@ -62,33 +76,34 @@
 #ovipets-hatchery-helper .oweh-header-state.oweh-active {
   border-color: #62bd79;
   color: #d9ffe2;
-  background: #254c31;
+  background: #234a30;
 }
 
 #ovipets-hatchery-helper .oweh-icon-button {
-  flex: 0 0 27px;
-  width: 27px;
-  min-width: 27px;
-  height: 27px;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   padding: 0;
-  border: 1px solid #596573;
-  border-radius: 6px;
-  background: #303944;
+  border: 1px solid #4f5a67;
+  border-radius: 8px;
+  background: #2b333d;
   color: #f7f8fa;
   font-size: 17px;
-  line-height: 23px;
+  line-height: 24px;
 }
 
 #ovipets-hatchery-helper .oweh-panel-body {
-  max-height: calc(100vh - 76px);
+  max-height: calc(100vh - 78px);
   overflow-y: auto;
-  padding: 9px;
-  scrollbar-color: #596573 #252b33;
+  padding: 10px;
+  scrollbar-color: #4f5a67 transparent;
   scrollbar-width: thin;
 }
 
 #ovipets-hatchery-helper.oweh-collapsed {
-  width: 286px;
+  width: 290px;
 }
 
 #ovipets-hatchery-helper.oweh-collapsed .oweh-panel-body {
@@ -99,36 +114,43 @@
   border-bottom: 0;
 }
 
+/* Activity card: what runs right now, and the one global Stop. */
 #ovipets-hatchery-helper .oweh-activity-card {
-  padding: 8px;
-  border: 1px solid #3e4955;
-  border-radius: 8px;
-  background: #242b33;
+  padding: 9px 10px;
+  border: 1px solid var(--oweh-line);
+  border-radius: 10px;
+  background: var(--oweh-surface);
 }
 
 #ovipets-hatchery-helper.oweh-has-active .oweh-activity-card {
   border-color: #4b8f5d;
-  background: #21352a;
+  background: linear-gradient(180deg, #21392a 0%, #1d2e24 100%);
 }
 
 #ovipets-hatchery-helper .oweh-activity-line {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: #dbe4ed;
   font-size: 11px;
 }
 
 #ovipets-hatchery-helper .oweh-activity-line strong {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #ovipets-hatchery-helper #oweh-stop-all {
-  padding: 3px 8px;
+  min-height: 24px;
+  padding: 3px 9px;
   font-size: 10px;
 }
 
 #ovipets-hatchery-helper .oweh-live-dot {
+  flex: 0 0 8px;
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -139,7 +161,7 @@
 
 #ovipets-hatchery-helper.oweh-has-active .oweh-live-dot {
   background: #62cf7e;
-  box-shadow: 0 0 0 3px rgba(98, 207, 126, 0.16);
+  box-shadow: 0 0 0 3px rgba(98, 207, 126, 0.18);
   animation: oweh-pulse 1.7s ease-in-out infinite;
 }
 
@@ -152,7 +174,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 #ovipets-hatchery-helper .oweh-active-jobs:empty {
@@ -160,23 +182,23 @@
 }
 
 #ovipets-hatchery-helper .oweh-job {
-  padding: 3px 6px;
+  padding: 3px 7px;
   border: 1px solid #53606d;
   border-radius: 999px;
   color: #e7edf3;
-  background: #313a44;
+  background: #2d3540;
   font-size: 10px;
   white-space: nowrap;
 }
 
-#ovipets-hatchery-helper .oweh-job-egg { border-color: #4d91b5; background: #243f50; }
-#ovipets-hatchery-helper .oweh-job-friend { border-color: #667bbb; background: #2c3552; }
-#ovipets-hatchery-helper .oweh-job-pet { border-color: #7f6bb2; background: #3a3150; }
-#ovipets-hatchery-helper .oweh-job-breed { border-color: #b56f88; background: #4d2e3a; }
+#ovipets-hatchery-helper .oweh-job-egg { border-color: #4d91b5; background: #213b4b; }
+#ovipets-hatchery-helper .oweh-job-friend { border-color: #667bbb; background: #2a334f; }
+#ovipets-hatchery-helper .oweh-job-pet { border-color: #7f6bb2; background: #372f4d; }
+#ovipets-hatchery-helper .oweh-job-breed { border-color: #b56f88; background: #4a2c38; }
 
 #ovipets-hatchery-helper .oweh-status {
   min-height: 17px;
-  margin: 7px 1px 8px;
+  margin: 8px 2px 6px;
   color: #c9ddf5;
   font-size: 11px;
 }
@@ -185,21 +207,32 @@
   color: #ffd27a;
 }
 
+/* Modules: one accordion, one accent colour each. */
 #ovipets-hatchery-helper .oweh-module {
   margin-top: 6px;
   overflow: hidden;
-  border: 1px solid #38424d;
-  border-radius: 8px;
-  background: #232931;
+  border: 1px solid var(--oweh-line);
+  border-left: 3px solid var(--oweh-accent);
+  border-radius: 10px;
+  background: var(--oweh-surface);
 }
+
+#ovipets-hatchery-helper .oweh-module[data-accent="db"] { --oweh-accent: #5fb37b; }
+#ovipets-hatchery-helper .oweh-module[data-accent="egg"] { --oweh-accent: #4fa3cf; }
+#ovipets-hatchery-helper .oweh-module[data-accent="breed"] { --oweh-accent: #d07a98; }
+#ovipets-hatchery-helper .oweh-module[data-accent="friend"] { --oweh-accent: #7f92d6; }
+#ovipets-hatchery-helper .oweh-module[data-accent="species"] { --oweh-accent: #e0b04f; }
+#ovipets-hatchery-helper .oweh-module[data-accent="pet"] { --oweh-accent: #a38ad6; }
+#ovipets-hatchery-helper .oweh-module[data-accent="diag"] { --oweh-accent: #8a96a3; }
+#ovipets-hatchery-helper .oweh-module[data-accent="settings"] { --oweh-accent: #6f7c8a; }
 
 #ovipets-hatchery-helper .oweh-module > summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 9px;
+  gap: 7px;
+  padding: 9px 10px;
   cursor: pointer;
-  color: #eef2f6;
+  color: var(--oweh-text);
   font-weight: 700;
   list-style: none;
   user-select: none;
@@ -209,34 +242,59 @@
   display: none;
 }
 
-#ovipets-hatchery-helper .oweh-module > summary::before {
+#ovipets-hatchery-helper .oweh-module > summary::after {
   content: "›";
-  width: 13px;
-  margin-right: 3px;
-  color: #f3c75d;
-  font-size: 17px;
+  margin-left: 2px;
+  color: var(--oweh-muted);
+  font-size: 16px;
   line-height: 12px;
   transition: transform 120ms ease;
 }
 
-#ovipets-hatchery-helper .oweh-module[open] > summary::before {
+#ovipets-hatchery-helper .oweh-module[open] > summary::after {
   transform: rotate(90deg);
+}
+
+#ovipets-hatchery-helper .oweh-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oweh-accent) 22%, transparent);
+  color: var(--oweh-accent);
+  font-size: 12px;
+  font-style: normal;
 }
 
 #ovipets-hatchery-helper .oweh-module > summary span {
   margin-left: auto;
-  color: #8794a2;
+  overflow: hidden;
+  color: var(--oweh-muted);
   font-size: 10px;
   font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #ovipets-hatchery-helper .oweh-module[open] > summary {
-  border-bottom: 1px solid #38424d;
-  background: #282f38;
+  border-bottom: 1px solid var(--oweh-line);
+  background: var(--oweh-surface-2);
 }
 
 #ovipets-hatchery-helper .oweh-module-body {
-  padding: 8px;
+  padding: 9px;
+}
+
+#ovipets-hatchery-helper .oweh-subtitle {
+  margin: 2px 1px 4px;
+  color: var(--oweh-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
 
 #ovipets-hatchery-helper .oweh-actions {
@@ -246,25 +304,42 @@
   margin: 5px 0;
 }
 
+#ovipets-hatchery-helper .oweh-actions > button:not(.oweh-danger):not(.oweh-link-button) {
+  flex: 1 1 auto;
+}
+
+#ovipets-hatchery-helper .oweh-run-row > .oweh-primary {
+  flex: 1 1 auto;
+  min-height: 34px;
+  font-size: 12px;
+}
+
+#ovipets-hatchery-helper .oweh-tools-row {
+  gap: 2px 8px;
+  margin-top: 7px;
+}
+
+/* Buttons: default (green) / primary (accent) / secondary / danger / link. */
 #ovipets-hatchery-helper button {
   min-height: 29px;
-  padding: 5px 8px;
-  border: 1px solid #438955;
-  border-radius: 6px;
+  padding: 5px 9px;
+  border: 1px solid #3f8753;
+  border-radius: 7px;
   cursor: pointer;
-  background: #397b4a;
+  background: #337346;
   color: #fff;
-  font: 600 11px/1.2 Arial, sans-serif;
+  font: 600 11px/1.2 "Segoe UI", Arial, sans-serif;
+  transition: filter 100ms ease;
 }
 
 #ovipets-hatchery-helper button:hover:not(:disabled) {
-  filter: brightness(1.13);
+  filter: brightness(1.14);
 }
 
 #ovipets-hatchery-helper button:focus-visible,
 #ovipets-hatchery-helper summary:focus-visible,
 #ovipets-hatchery-helper input:focus-visible {
-  outline: 2px solid #f3c75d;
+  outline: 2px solid var(--oweh-gold);
   outline-offset: 1px;
 }
 
@@ -273,37 +348,100 @@
   opacity: 0.42;
 }
 
-#ovipets-hatchery-helper button.oweh-danger,
-#ovipets-hatchery-helper #oweh-stop,
-#ovipets-hatchery-helper #oweh-stop-sweep,
-#ovipets-hatchery-helper #oweh-stop-requests,
-#ovipets-hatchery-helper #oweh-stop-index,
-#ovipets-hatchery-helper #oweh-stop-breed,
-#ovipets-hatchery-helper #oweh-stop-hatchlings,
-#ovipets-hatchery-helper #oweh-stop-newborn-sort {
-  border-color: #9a4e53;
-  background: #7f3f44;
+#ovipets-hatchery-helper button.oweh-primary {
+  border-color: color-mix(in srgb, var(--oweh-accent) 80%, #fff 20%);
+  background: color-mix(in srgb, var(--oweh-accent) 62%, #10151b 38%);
+}
+
+#ovipets-hatchery-helper button.oweh-danger {
+  flex: 0 0 auto;
+  border-color: #8f474d;
+  background: #6f363b;
 }
 
 #ovipets-hatchery-helper button.oweh-secondary {
-  border-color: #596a7c;
-  background: #3b4652;
+  border-color: #4f5d6c;
+  background: #313b47;
 }
 
 #ovipets-hatchery-helper button.oweh-primary-wide {
   width: 100%;
-  min-height: 34px;
-  background: #438f58;
+  min-height: 32px;
+  margin: 3px 0;
+  border-color: color-mix(in srgb, var(--oweh-accent) 70%, #fff 30%);
+  background: color-mix(in srgb, var(--oweh-accent) 45%, #10151b 55%);
   font-size: 12px;
 }
 
 #ovipets-hatchery-helper button.oweh-link-button {
   min-height: 0;
-  padding: 2px 5px;
+  padding: 2px 3px;
   border-color: transparent;
   background: transparent;
   color: #9fc9f7;
   font-weight: 400;
+  text-decoration: underline;
+  text-decoration-color: rgba(159, 201, 247, 0.35);
+  text-underline-offset: 2px;
+}
+
+/* Update database step chips. */
+#ovipets-hatchery-helper .oweh-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+#ovipets-hatchery-helper .oweh-step {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+#ovipets-hatchery-helper .oweh-step input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+#ovipets-hatchery-helper .oweh-step span {
+  display: block;
+  padding: 5px 2px;
+  border: 1px solid #45505d;
+  border-radius: 7px;
+  color: var(--oweh-muted);
+  background: #1a1f26;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: line-through;
+  white-space: nowrap;
+}
+
+#ovipets-hatchery-helper .oweh-step input:checked + span {
+  border-color: color-mix(in srgb, var(--oweh-accent) 75%, transparent);
+  color: #e6f6ea;
+  background: color-mix(in srgb, var(--oweh-accent) 20%, transparent);
+  text-decoration: none;
+}
+
+#ovipets-hatchery-helper .oweh-step input:focus-visible + span {
+  outline: 2px solid var(--oweh-gold);
+  outline-offset: 1px;
+}
+
+#ovipets-hatchery-helper .oweh-meta-card {
+  margin-top: 7px;
+  padding: 6px 8px;
+  border: 1px solid var(--oweh-line);
+  border-radius: 8px;
+  background: #1a1f26;
+}
+
+#ovipets-hatchery-helper .oweh-meta-card .oweh-inline-meta + .oweh-inline-meta {
+  margin-top: 2px;
 }
 
 #ovipets-hatchery-helper .oweh-check {
@@ -319,11 +457,12 @@
   flex: 0 0 auto;
   width: auto;
   margin: 1px 0 0;
+  accent-color: var(--oweh-accent);
 }
 
 #ovipets-hatchery-helper .oweh-row {
   display: grid;
-  grid-template-columns: 1fr 58px 27px;
+  grid-template-columns: 1fr 62px 30px;
   align-items: center;
   gap: 5px;
   margin: 6px 0;
@@ -333,12 +472,12 @@
 
 #ovipets-hatchery-helper input {
   box-sizing: border-box;
-  width: 58px;
-  padding: 4px;
-  border: 1px solid #667482;
-  border-radius: 5px;
-  background: #f7f8fa;
-  color: #111;
+  width: 62px;
+  padding: 4px 5px;
+  border: 1px solid #4f5a67;
+  border-radius: 6px;
+  background: #11151a;
+  color: var(--oweh-text);
 }
 
 #ovipets-hatchery-helper .oweh-grid {
@@ -361,8 +500,8 @@
 }
 
 #ovipets-hatchery-helper .oweh-target-title {
-  margin-top: 8px;
-  color: #f3c75d;
+  margin-top: 9px;
+  color: var(--oweh-gold);
   font-size: 11px;
   font-weight: 700;
 }
@@ -370,8 +509,11 @@
 #ovipets-hatchery-helper .oweh-pet-name {
   overflow: hidden;
   margin-bottom: 6px;
-  color: #c9d3dd;
-  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: #d7dee6;
+  background: #1a1f26;
+  font: 11px/1.3 Consolas, "Courier New", monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -380,14 +522,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #98a5b2;
+  gap: 6px;
+  color: var(--oweh-muted);
   font-size: 10px;
+}
+
+#ovipets-hatchery-helper .oweh-note {
+  display: block;
+  margin-top: 5px;
+  color: #7f8b98;
+  font-style: italic;
 }
 
 #ovipets-hatchery-helper .oweh-divider {
   height: 1px;
-  margin: 7px 0;
-  background: #39434e;
+  margin: 9px 0;
+  background: var(--oweh-line);
 }
 
 /* Not scoped under #ovipets-hatchery-helper: rankPartners() appends these badges onto the
@@ -411,15 +561,15 @@
   z-index: 2147483647;
   display: none;
   width: max-content;
-  max-width: 270px;
-  padding: 7px 9px;
-  border: 1px solid #66717e;
-  border-radius: 7px;
-  background: #11161c;
+  max-width: 280px;
+  padding: 7px 10px;
+  border: 1px solid #56616e;
+  border-radius: 8px;
+  background: #0f1318;
   color: #f1f4f7;
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   pointer-events: none;
-  font: 11px/1.4 Arial, sans-serif;
+  font: 11px/1.45 "Segoe UI", Arial, sans-serif;
 }
 
 #ovipets-hatchery-helper-tooltip.oweh-tooltip-visible {
@@ -430,7 +580,7 @@
   #ovipets-hatchery-helper {
     right: 8px;
     bottom: 8px;
-    width: min(330px, calc(100vw - 16px));
+    width: min(340px, calc(100vw - 16px));
     max-height: calc(100vh - 16px);
   }
 
@@ -442,5 +592,9 @@
 @media (prefers-reduced-motion: reduce) {
   #ovipets-hatchery-helper .oweh-live-dot {
     animation: none;
+  }
+
+  #ovipets-hatchery-helper .oweh-module > summary::after {
+    transition: none;
   }
 }

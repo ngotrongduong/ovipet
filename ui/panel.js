@@ -50,6 +50,7 @@ OWEH.register("ui-panel", helpers => {
     setPageLoadDelayMs
   } = uiPanelActions;
 
+  const MAINTAIN_DEFAULT_STEPS = Object.freeze({ catalog: true, profiles: true, sort: true, feed: true });
   const clampDelay = value => Math.min(30000, Math.max(0, Math.round((Number(value) || 0) * 1000)));
   const clampPageLoadDelay = value => Math.min(10000, Math.max(250, Math.round((Number(value) || 1.5) * 1000)));
 
@@ -138,6 +139,18 @@ OWEH.register("ui-panel", helpers => {
     const autoRenameInput = panel.querySelector("#oweh-auto-rename");
     storageGet("owehAutoRename", true).then(value => { autoRenameInput.checked = value !== false; });
     autoRenameInput.addEventListener("change", () => storageSet({ owehAutoRename: autoRenameInput.checked }));
+
+    // Update database step toggles (jobs/maintain.js reads owehMaintainSteps at start).
+    const stepInputs = [...panel.querySelectorAll("[data-maintain-step]")];
+    storageGet("owehMaintainSteps", MAINTAIN_DEFAULT_STEPS).then(stored => {
+      const steps = { ...MAINTAIN_DEFAULT_STEPS, ...(stored || {}) };
+      for (const input of stepInputs) input.checked = steps[input.dataset.maintainStep] !== false;
+    });
+    for (const input of stepInputs) {
+      input.addEventListener("change", () => {
+        storageSet({ owehMaintainSteps: Object.fromEntries(stepInputs.map(item => [item.dataset.maintainStep, item.checked])) });
+      });
+    }
   }
 
   function attachTooltip(panel) {
@@ -189,7 +202,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.4.4</span>
+          <span class="oweh-version">v5.5.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -204,140 +217,139 @@ OWEH.register("ui-panel", helpers => {
         </section>
         <div id="oweh-status" class="oweh-status" role="status" aria-live="polite">Ready · controls connected</div>
 
-        <details class="oweh-module" name="oweh-modules" open>
-          <summary>Pet maintenance <span>one button = one job</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="db" open>
+          <summary><i class="oweh-ico">▦</i>Update database <span>catalog · profiles · sort · feed</span></summary>
           <div class="oweh-module-body">
-            <div class="oweh-actions">
-              <button id="oweh-catalog-start" type="button" data-tip="Scan every Overview enclosure and save the pet list to the database. Opens no profile, renames and moves nothing.">Update pet catalog</button>
-              <button id="oweh-catalog-stop" class="oweh-danger" type="button" data-tip="Stop the catalog update.">Stop</button>
+            <div class="oweh-actions oweh-run-row">
+              <button id="oweh-maintain-start" class="oweh-primary" type="button" data-tip="One pass over your whole collection by background fetch + game commands (no page navigation): read every enclosure, refresh stale or missing profiles, move pets to the enclosure the breeding program wants, and feed hungry pets. Untick a step below to skip it.">Update database</button>
+              <button id="oweh-maintain-stop" class="oweh-danger" type="button" data-tip="Stop Update database after the current pet.">Stop</button>
             </div>
-            <div class="oweh-actions">
-              <button id="oweh-profiles-start" type="button" data-tip="Open the profile of every pet whose stored profile is missing, incomplete, out of date (flagged by Update pet catalog) or wrongly named, and save it. Does not scan the Overview — run Update pet catalog first.">Refresh pet profiles</button>
-              <button id="oweh-profiles-stop" class="oweh-danger" type="button" data-tip="Stop refreshing pet profiles.">Stop</button>
+            <div class="oweh-steps" role="group" aria-label="Update database steps">
+              <label class="oweh-step" data-tip="Read every Overview enclosure and save the pet list (flags pets whose profile changed)."><input type="checkbox" data-maintain-step="catalog" checked><span>1 · Catalog</span></label>
+              <label class="oweh-step" data-tip="Read the profile of every new, changed, incomplete or wrongly named pet and save colors, gender and pedigree."><input type="checkbox" data-maintain-step="profiles" checked><span>2 · Profiles</span></label>
+              <label class="oweh-step" data-tip="Move each pet into the enclosure the breeding program wants (females by program, males to Males)."><input type="checkbox" data-maintain-step="sort" checked><span>3 · Sort</span></label>
+              <label class="oweh-step" data-tip="Feed every pet not known to be full or fed recently, with the free per-pet Feed (never the Credit-priced Mass Feed)."><input type="checkbox" data-maintain-step="feed" checked><span>4 · Feed</span></label>
             </div>
-            <label class="oweh-check" data-tip="While refreshing profiles, rename owned pets as BODY1-BODY2-SCALES using their hexadecimal color codes."><input id="oweh-auto-rename" type="checkbox" checked> Rename while refreshing profiles</label>
-            <div class="oweh-actions">
-              <button id="oweh-sort-start" type="button" data-tip="Move pets into the enclosure the breeding program wants, from the database. Scans and feeds nothing.">Sort pets into enclosures</button>
-              <button id="oweh-sort-stop" class="oweh-danger" type="button" data-tip="Stop sorting.">Stop</button>
-            </div>
-            <div class="oweh-actions">
-              <button id="oweh-feed-start" type="button" data-tip="Feed every pet that is not known to be full or fed recently, using the free per-pet Feed action (never the Credit-priced Mass Feed).">Feed pets</button>
-              <button id="oweh-feed-stop" class="oweh-danger" type="button" data-tip="Stop feeding.">Stop</button>
+            <label class="oweh-check" data-tip="During the Profiles step, rename owned pets BODY1-BODY2-SCALES from their hexadecimal color codes."><input id="oweh-auto-rename" type="checkbox" checked> Rename pets while reading profiles</label>
+            <div class="oweh-meta-card">
+              <div id="oweh-db-meta" class="oweh-inline-meta">Database: not scanned</div>
+              <div id="oweh-db-health" class="oweh-inline-meta">Health: checking…</div>
+              <button id="oweh-refresh-health" class="oweh-link-button" type="button" data-tip="Inspect transactional pet records, stale profiles, active task leases, and mutation commands awaiting reconciliation.">Check health</button>
             </div>
           </div>
         </details>
 
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Ninja + Ads <span>scan / send</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="egg">
+          <summary><i class="oweh-ico">◒</i>Hatchery <span>turn · hatch · newborns</span></summary>
           <div class="oweh-module-body">
+            <div class="oweh-actions oweh-run-row">
+              <button id="oweh-start" class="oweh-primary" type="button" data-tip="One button for your own Hatchery: hatch-ready eggs hatch by game command; turnable eggs still open a real egg tab because Name the Species needs the real egg. When the eggs are done, every newborn is named, saved to the database and moved to its enclosure in the same run.">Turn / hatch → name &amp; move</button>
+              <button id="oweh-stop" class="oweh-danger" type="button" disabled data-tip="Stop the current egg turn/hatch queue safely.">Stop</button>
+            </div>
             <div class="oweh-actions">
-              <button id="oweh-ninja-start" type="button" data-tip="Read Ninja Please and Ads post comments from the last 24 hours, merge unique user IDs, and skip everyone already asked. Sends nothing.">Scan Ninja + Ads</button>
+              <button id="oweh-start-hatchlings" class="oweh-secondary" type="button" data-tip="Only the newborn step: for each hatched pet, read its colors, rename it, save it to the database and move it (pure/stock females by program, every male into Males) — by command, without opening pages.">Newborns only</button>
+              <button id="oweh-stop-hatchlings" class="oweh-danger" type="button" data-tip="Stop the newborn pass after the current pet.">Stop</button>
+            </div>
+            <div class="oweh-inline-meta oweh-note">Turning an egg still opens the real egg page, so Name the Species can be answered.</div>
+          </div>
+        </details>
+
+        <details class="oweh-module" name="oweh-modules" data-accent="breed">
+          <summary><i class="oweh-ico">♥</i>Breeding <span>plan → confirm</span></summary>
+          <div class="oweh-module-body">
+            <div id="oweh-breed-ready" class="oweh-inline-meta" data-tip="From the database only: females in the breeding enclosures, and how many are off cooldown with a verified pedigree. Run Update database to refresh cooldowns.">Females ready: checking…</div>
+            <div class="oweh-actions">
+              <button id="oweh-start-breed" type="button" data-tip="Pure-line strategy: scan the full enclosure snapshot, then choose complementary Body-1 FF pairs while preserving pedigree safety and male-line diversity. Builds a plan only; nothing is bred until you press Confirm.">Plan pure-line</button>
+              <button id="oweh-start-breed-target" type="button" data-tip="Same-FF target-improvement strategy: scan every enclosure, take every breedable female, list every safe same-species male with the same Body-1 FF mask, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot. Builds a plan only; nothing is bred until you press Confirm.">Plan Same-FF target</button>
+              <button id="oweh-stop-breed" class="oweh-danger" type="button" data-tip="Stop the active breeding campaign (and withdraw an unconfirmed plan) without clearing cached pet data.">Stop</button>
+            </div>
+            <div id="oweh-breed-preview" class="oweh-inline-meta oweh-breed-preview">No plan yet — press a Plan button</div>
+            <div class="oweh-row" data-tip="Breed at most this many pairs when you confirm (0 = every pair in the plan). The best-ranked pairs go first."><label for="oweh-breed-limit">Pair limit</label><input id="oweh-breed-limit" type="number" min="0" max="999" step="1" value="0"><span>pairs</span></div>
+            <div class="oweh-actions">
+              <button id="oweh-confirm-breed" class="oweh-primary" type="button" disabled data-tip="Breed the planned pairs shown above (up to the pair limit) in the shared background tab.">Confirm &amp; breed</button>
+              <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
+            </div>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
+              <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the lowest-ranked retention review as CSV. This never removes pets automatically.">Copy retention CSV</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="oweh-module" name="oweh-modules" data-accent="friend">
+          <summary><i class="oweh-ico">☺</i>Friends &amp; requests <span>sweep · ninja · ads</span></summary>
+          <div class="oweh-module-body">
+            <div class="oweh-subtitle">Friend sweep</div>
+            <div class="oweh-actions">
+              <button id="oweh-start-sweep" class="oweh-primary" type="button" data-tip="Fast Sweep snapshots each friend once, then drains adaptive batches of 10 → 12 → 15 profile tabs. It reloads only once for final verification and self-heals on stalls.">Start full sweep</button>
+              <button id="oweh-next-friend" class="oweh-secondary" type="button" data-tip="Skip the current friend and open the next eligible friend in the queue.">Next</button>
+              <button id="oweh-stop-sweep" class="oweh-danger" type="button" data-tip="Stop the friend sweep and its egg queue.">Stop</button>
+            </div>
+            <div class="oweh-actions">
+              <button id="oweh-scan-friends" class="oweh-secondary" type="button" data-tip="Open and scan your complete Friends list, then cache every resolvable friend ID.">Rescan friend list</button>
+            </div>
+            <label class="oweh-check" data-tip="Remove a friend only when their Hatchery contains no eggs at all. Already-turned eggs still count as eggs."><input id="oweh-remove-empty" type="checkbox" checked> Remove friends with zero eggs</label>
+            <div class="oweh-inline-meta"><span id="oweh-blacklist-count">Blacklist: 0</span><button id="oweh-copy-blacklist" class="oweh-link-button" type="button" data-tip="Copy the permanent zero-egg friend blacklist as CSV.">Copy CSV</button></div>
+            <div class="oweh-divider"></div>
+            <div class="oweh-subtitle">New friends from Ninja Please + Ads</div>
+            <div class="oweh-actions">
+              <button id="oweh-ninja-start" type="button" data-tip="Read Ninja Please and Ads post comments from the last 24 hours, merge unique user IDs, and skip everyone already asked. Sends nothing.">1 · Scan comments</button>
               <button id="oweh-ninja-stop" class="oweh-danger" type="button" data-tip="Stop the Ninja + Ads scan.">Stop</button>
             </div>
             <div class="oweh-actions">
-              <button id="oweh-requests-start" type="button" data-tip="Send one friend request per queued commenter, skipping everyone already asked. Scans nothing.">Send friend requests</button>
+              <button id="oweh-requests-start" type="button" data-tip="Send one friend request per queued commenter, skipping everyone already asked. Scans nothing.">2 · Send requests</button>
               <button id="oweh-requests-stop" class="oweh-danger" type="button" data-tip="Stop sending friend requests.">Stop</button>
             </div>
           </div>
         </details>
 
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Hatchery &amp; Eggs <span>turn / hatch / process</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="species">
+          <summary><i class="oweh-ico">✦</i>Species <span>Name the Species memory</span></summary>
           <div class="oweh-module-body">
-            <div class="oweh-actions">
-              <button id="oweh-start" type="button" data-tip="On your own Hatchery: hatch-ready eggs use the guarded OviPets UI command directly; turnable eggs still open real profile tabs so Name the Species can be handled safely.">Turn / Hatch available eggs</button>
-              <button id="oweh-stop" class="oweh-danger" type="button" disabled data-tip="Stop the current egg turn/hatch queue safely.">Stop</button>
-            </div>
-            <div class="oweh-actions">
-              <button id="oweh-start-hatchlings" type="button" data-tip="Process newly hatched pets: read colors, rename them, route pure/stock females, and move every male into Males.">Process hatchlings</button>
-              <button id="oweh-stop-hatchlings" class="oweh-danger" type="button" data-tip="Stop the active Hatchery hatchling processor.">Stop</button>
-            </div>
             <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
             <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
             <div class="oweh-actions">
-              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from your saved pets and from the Adoption Center (read-only, no clicks). More learned shapes make Name the Species answers more accurate.">Learn Species Shapes</button>
-              <button id="oweh-species-seed-stop" class="oweh-secondary" type="button" data-tip="Stop Learn Species Shapes after the current pet.">Stop</button>
+              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from your saved pets and from the Adoption Center (read-only, no clicks). More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
+              <button id="oweh-species-seed-stop" class="oweh-danger" type="button" data-tip="Stop Learn species shapes after the current pet.">Stop</button>
             </div>
             <button id="oweh-species-review" class="oweh-primary-wide" type="button" data-tip="Open a separate tab with every saved Name the Species image (correct and wrong). Label the unresolved ones yourself; each label is saved to the species database and teaches the silhouette matcher.">Review species images</button>
-            <div class="oweh-actions">
-              <button id="oweh-export-species"class="oweh-secondary" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export Species JSON</button>
-              <button id="oweh-export-species-db" class="oweh-secondary" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Export Species DB</button>
-              <button id="oweh-import-species-db" class="oweh-secondary" type="button" data-tip="Import/merge a Species database backup or a previous Species Inspector JSON export. Existing knowledge is preserved and merged.">Import Species DB</button>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-export-species-db" class="oweh-link-button" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Backup DB</button>
+              <button id="oweh-import-species-db" class="oweh-link-button" type="button" data-tip="Import/merge a Species database backup or a previous Species Inspector JSON export. Existing knowledge is preserved and merged.">Import DB</button>
               <input id="oweh-import-species-file" type="file" accept="application/json,.json" hidden>
-              <button id="oweh-clear-species" class="oweh-secondary" type="button" data-tip="Clear only the Species Inspector trace dataset. Learned answer memory is kept so future guesses stay smarter.">Clear Inspector</button>
+              <button id="oweh-export-species" class="oweh-link-button" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export JSON</button>
+              <button id="oweh-clear-species" class="oweh-link-button" type="button" data-tip="Clear only the Species Inspector trace dataset. Learned answer memory is kept so future guesses stay smarter.">Clear traces</button>
             </div>
           </div>
         </details>
 
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Friends <span>sweep</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="pet">
+          <summary><i class="oweh-ico">✎</i>Current pet <span>save · name</span></summary>
           <div class="oweh-module-body">
-            <div class="oweh-actions">
-              <button id="oweh-scan-friends" type="button" data-tip="Open and scan your complete Friends list, then cache every resolvable friend ID.">Scan friend list</button>
-              <button id="oweh-start-sweep" type="button" data-tip="Fast Sweep snapshots each friend once, then drains adaptive batches of 10 → 12 → 15 profile tabs. It reloads only once for final verification and self-heals on stalls.">Start full sweep</button>
-            </div>
-            <div class="oweh-actions">
-              <button id="oweh-next-friend" class="oweh-secondary" type="button" data-tip="Skip the current friend and open the next eligible friend in the queue.">Next</button>
-              <button id="oweh-stop-sweep" class="oweh-danger" type="button" data-tip="Stop the friend sweep and its egg queue.">Stop sweep</button>
-            </div>
-            <div class="oweh-inline-meta">Fast Sweep: snapshot queue · adaptive 10 → 12 → 15 tabs · one final verify</div>
-            <label class="oweh-check" data-tip="Remove a friend only when their Hatchery contains no eggs at all. Already-turned eggs still count as eggs."><input id="oweh-remove-empty" type="checkbox" checked> Remove friends with zero eggs</label>
-            <div class="oweh-inline-meta"><span id="oweh-blacklist-count">Blacklist: 0</span><button id="oweh-copy-blacklist" class="oweh-secondary" type="button" data-tip="Copy the permanent zero-egg friend blacklist as CSV.">Copy blacklist CSV</button></div>
-          </div>
-        </details>
-
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Breeding <span>female-first · Males</span></summary>
-          <div class="oweh-module-body">
-            <div class="oweh-actions">
-              <button id="oweh-start-breed" type="button" data-tip="Pure-line strategy: scan the full enclosure snapshot, then choose complementary Body-1 FF pairs while preserving pedigree safety and male-line diversity. Builds a plan only; nothing is bred until you press Confirm.">Plan pure-line campaign</button>
-              <button id="oweh-start-breed-target" type="button" data-tip="Same-FF target-improvement strategy: scan every enclosure, take every breedable female, list every safe same-species male with the same Body-1 FF mask, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot. Builds a plan only; nothing is bred until you press Confirm.">Plan Same-FF target campaign</button>
-              <button id="oweh-stop-breed" class="oweh-danger" type="button" data-tip="Stop the active breeding campaign (and withdraw an unconfirmed plan) without clearing cached pet data.">Stop</button>
-            </div>
-            <div id="oweh-breed-ready" class="oweh-inline-meta" data-tip="From the database only: females in the breeding enclosures, and how many are off cooldown with a verified pedigree. Run Update pet catalog to refresh cooldowns.">Females ready: checking…</div>
-            <div id="oweh-breed-preview" class="oweh-inline-meta oweh-breed-preview">No plan yet — press a Plan button</div>
-            <div class="oweh-row" data-tip="Breed at most this many pairs when you confirm (0 = every pair in the plan). The best-ranked pairs go first."><label for="oweh-breed-limit">Pair limit</label><input id="oweh-breed-limit" type="number" min="0" max="999" step="1" value="0"><span>pairs</span></div>
-            <div class="oweh-actions">
-              <button id="oweh-confirm-breed" type="button" disabled data-tip="Breed the planned pairs shown above (up to the pair limit) in the shared background tab.">Confirm &amp; breed</button>
-              <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard plan</button>
-            </div>
-            <div class="oweh-actions">
-              <button id="oweh-rank" class="oweh-secondary" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
-              <button id="oweh-copy-retention" class="oweh-secondary" type="button" data-tip="Copy the lowest-ranked retention review as CSV. This never removes pets automatically.">Copy retention CSV</button>
-            </div>
-          </div>
-        </details>
-
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Pet Tools <span>name / sort</span></summary>
-          <div class="oweh-module-body">
-            <div id="oweh-db-meta" class="oweh-inline-meta">Database: not scanned</div>
-            <div id="oweh-db-health" class="oweh-inline-meta">Health: checking…</div>
-            <button id="oweh-refresh-health" class="oweh-secondary" type="button" data-tip="Inspect transactional pet records, stale profiles, active task leases, and mutation commands awaiting reconciliation.">Refresh database health</button>
-            <div class="oweh-inline-meta" data-tip="Pets are auto-renamed BODY1-BODY2-SCALES at two other points too: right after hatching (Hatchery &amp; Eggs → Process hatchlings) and during a profile refresh (Pet maintenance → Rename while refreshing profiles checkbox). Below is the third, manual, one-pet-at-a-time path.">Rename: manual (below) · also automatic after hatching &amp; while refreshing profiles</div>
             <div id="oweh-pet-name" class="oweh-pet-name">Open a pet profile to see a naming suggestion</div>
             <div class="oweh-actions">
-              <button id="oweh-save" type="button" data-tip="Save the currently open pet's ID, colors, gender, species and visible pedigree to the local index.">Save current pet</button>
-              <button id="oweh-copy-name" class="oweh-secondary" type="button" disabled data-tip="Copy the BODY1-BODY2-SCALES hexadecimal name suggested for the current pet.">Copy name</button>
+              <button id="oweh-save" type="button" data-tip="Save the currently open pet's ID, colors, gender, species and visible pedigree to the local index.">Save</button>
               <button id="oweh-apply-name" type="button" disabled data-tip="Rename the current owned pet with its suggested hexadecimal color name.">Apply name</button>
+              <button id="oweh-copy-name" class="oweh-secondary" type="button" disabled data-tip="Copy the BODY1-BODY2-SCALES hexadecimal name suggested for the current pet.">Copy name</button>
             </div>
+            <div class="oweh-inline-meta oweh-note" data-tip="Update database (Profiles step) and the Hatchery newborn pass rename pets automatically; this is the manual one-pet path.">Newborns and Update database rename automatically.</div>
           </div>
         </details>
 
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Diagnostics <span>logbook / black box</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="diag">
+          <summary><i class="oweh-ico">⚑</i>Diagnostics <span>logbook</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-diagnostic-stats" class="oweh-inline-meta">Diagnostic Log: loading…</div>
-            <div class="oweh-actions">
-              <button id="oweh-export-diagnostics" class="oweh-secondary" type="button" data-tip="Download the persistent diagnostic timeline, failure reasons and a current worker/egg state snapshot for later debugging.">Export Diagnostic Log</button>
-              <button id="oweh-clear-diagnostics" class="oweh-secondary" type="button" data-tip="Clear the retained diagnostic timeline. Current automation/database state is not changed.">Clear Diagnostic Log</button>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-export-diagnostics" class="oweh-link-button" type="button" data-tip="Download the persistent diagnostic timeline, failure reasons and a current worker/egg state snapshot for later debugging.">Export log</button>
+              <button id="oweh-clear-diagnostics" class="oweh-link-button" type="button" data-tip="Clear the retained diagnostic timeline. Current automation/database state is not changed.">Clear log</button>
             </div>
-            <div class="oweh-inline-meta">Keeps up to 5,000 events / 14 days. Runtime errors, worker lifecycle, sweep progress, egg timeouts and forced recovery are recorded automatically.</div>
+            <div class="oweh-inline-meta oweh-note">Keeps up to 5,000 events / 14 days: runtime errors, worker lifecycle, sweep progress, egg timeouts and forced recovery.</div>
           </div>
         </details>
 
-        <details class="oweh-module" name="oweh-modules">
-          <summary>Settings <span>delays / target</span></summary>
+        <details class="oweh-module" name="oweh-modules" data-accent="settings">
+          <summary><i class="oweh-ico">⚙</i>Settings <span>delays · target</span></summary>
           <div class="oweh-module-body">
             <div class="oweh-row" data-tip="Optional wait between individual egg-turn actions."><label for="oweh-delay">Turn delay</label><input id="oweh-delay" type="number" min="0" max="30" step="0.5" value="0"><span>s</span></div>
             <div class="oweh-row" data-tip="Time allowed for OviPets page content to render before the next workflow step."><label for="oweh-page-delay">Page load</label><input id="oweh-page-delay" type="number" min="0.25" max="10" step="0.25" value="1.5"><span>s</span></div>

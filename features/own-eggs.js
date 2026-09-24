@@ -223,6 +223,9 @@ OWEH.register("feature-own-eggs", helpers => {
         } else {
           setStatus("No turnable or hatch-ready eggs found");
         }
+        // One Hatchery button: newborns (fresh from Hatch Egg, or already waiting) are then named,
+        // saved and moved by the command-first hatchling pass. Turn-only runs create no newborn.
+        if (hatched || !run.count) await ownEggsService.onRunFinished?.({ turned: Number(run.count || 0), hatched });
         return;
       }
 

@@ -146,7 +146,9 @@ setTimeout(() => {
       petIndexActions: ["openTab", "renamePet", "updateRetentionRanking"],
       ninjaService: ["performNinjaChatScan"],
       friendDirectory: ["scanFriends", "hasVisibleFriends"],
-      hatchlingActions: ["openTab", "waitForPetGender", "readPet", "renamePet", "movePetToEnclosure", "updateRetentionRanking", "rankMale"],
+      hatchlingActions: ["getOwnUserId", "updateRetentionRanking"],
+      petFetch: ["readHatchery", "readPet", "collectCatalog", "mergePetRecord"],
+      ownEggsService: ["onRunFinished", "ownedByThisTab"],
       breedingActions: ["collectAllOverviewPets"],
       uiPanelActions: ["saveCurrentPet", "scanFriends", "copyBlacklistCsv", "applySuggestedName", "copyRetentionReviewCsv",
         "exportDiagnosticLog", "clearDiagnosticLog", "getDiagnosticSummary", "friendBlacklist", "rankPartners"]

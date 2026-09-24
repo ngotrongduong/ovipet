@@ -116,7 +116,7 @@
 
   if (!OWEH.services?.status || !OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
     || !OWEH.services?.friendDirectory || !OWEH.services?.retention || !OWEH.services?.partnerRanking
-    || !OWEH.services?.workerControl) {
+    || !OWEH.services?.workerControl || !OWEH.services?.petFetch || !OWEH.dom?.markup) {
     console.error("[OviPets Helper] services/*.js did not load before content.js — check manifest.json script order");
     return;
   }
@@ -135,8 +135,13 @@
     storageGet, storageSet, runtimeRequest, sleep, getPageLoadDelayMs: () => pageLoadDelayMs,
     overviewDom: OWEH.dom.overview, isTabActive, normalizeEnclosureLabel
   });
+  // Command-first reads: the JSONP panels the SPA itself loads, parsed without navigating.
+  const petFetch = OWEH.services.petFetch.createPetFetch({
+    storageGet, storageSet, runtimeRequest, sleep,
+    markup: OWEH.dom.markup, fingerprint: OWEH.services.overviewCatalog.fastFingerprint
+  });
   const {
-    openTab, renamePet, applySuggestedName, saveCurrentPet, waitForPetGender, movePetToEnclosure
+    openTab, renamePet, applySuggestedName, saveCurrentPet
   } = OWEH.services.petEdit.createPetEdit({
     sleep, setStatus, storageGet, storageSet, getPageLoadDelayMs: () => pageLoadDelayMs,
     sendGameCommand, fastMovePetToEnclosure, currentPetId, findTab, isTabActive, readOverviewValue, readPet,
@@ -153,7 +158,7 @@
     storageGet, storageSet, setStatus, writeClipboard, petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure
   });
 
-  const { rankPartners, hasBreedingCandidates, hatchMaleMetrics } = OWEH.services.partnerRanking.createPartnerRanking({
+  const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
     storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
     comparePairPureMetrics, formatPureProbability, ancestorsOverlap, STRICT_PURE_TARGET
   });
@@ -337,6 +342,7 @@
       breedingPlan: OWEH.domain.breedingPlan
     },
     gameActions: OWEH.core.gameActions,
+    petFetch,
     settings: {
       getDelayMs: () => delayMs,
       getPageLoadDelayMs: () => pageLoadDelayMs,
@@ -346,10 +352,6 @@
       waitForOverviewShell, collectAllOverviewPets, updateRetentionRanking,
       setOwnUserId: id => { if (id) ownUserId = id; },
       getOwnUserId: () => ownUserId
-    },
-    profileIndexService: {
-      stopPetIndexCampaign: () => petIndexModule?.stop(),
-      stopPetIndexCampaignLocal: () => petIndexModule?.stopLocal()
     },
     petIndexActions: { openTab, renamePet, updateRetentionRanking },
     ninjaService: { performNinjaChatScan },
@@ -364,14 +366,8 @@
       relayNext: () => runtimeRequest({ type: "relaySweepSkip" })
     },
     hatchlingActions: {
-      readOwnEggRun: () => ownEggsModule?.read() || storageGet("owehEggRun", { active: false }),
-      readSweep: () => friendSweepModule?.read() || storageGet("owehSweep", { active: false }),
-      readBreedCampaign,
-      ownedByThisTab,
       getOwnUserId: () => ownUserId,
-      setOwnUserId: id => { if (id) ownUserId = id; },
-      openTab, waitForPetGender, readPet, renamePet, movePetToEnclosure, updateRetentionRanking,
-      rankMale: hatchMaleMetrics
+      updateRetentionRanking
     },
     breedingActions: {
       readHatchlingRun: () => hatchlingModule?.read() || storageGet("owehHatchlingRun", { active: false }),
@@ -411,7 +407,8 @@
       ownerInstance: PANEL_INSTANCE,
       getCurrentTabId: () => currentTabId,
       ownedByThisTab,
-      setRunning
+      setRunning,
+      onRunFinished: () => requestStartHatchlingProcessing()
     },
     claimTask, releaseTask
   });

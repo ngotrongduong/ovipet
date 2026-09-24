@@ -5,7 +5,8 @@
   const RESULT_EVENT = "oweh:game-command-result";
   const PING_EVENT = "oweh:game-ping";
   const ALLOWED = new Set([
-    "pets_enclosure", "pet_rename", "pet_feed",
+    // pet_name names an Unnamed newborn (its profile has a Name button, not Rename).
+    "pets_enclosure", "pet_rename", "pet_name", "pet_feed",
     "friend_request", "friend_remove", "pet_breed", "pet_turn_egg"
   ]);
 

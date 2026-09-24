@@ -211,13 +211,13 @@ function load(file, extra = {}) {
 
     // Recovery after a reload releases an orphaned one-button job, but not while it is starting.
     {
-      const orphan = make({ workerStatus: { ok: true, active: true, worker: { tabId: 5, owner: "feed", generation: 2, phase: "running" } } });
+      const orphan = make({ workerStatus: { ok: true, active: true, worker: { tabId: 5, owner: "maintain", generation: 2, phase: "running" } } });
       await orphan.service.recoverAfterReload();
-      assert.deepEqual(plain(orphan.resyncs), [["feed", 2]]);
+      assert.deepEqual(plain(orphan.resyncs), [["maintain", 2]]);
       assert.deepEqual(orphan.calls, ["releaseFinished"]);
-      assert.equal(orphan.statuses[0], "\"Feed pets\" was interrupted by a page reload and released the shared background tab — press its button again");
+      assert.equal(orphan.statuses[0], "\"Update database\" was interrupted by a page reload and released the shared background tab — press its button again");
 
-      const starting = make({ workerStatus: { ok: true, active: true, worker: { tabId: 5, owner: "feed", generation: 2, phase: "starting" } } });
+      const starting = make({ workerStatus: { ok: true, active: true, worker: { tabId: 5, owner: "maintain", generation: 2, phase: "starting" } } });
       await starting.service.recoverAfterReload();
       assert.deepEqual(starting.calls, []);
       assert.equal(starting.resyncs.length, 1);
@@ -226,7 +226,7 @@ function load(file, extra = {}) {
       await feature.service.recoverAfterReload();
       assert.deepEqual(feature.calls, [], "features with a progress record resume instead of being released");
 
-      const otherTab = make({ workerStatus: { ok: true, active: true, worker: { tabId: 8, owner: "feed", generation: 2, phase: "running" } } });
+      const otherTab = make({ workerStatus: { ok: true, active: true, worker: { tabId: 8, owner: "maintain", generation: 2, phase: "running" } } });
       await otherTab.service.recoverAfterReload();
       assert.equal(otherTab.resyncs.length, 0);
     }

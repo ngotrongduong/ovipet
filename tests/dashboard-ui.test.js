@@ -106,13 +106,13 @@ function setup({ pets = {} } = {}) {
   // A live shared-worker lease is the source of truth for straight-line job activity.
   {
     const env = setup();
-    env.state.owehWorker = { owner: "catalog", phase: "scanning", leaseUntil: env.clock.now + 30_000 };
+    env.state.owehWorker = { owner: "maintain", phase: "catalog", leaseUntil: env.clock.now + 30_000 };
     await env.api.update();
     assert.equal(env.api.getJobCount(), 1);
     assert.equal(env.summary.textContent, "1 automation running");
     assert.equal(env.header.textContent, "1 active");
     assert.equal(env.jobs.children.length, 1);
-    assert.ok(env.jobs.children[0].textContent.includes("Update catalog"));
+    assert.ok(env.jobs.children[0].textContent.includes("Update database"));
     assert.equal(env.meta.textContent, "Database: 1/2 profiles · 1 enclosures");
   }
 

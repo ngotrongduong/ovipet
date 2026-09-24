@@ -9,7 +9,7 @@ OWEH.register("ui-dashboard", helpers => {
   const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
   const STRAIGHT_JOB_LABELS = {
-    catalog: "Update catalog", sort: "Sort pets", feed: "Feed pets", ninja: "Scan Ninja", requests: "Send requests"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests"
   };
   let updating = false;
   let timer = null;
@@ -53,7 +53,7 @@ OWEH.register("ui-dashboard", helpers => {
     cachedReadiness = summary;
     target.textContent = summary.total
       ? `Females ready: ${summary.ready}/${summary.total} · ${summary.cooldown} on cooldown · ${summary.unverified} pedigree unverified`
-      : "Females ready: no female in the breeding enclosures yet — run Update pet catalog";
+      : "Females ready: no female in the breeding enclosures yet — run Update database";
     return summary;
   }
 
@@ -151,8 +151,7 @@ OWEH.register("ui-dashboard", helpers => {
         jobs.push({ name: "Breeding", detail: `planning · background (${state.owehWorker.phase || "starting"})`, tone: "breed" });
       }
       if (state.owehHatchlingRun?.active) {
-        const phase = state.owehHatchlingRun.phase === "maleMove" ? "moving males" : "checking hatchlings";
-        jobs.push({ name: "Hatchling processing", detail: `${phase} ${compactProgress(state.owehHatchlingRun.index, state.owehHatchlingQueue.length)}`, tone: "egg" });
+        jobs.push({ name: "Newborns", detail: `name · save · move ${compactProgress(state.owehHatchlingRun.index, state.owehHatchlingQueue.length)}`, tone: "egg" });
       }
 
       const signature = JSON.stringify(jobs);

@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.4.4**
+Current release: **v5.5.0**
 
 ## Engineering objective
 
@@ -16,6 +16,12 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.5.0 Panel v2 — command-first, fewer buttons
+
+- **Update database** replaces the four maintenance buttons (catalog, profiles, sort, feed) with one job (`jobs/maintain.js`). Each step has a toggle chip (`owehMaintainSteps`), and nothing navigates: the Overview and profiles are read by background fetch (`services/pet-fetch.js`), and moves, renames and feeds are sent as game commands.
+- **Hatchery** has one main button: it turns and hatches eggs as before (turning still opens the real egg page so Name the Species can be answered), then hands every newborn to the newborn pass. **Newborns only** runs that pass alone. For each pet the pass reads the profile once, renames it, saves the record and moves it (females by program, males to Males), with no page navigation.
+- The panel is regrouped into 8 modules: Update database, Hatchery, Breeding, Friends & requests (sweep + Ninja/Ads), Species, Current pet, Diagnostics, Settings. Each module has its own accent colour, and buttons come in primary, secondary, stop and link tiers.
 
 ## v5.4.4 Species Review tab
 
