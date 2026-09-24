@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OviPets Hatchery Helper",
-  "version": "5.5.3",
+  "version": "5.6.0",
   "description": "Command-first helper: one Update database pass (catalog, profiles, rename, sort, feed), one Hatchery run (turn, hatch, name, sort newborns), Ninja + Ads friend discovery and requests, automatic Name the Species answering with attention alerts, own-Hatchery egg turning/hatching, breeding and pet-database helpers.",
   "background": {
     "service_worker": "background.js"
@@ -43,6 +43,7 @@
         "domain/pedigree.js",
         "domain/breeding-score.js",
         "domain/breeding-plan.js",
+        "domain/male-cull.js",
         "domain/species-shape.js",
         "core/game-actions.js",
         "jobs/species-inspector.js",
@@ -59,6 +60,7 @@
         "features/friend-sweep.js",
         "features/hatchlings.js",
         "features/breeding.js",
+        "features/male-cull.js",
         "ui/dashboard.js",
         "ui/panel.js",
         "services/status.js",

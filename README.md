@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.5.3**
+Current release: **v5.6.0**
 
 ## Engineering objective
 
@@ -16,6 +16,12 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.6.0 Male cull — move redundant males to "Males discard"
+
+- **Plan cull** (Breeding module) reviews every owned male of the breeding-program species against the strict pure target, using only the database. A male is marked for cull only when **at least 2 kept males from different lineages** are as close or closer to the target on **all 15 colour channels**. Because every target channel is 00 or FF and offspring land inside the parents' range, such a male can never give any female a better pure chance; the two-lineage rule keeps a pedigree-safe alternative for every female. Males in the current breeding plan or running campaign are never marked.
+- The status line and **View cull list** side window list each marked male, the males that cover it, and every target channel that no present male or female hits exactly yet (those channels cannot be bred pure; they need new stock).
+- **Confirm cull** moves exactly the reviewed males into the **Males discard** enclosure with the game's move command, one at a time, with Stop and per-male status (moved / skipped / error). Create the enclosure in OviPets and run **Update database** first; if the enclosure is not known, nothing moves. The extension never deletes or sells a pet — empty Males discard yourself. Sort and both planners ignore pets in Males discard, so they are never pulled back.
 
 ## v5.5.3 Breeding pair list side window
 

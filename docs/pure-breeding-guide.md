@@ -72,6 +72,24 @@ together, check whether their visible pedigrees share a tattoo color (shared vis
 ancestor → game will refuse the pairing). This is the model for the extension's ancestor-
 overlap warning.
 
+## Why dominated males are safe to cull (endpoint targets)
+
+Every channel of the strict target (`FFFFFF · FF0000 · 000000 · FF0000 · 000000`) is an
+endpoint, 00 or FF. An offspring channel lands inside the parents' `[min, max]`, so it can
+only reach FF if one parent is FF there, and the chance shrinks as the other parent moves
+away from FF. Take two males of the same species, N and M. If N is at least as close to the
+target as M on all 15 channels, then for **any** female the pair (female, N) can reach every
+channel (female, M) can, with an equal or better chance. M adds nothing except its pedigree,
+because N may share an ancestor with some female and be refused. v5.6.0 **Plan cull**
+(`domain/male-cull.js`) therefore marks M only when at least two kept males from different
+lineages dominate it. Identical males count as dominating each other, so the first two copies
+stay and later copies can go. **Confirm cull** moves the marked males to **Males discard**,
+which is reversible, and it never deletes or sells a pet.
+
+The same review reports **channel coverage**: target channels that no present male or female
+hits exactly. Such a channel can never be bred pure from the current stock, however long the
+campaign runs, so it needs a new pet (generated or bought) that is exact there.
+
 ## Pricing / rules (context only, not implemented in the extension)
 
 New single pures: 600–800c (pairs 1000c+). Multi-pure, popular species: ~750c
