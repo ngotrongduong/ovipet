@@ -1,10 +1,11 @@
 "use strict";
 
 // Learn Species Shapes (v5.4.1): seeds the silhouette library (domain/species-shape.js) from
-// pets whose species is already known — the user's own saved pets and the pets currently listed
-// in the Adoption Center. A normal pet image (/img/pet/<id>) is rendered in the same 500x500
-// frame as the Name the Species challenge, so its 32x32 alpha mask is a valid example. The job
-// only reads public pages and images; it never clicks, adopts or changes anything.
+// pets whose species is already known in the Adoption Center. A normal pet image (/img/pet/<id>)
+// is rendered in the same 500x500 frame as the Name the Species challenge, so its 32x32 alpha
+// mask is a valid example. The job only reads public pages and images; it never clicks, adopts
+// or changes anything. v5.5.1: own pets are no longer a source — a collection is usually one or
+// two species, so they add little variety; Species Review labels already teach their silhouette.
 OWEH.register("species-seed", helpers => {
   const { storageGet, storageSet, sleep, setStatus, runtimeRequest } = helpers;
   const SEEN_KEY = "owehSpeciesSeedSeen";
@@ -64,15 +65,13 @@ OWEH.register("species-seed", helpers => {
     return Boolean(result?.ok && result.added);
   }
 
-  function ownPetCandidates(pets) {
-    return Object.entries(pets || {})
-      .map(([key, pet]) => ({ id: String(pet?.id || key), species: String(pet?.species || "").trim() }))
-      .filter(entry => /^\d+$/.test(entry.id) && entry.species);
-  }
-
   async function run() {
     const shapeApi = api();
     if (!shapeApi) throw new Error("Species shape matcher is not loaded");
+    if (location.hostname !== "ovipets.com") {
+      setStatus("Learn Species Shapes reads the Adoption Center — open ovipets.com and press it again");
+      return { scanned: 0, added: 0, failed: 0 };
+    }
     running = true;
     stopRequested = false;
     const seen = new Set((await storageGet(SEEN_KEY, [])).map(String));
@@ -97,33 +96,24 @@ OWEH.register("species-seed", helpers => {
     };
 
     try {
-      for (const { id, species } of ownPetCandidates(await storageGet("owehPets", {}))) {
-        if (stopRequested) break;
-        if (seen.has(id)) continue;
-        await process(id, species, "own pets");
-        await sleep(REQUEST_DELAY_MS);
-      }
-      if (location.hostname === "ovipets.com") {
-        for (let round = 0; round < ADOPTION_ROUNDS && !stopRequested; round += 1) {
-          let ids = [];
-          try { ids = await adoptionIds(); } catch (error) { console.warn("[OviPets Helper] Adoption Center list failed", error); }
-          for (const id of ids) {
-            if (stopRequested) break;
-            if (seen.has(id)) continue;
-            let species = null;
-            try { species = await profileSpecies(id); } catch { totals.failed += 1; }
-            await process(id, species, "Adoption Center");
-            await sleep(REQUEST_DELAY_MS);
-          }
-          if (round + 1 < ADOPTION_ROUNDS) await sleep(1500);
+      for (let round = 0; round < ADOPTION_ROUNDS && !stopRequested; round += 1) {
+        let ids = [];
+        try { ids = await adoptionIds(); } catch (error) { console.warn("[OviPets Helper] Adoption Center list failed", error); }
+        for (const id of ids) {
+          if (stopRequested) break;
+          if (seen.has(id)) continue;
+          let species = null;
+          try { species = await profileSpecies(id); } catch { totals.failed += 1; }
+          await process(id, species, "Adoption Center");
+          await sleep(REQUEST_DELAY_MS);
         }
+        if (round + 1 < ADOPTION_ROUNDS) await sleep(1500);
       }
     } finally {
       running = false;
       await storageSet({ [SEEN_KEY]: [...seen].slice(-MAX_SEEN) });
     }
-    const where = location.hostname === "ovipets.com" ? "" : " (open ovipets.com to also learn from the Adoption Center)";
-    setStatus(`Learn Species Shapes ${stopRequested ? "stopped" : "finished"} — ${totals.scanned} pet(s) checked, ${totals.added} new silhouette(s), ${Object.keys(counts).length} species known${where}`);
+    setStatus(`Learn Species Shapes ${stopRequested ? "stopped" : "finished"} — ${totals.scanned} pet(s) checked, ${totals.added} new silhouette(s), ${Object.keys(counts).length} species known`);
     return totals;
   }
 
@@ -141,7 +131,7 @@ OWEH.register("species-seed", helpers => {
   }
 
   return {
-    api: { start, stop, ownPetCandidates, profileSpecies, adoptionIds, isRunning: () => running },
+    api: { start, stop, profileSpecies, adoptionIds, isRunning: () => running },
     buttons: {
       "#oweh-species-seed-start": { label: "Starting Learn Species Shapes", handler: start },
       "#oweh-species-seed-stop": { label: "Stopping Learn Species Shapes", handler: stop }

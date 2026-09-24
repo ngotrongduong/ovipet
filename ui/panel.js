@@ -202,7 +202,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.5.0</span>
+          <span class="oweh-version">v5.5.1</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -309,7 +309,7 @@ OWEH.register("ui-panel", helpers => {
             <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
             <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
             <div class="oweh-actions">
-              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from your saved pets and from the Adoption Center (read-only, no clicks). More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
+              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from the pets listed in the Adoption Center (read-only, no clicks; needs ovipets.com). Images you label in Species review are learned too. More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
               <button id="oweh-species-seed-stop" class="oweh-danger" type="button" data-tip="Stop Learn species shapes after the current pet.">Stop</button>
             </div>
             <button id="oweh-species-review" class="oweh-primary-wide" type="button" data-tip="Open a separate tab with every saved Name the Species image (correct and wrong). Label the unresolved ones yourself; each label is saved to the species database and teaches the silhouette matcher.">Review species images</button>
