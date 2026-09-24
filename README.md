@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.6.0**
+Current release: **v5.6.1**
 
 ## Engineering objective
 
@@ -16,6 +16,13 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.6.1 Male cull — no-pair rule, Generated protection, Males discard left alone
+
+- **New cull rule:** a male with **no aligned FF or 00 pair** in any colour slot (Body 1/2, Scales, Extra 1/2, hex read as `RR|GG|BB`) can go — it can never hand an endpoint channel to a child. `EFF1F0` does not count: its `FF` crosses a pair boundary.
+- **Generated males are never culled.** Profile reads now record the Generated wand icon (`generated`). Males read before v5.6.1 have no flag yet, so they are held as "unchecked" until **Update database** reads their profile once; **Confirm cull** also re-reads every profile right before moving and skips the male if it is Generated or the read fails.
+- **Males discard is left completely alone:** Update database no longer fetches its enclosure tab, reads or renames its pets' profiles, sorts or feeds them. Its enclosure id is still recorded so the cull can move pets in, and its pets are not reported as gone.
+- The plan status, meta line and side window now show why each male can go (no FF/00 pair vs covered by better males) and how many were kept as Generated/unchecked, so a result of 0 is visible instead of looking like nothing happened.
 
 ## v5.6.0 Male cull — move redundant males to "Males discard"
 

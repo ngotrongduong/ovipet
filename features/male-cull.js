@@ -6,7 +6,7 @@
 // enclosure through the real pets_enclosure command. The extension never deletes or sells a
 // pet; emptying Males discard stays a manual, in-game decision.
 OWEH.register("feature-male-cull", helpers => {
-  const { storageGet, storageSet, getPetsByIds, setStatus, sleep, domain, gameActions, settings } = helpers;
+  const { storageGet, storageSet, getPetsByIds, setStatus, sleep, domain, gameActions, settings, petFetch } = helpers;
   const { colors, breedingPlan } = domain;
   const maleCull = domain.maleCull || globalThis.OWEH?.domain?.maleCull;
   if (!maleCull?.planMaleCull) throw new Error("feature-male-cull requires domain.maleCull");
@@ -68,7 +68,14 @@ OWEH.register("feature-male-cull", helpers => {
       const enclosureText = enclosureId === null
         ? ` · enclosure "${CULL_ENCLOSURE}" is not in the database yet — run Update database before confirming`
         : "";
-      setStatus(`Male cull plan: ${result.cull.length} of ${result.summary.considered} male(s) are covered by ≥${result.summary.minDominators} better males from different lineages${coverageText}${enclosureText} — nothing moved yet. Review it and press Confirm cull.`);
+      const s = result.summary;
+      const held = [
+        s.generated ? `${s.generated} Generated kept` : "",
+        s.unchecked ? `${s.unchecked} not yet checked for Generated — run Update database, then plan again` : "",
+        s.protected ? `${s.protected} kept for the breed queue` : ""
+      ].filter(Boolean).join(" · ");
+      const next = result.cull.length ? " — nothing moved yet. Open View cull list, then press Confirm cull." : " — nothing to move.";
+      setStatus(`Male cull plan: ${result.cull.length} of ${s.considered} male(s) can go (${s.noPair} with no FF/00 pair, ${s.dominated} covered by ≥${s.minDominators} better males)${held ? ` · ${held}` : ""}${coverageText}${enclosureText}${next}`);
     } finally {
       planning = false;
     }
@@ -106,6 +113,7 @@ OWEH.register("feature-male-cull", helpers => {
         return;
       }
       const protectedIds = await readProtectedIds();
+      const ownUserId = await storageGet("owehOwnUserId", null);
       const rows = preview.rows;
       const save = extra => storageSet({ owehCullPreview: { ...preview, rows, updatedAt: Date.now(), ...extra } });
       await save({ running: true, enclosureMissing: false });
@@ -123,9 +131,22 @@ OWEH.register("feature-male-cull", helpers => {
           const done = rows.filter(item => item.status !== "queued").length;
           phase(`cull ${done + 1}/${rows.length}`);
           const pet = (await getPetsByIds([row.id]))[row.id];
+          // A Generated male is never moved: the database flag must say "not Generated" AND a
+          // fresh profile read right before the move must agree. A failed read skips the male.
+          let fresh = null;
+          if (pet && pet.generated === false && petFetch?.readPet) {
+            fresh = await petFetch.readPet(row.id, ownUserId).catch(() => null);
+          }
+          const freshGenerated = !fresh?.ok || fresh.profile?.generated !== false;
+          if (fresh?.ok && fresh.profile?.generated === true) {
+            await storageSet({ owehPets: { [row.id]: { id: row.id, generated: true } } });
+          }
           if (!pet || pet.gender !== "Male" || pet.present === false || protectedIds.has(row.id)
+            || pet.generated !== false || freshGenerated
             || breedingPlan.isCullEnclosure(pet.enclosure)) {
             row.status = "skipped";
+            row.error = pet?.generated === true || fresh?.profile?.generated === true ? "generated"
+              : (pet && pet.generated !== false ? "generated-unchecked" : (fresh && !fresh.ok ? "profile-read-failed" : undefined));
             counts.skipped += 1;
           } else {
             status(`Male cull: moving ${row.name} → ${CULL_ENCLOSURE} (${done + 1}/${rows.length})`);

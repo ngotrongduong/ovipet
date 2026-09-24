@@ -19,7 +19,13 @@ OWEH.register("job-maintain", helpers => {
   // A fire-and-forget pet_feed proves only that the dispatcher accepted it; retry after a short
   // window rather than trusting it for the full confirmed-full window.
   const FEED_DISPATCH_RETRY_MS = 10 * 60 * 1000;
-  const isOwnedPresent = pet => pet?.owned && pet.present !== false && /^\d+$/.test(String(pet.id));
+  // v5.6.1: pets in Males discard are left completely alone — no profile read, rename, sort
+  // or feed. Only their enclosure tab id is kept so the cull job can still move pets in.
+  const isOwnedPresent = pet => pet?.owned && pet.present !== false && /^\d+$/.test(String(pet.id))
+    && !breedingPlan.isCullEnclosure(pet.enclosure);
+  // Males read before v5.6.1 have no Generated flag; one profile read records it, because a
+  // Generated male must never be culled.
+  const needsGeneratedFlag = pet => pet.gender === "Male" && typeof pet.generated !== "boolean";
 
   async function readSteps() {
     const stored = await storageGet("owehMaintainSteps", DEFAULT_STEPS);
@@ -31,6 +37,7 @@ OWEH.register("job-maintain", helpers => {
     status("Update database: reading every enclosure...");
     const scan = await petFetch.collectCatalog({
       isCancelled,
+      skipTab: tab => breedingPlan.isCullEnclosure(tab.label),
       onProgress: (index, total, tab) => phase(`catalog ${index + 1}/${total} · ${tab.label}`)
     });
     if (scan.cancelled || isCancelled()) return null;
@@ -62,7 +69,9 @@ OWEH.register("job-maintain", helpers => {
     let missing = 0;
     if (!partial) {
       for (const pet of Object.values(pets)) {
-        if (pet?.owned && pet.id && !visibleIds.has(pet.id) && pet.present !== false) {
+        // Males discard is never read, so its pets are not "gone" just because they were unseen.
+        if (pet?.owned && pet.id && !visibleIds.has(pet.id) && pet.present !== false
+          && !breedingPlan.isCullEnclosure(pet.enclosure)) {
           pet.present = false;
           missing += 1;
         }
@@ -90,7 +99,7 @@ OWEH.register("job-maintain", helpers => {
     };
     const queue = Object.values(pets)
       .filter(isOwnedPresent)
-      .filter(pet => pet.profileStale || !petRecord.isCompletePetRecord(pet) || wrongName(pet));
+      .filter(pet => pet.profileStale || !petRecord.isCompletePetRecord(pet) || wrongName(pet) || needsGeneratedFlag(pet));
     const result = { queued: queue.length, read: 0, renamed: 0, unverified: 0, errors: 0 };
     if (!queue.length) return result;
 

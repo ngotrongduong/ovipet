@@ -265,7 +265,7 @@ OWEH.register("ui-panel", helpers => {
             <th>Enclosure</th>
             <th title="Target channels this male already has exactly right">Exact</th>
             <th title="Total distance to the target over all 15 channels">Distance</th>
-            <th title="Kept males that are at least as close on every channel (one per lineage shown)">Covered by</th>
+            <th title="Why it can go: no aligned FF/00 pair, or the kept males that are at least as close on every channel (one per lineage shown)">Why</th>
             <th>Status</th>
           </tr></thead>
           <tbody id="oweh-cull-view-rows"></tbody>
@@ -298,7 +298,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.6.0</span>
+          <span class="oweh-version">v5.6.1</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -366,7 +366,7 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
             </div>
             <button id="oweh-view-breed-plan" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every planned pair (or the confirmed campaign and its progress) in a full-size table.">View pairs</button>
-            <div class="oweh-inline-meta" data-tip="Male cull: a male can go when at least 2 kept males from different lineages are as close or closer to the pure target on all 15 channels — for every female they give an equal or better pure chance. Males in a breeding plan or campaign are never listed.">Male cull → Males discard</div>
+            <div class="oweh-inline-meta" data-tip="Male cull: a male can go when (1) no colour slot has an aligned FF or 00 pair (RR|GG|BB — EFF1F0 does not count), or (2) at least 2 kept males from different lineages are as close or closer to the pure target on all 15 channels. Generated males are never culled; males in a breeding plan or campaign are never listed. Males discard itself is never fed, scanned or renamed.">Male cull → Males discard</div>
             <div class="oweh-actions">
               <button id="oweh-cull-plan" type="button" data-tip="From the database only: list the redundant males. Nothing is moved until you press Confirm cull.">Plan cull</button>
               <button id="oweh-cull-stop" class="oweh-danger" type="button" data-tip="Stop moving males. Males already moved stay in Males discard; Confirm cull resumes the rest.">Stop</button>

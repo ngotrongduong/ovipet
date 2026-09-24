@@ -55,7 +55,11 @@
     // Same storage contract as services/overview-catalog.js collectAllOverviewPets: one
     // snapshot per enclosure, a partial scan only adds to what the last full scan knew, and
     // an empty scan changes nothing.
-    async function collectCatalog({ isCancelled = () => false, onProgress = () => {} } = {}) {
+    //
+    // v5.6.1: `skipTab(tab)` marks an enclosure that is never fetched (Males discard). Its id is
+    // still recorded (moves need it) and its last snapshot is carried forward unread, so its
+    // pets stay known instead of being reported gone.
+    async function collectCatalog({ isCancelled = () => false, onProgress = () => {}, skipTab = () => false } = {}) {
       const [previousSnapshots, previousEnclosureIds] = await Promise.all([
         storageGet("owehEnclosureSnapshots", {}),
         storageGet("owehEnclosureIds", {})
@@ -73,6 +77,15 @@
         if (isCancelled()) return { catalog: [], partial: true, ownUserId, cancelled: true };
         const tab = tabs[index];
         onProgress(index, tabs.length, tab);
+        if (skipTab(tab)) {
+          enclosureIds[tab.label] = tab.id;
+          const previous = previousSnapshots[tab.id];
+          if (previous) {
+            nextSnapshots[tab.id] = previous;
+            (previous.records || []).forEach(pet => found.set(pet.id, { ...pet, enclosure: tab.label, enclosureId: tab.id }));
+          }
+          continue;
+        }
         let pets;
         try {
           const panel = tab.panel.startsWith("/") ? tab.panel : `/${tab.panel}`;
@@ -146,6 +159,8 @@
   // panel may simply have failed this time); everything else comes from the fresh record.
   function mergePetRecord(previous, record) {
     const merged = { ...(previous || {}), ...record };
+    // Generated is permanent; a read that missed the wand icon never clears it.
+    if (previous?.generated === true) merged.generated = true;
     if (record.pedigreeVerified !== true && previous?.pedigreeVerified === true) {
       merged.pedigreeVerified = true;
       merged.ancestors = [...(previous.ancestors || [])];

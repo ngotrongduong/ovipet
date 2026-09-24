@@ -28,7 +28,7 @@ const EXACT = { body1: "#FFFFFF", body2: "#FF0000", scales: "#000000", extra1: "
 function male(id, parents, colorPatch = {}, extra = {}) {
   return {
     id, name: `M${id}`, owned: true, present: true, gender: "Male", species: "Raptor",
-    enclosure: "Males", pedigreeVerified: true, parentIds: parents,
+    enclosure: "Males", pedigreeVerified: true, parentIds: parents, generated: false,
     colors: { ...EXACT, ...colorPatch }, ...extra
   };
 }
@@ -100,7 +100,43 @@ test("male cull domain: dominance, lineage diversity, protection, coverage", () 
   assert.deepEqual(enclosures, ["Males"]);
 });
 
-function featureSetup({ enclosureIds = { "males discard": "10" }, moveResult = { moved: true } } = {}) {
+test("male cull domain: no aligned FF/00 pair rule and Generated protection", () => {
+  const OWEH = load();
+  const { maleCull, breedingPlan, colors } = OWEH.domain;
+  const target = { ...colors.STRICT_PURE_TARGET };
+  const NO_PAIR = { body1: "#EFF1F0", body2: "#A6EBFE", scales: "#CE0601", extra1: "#3B0901", extra2: "#123456" };
+
+  // EFF1F0 has "FF" only across a pair boundary: no aligned pair.
+  assert.equal(breedingPlan.hasEndpointColorPair({ colors: NO_PAIR }), false);
+  assert.equal(breedingPlan.hasEndpointColorPair({ colors: { ...NO_PAIR, extra2: "#12FF56" } }), true);
+  assert.equal(breedingPlan.hasEndpointColorPair({ colors: { ...NO_PAIR, scales: "#CE0600" } }), true);
+
+  const pets = {
+    n: male("n", ["p1", "p2"], NO_PAIR),
+    g: male("g", ["p3", "p4"], NO_PAIR, { generated: true }),
+    u: male("u", ["p5", "p6"], NO_PAIR, { generated: undefined }),
+    k: male("k", ["p7", "p8"], { ...NO_PAIR, extra2: "#12FF56" })
+  };
+  const result = maleCull.planMaleCull(pets, target);
+  assert.deepEqual(result.cull.map(row => [row.id, row.reason]), [["n", "no-endpoint-pair"]]);
+  assert.equal(result.summary.noPair, 1);
+  assert.equal(result.summary.generated, 1, "a Generated no-pair male is kept");
+  assert.equal(result.summary.unchecked, 1, "a male never checked for Generated is held");
+  assert.ok(result.keepIds.includes("g") && result.keepIds.includes("u") && result.keepIds.includes("k"));
+  // Protected wins over the no-pair rule too.
+  assert.equal(maleCull.planMaleCull(pets, target, { protectedIds: ["n"] }).cull.length, 0);
+
+  // A dominated Generated male is kept as well.
+  const dominated = {
+    a: male("a", ["q1", "q2"]), b: male("b", ["q3", "q4"]),
+    m: male("m", ["q5", "q6"], { body1: "#F0FFFF" }, { generated: true })
+  };
+  const second = maleCull.planMaleCull(dominated, target);
+  assert.equal(second.cull.length, 0);
+  assert.equal(second.summary.generated, 1);
+});
+
+function featureSetup({ enclosureIds = { "males discard": "10" }, moveResult = { moved: true }, freshRead = { ok: true, profile: { generated: false } } } = {}) {
   const OWEH = load();
   const store = {
     owehPets: {
@@ -108,7 +144,7 @@ function featureSetup({ enclosureIds = { "males discard": "10" }, moveResult = {
     },
     owehEnclosureIds: enclosureIds
   };
-  const log = { status: [], moves: [], done: 0 };
+  const log = { status: [], moves: [], reads: [], done: 0 };
   const helpers = {
     storageGet: async (key, fallback) => key in store ? clone(store[key]) : clone(fallback),
     storageGetMany: async () => ({}),
@@ -131,7 +167,8 @@ function featureSetup({ enclosureIds = { "males discard": "10" }, moveResult = {
     gameActions: {
       fastMovePetToEnclosure: async (id, target) => { log.moves.push([id, target]); return clone(moveResult); }
     },
-    settings: { getDelayMs: () => 0 }
+    settings: { getDelayMs: () => 0 },
+    petFetch: { readPet: async id => { log.reads.push(id); return clone(freshRead); } }
   };
   const modules = OWEH.boot(helpers);
   return { store, log, feature: modules["feature-male-cull"] };
@@ -167,6 +204,23 @@ test("male cull feature: missing Males discard enclosure moves nothing", async (
   assert.equal(log.moves.length, 0);
   assert.match(log.status.at(-1), /Males discard/);
   assert.equal(store.owehCullPreview.rows[0].status, "queued");
+});
+
+test("male cull feature: a fresh profile read showing Generated (or failing) blocks the move", async () => {
+  for (const [freshRead, reason] of [
+    [{ ok: true, profile: { generated: true } }, "generated"],
+    [{ ok: false, reason: "profile:fetch" }, "profile-read-failed"]
+  ]) {
+    const { store, log, feature } = featureSetup({ freshRead });
+    await feature.api.plan();
+    await feature.workerHandlers.cull.start(1);
+    assert.deepEqual(log.reads, ["m"], "the profile is re-read right before moving");
+    assert.equal(log.moves.length, 0);
+    assert.equal(store.owehCullPreview.rows[0].status, "skipped");
+    assert.equal(store.owehCullPreview.rows[0].error, reason);
+    assert.equal(store.owehPets.m.enclosure, "Males");
+    if (reason === "generated") assert.equal(store.owehPets.m.generated, true, "the Generated flag is saved");
+  }
 });
 
 test("male cull feature: failed move is recorded, discard clears the review", async () => {

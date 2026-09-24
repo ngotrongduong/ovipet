@@ -16,7 +16,8 @@
 
   const { TARGET_KEYS, rgb } = OWEH.domain.colors;
   const { lineageKey } = OWEH.domain.pedigree;
-  const { isBreedingProgramEnclosure, isCullEnclosure } = OWEH.domain.breedingPlan;
+  const { isBreedingProgramEnclosure, isCullEnclosure, hasEndpointColorPair } = OWEH.domain.breedingPlan;
+  const REASONS = Object.freeze({ NO_ENDPOINT_PAIR: "no-endpoint-pair", DOMINATED: "dominated" });
 
   const DEFAULT_MIN_DOMINATORS = 2;
   const CHANNEL_NAMES = Object.freeze(["R", "G", "B"]);
@@ -98,18 +99,60 @@
     return ids;
   }
 
+  // Why a cull-worthy male must stay anyway, or null. Generated males are never culled; a male
+  // whose Generated flag was never read (records from before v5.6.1) is held as "unchecked"
+  // until Update database reads its profile once.
+  function keepReason(pet, protectedIds) {
+    if (pet?.generated === true) return "generated";
+    if (pet?.generated !== false) return "unchecked";
+    if (protectedIds.has(String(pet.id))) return "protected";
+    return null;
+  }
+
   function planMaleCull(pets, target, options = {}) {
     const minDominators = Math.max(1, Math.floor(Number(options.minDominators) || DEFAULT_MIN_DOMINATORS));
     const protectedIds = new Set([...(options.protectedIds || [])].map(String));
     const species = options.species ? new Set(options.species) : programSpecies(pets);
-    const summary = { considered: 0, keep: 0, cull: 0, protected: 0, incomplete: 0, minDominators, species: [...species].sort() };
+    const summary = {
+      considered: 0, keep: 0, cull: 0, protected: 0, generated: 0, unchecked: 0, incomplete: 0,
+      noPair: 0, dominated: 0, minDominators, species: [...species].sort()
+    };
 
+    const cull = [];
+    const keptIds = new Set();
     const bySpecies = new Map();
     for (const pet of Object.values(pets || {})) {
       if (!isOwnedPresent(pet) || pet.gender !== "Male" || !species.has(pet.species || "Unknown")) continue;
       const vector = channelDistances(pet, target);
       if (!vector) {
         summary.incomplete += 1;
+        continue;
+      }
+      const id = String(pet.id);
+      // v5.6.1: a male with no aligned FF or 00 pair (RR|GG|BB) in any of the five slots can
+      // never hand an endpoint channel to a child, so it goes — unless it is Generated or
+      // protected. "EFF1F0" has FF only across a pair boundary and does not count.
+      if (!hasEndpointColorPair(pet)) {
+        summary.considered += 1;
+        const hold = keepReason(pet, protectedIds);
+        if (hold) {
+          summary[hold] += 1;
+          keptIds.add(id);
+          continue;
+        }
+        summary.noPair += 1;
+        cull.push({
+          id,
+          name: pet.name || id,
+          species: pet.species || "Unknown",
+          enclosure: pet.enclosure || null,
+          reason: REASONS.NO_ENDPOINT_PAIR,
+          exactChannels: vector.filter(value => value === 0).length,
+          distance: vector.reduce((sum, value) => sum + value, 0),
+          dominatorCount: 0,
+          dominatorLineages: 0,
+          dominators: []
+        });
         continue;
       }
       const entry = {
@@ -124,8 +167,6 @@
       bySpecies.get(key).push(entry);
     }
 
-    const cull = [];
-    const keptIds = new Set();
     for (const entries of bySpecies.values()) {
       // A strict dominator always has a smaller total distance, so walking best-first means every
       // possible dominator was already decided. Equal vectors are ordered by the tie-breakers, so
@@ -140,8 +181,9 @@
         const dominators = kept.filter(other => dominatesOrEqual(other.vector, entry.vector));
         const lineages = new Set(dominators.map(other => other.lineage));
         const id = String(entry.pet.id);
-        if (lineages.size >= minDominators && protectedIds.has(id)) summary.protected += 1;
-        if (lineages.size < minDominators || protectedIds.has(id)) {
+        const hold = keepReason(entry.pet, protectedIds);
+        if (lineages.size >= minDominators && hold) summary[hold] += 1;
+        if (lineages.size < minDominators || hold) {
           kept.push(entry);
           keptIds.add(id);
           continue;
@@ -160,6 +202,7 @@
           name: entry.pet.name || id,
           species: entry.pet.species || "Unknown",
           enclosure: entry.pet.enclosure || null,
+          reason: REASONS.DOMINATED,
           exactChannels: entry.exactChannels,
           distance: entry.distance,
           dominatorCount: dominators.length,
@@ -170,6 +213,7 @@
     }
     cull.sort((a, b) => a.species.localeCompare(b.species) || b.distance - a.distance || a.id.localeCompare(b.id));
     summary.cull = cull.length;
+    summary.dominated = cull.length - summary.noPair;
     summary.keep = keptIds.size;
     summary.coverage = channelCoverage(pets, species, target, keptIds);
     return { cull, keepIds: [...keptIds], summary };
@@ -178,6 +222,8 @@
   OWEH.domain.maleCull = Object.freeze({
     DEFAULT_MIN_DOMINATORS,
     CHANNEL_LABELS,
+    REASONS,
+    keepReason,
     channelDistances,
     dominatesOrEqual,
     programSpecies,

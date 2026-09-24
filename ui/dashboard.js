@@ -219,6 +219,15 @@ OWEH.register("ui-dashboard", helpers => {
     return missing.length ? `no exact pet yet for ${missing.join(" | ")}` : "every target channel has an exact pet";
   }
 
+  function cullBreakdownText(summary) {
+    return [
+      `${Number(summary?.noPair || 0)} no FF/00 pair`,
+      `${Number(summary?.dominated || 0)} covered by ≥${Number(summary?.minDominators || 2)} better`,
+      summary?.generated ? `${summary.generated} Generated kept` : "",
+      summary?.unchecked ? `${summary.unchecked} unchecked — run Update database` : ""
+    ].filter(Boolean).join(", ");
+  }
+
   function renderCullPreview(panel, preview) {
     const box = panel.querySelector("#oweh-cull-preview");
     if (!box) return;
@@ -228,7 +237,7 @@ OWEH.register("ui-dashboard", helpers => {
     if (preview && fresh) {
       const summary = preview.summary || {};
       const moved = rows.filter(row => row?.status === "moved").length;
-      text = `${rows.length} of ${Number(summary.considered || 0)} male(s) can go · ${moved} moved · ${queued} queued${running ? " · moving now" : ` · built ${Math.max(0, Math.round(age / 60000))}m ago`} · ${cullCoverageText(summary)}${preview.enclosureMissing ? " · run Update database so the Males discard enclosure is known" : ""}`;
+      text = `${rows.length} of ${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${queued} queued${running ? " · moving now" : ` · built ${Math.max(0, Math.round(age / 60000))}m ago`} · ${cullCoverageText(summary)}${preview.enclosureMissing ? " · run Update database so the Males discard enclosure is known" : ""}`;
     }
     if (box.textContent !== text) box.textContent = text;
     const confirm = panel.querySelector("#oweh-cull-confirm");
@@ -259,7 +268,7 @@ OWEH.register("ui-dashboard", helpers => {
     view.classList.toggle("oweh-hidden", hidden);
     const summary = preview.summary || {};
     const moved = rows.filter(row => row?.status === "moved").length;
-    const heading = `${rows.length}/${Number(summary.considered || 0)} male(s) covered by ≥${Number(summary.minDominators || 2)} better males from different lineages · ${moved} moved · ${cullCoverageText(summary)}`;
+    const heading = `${rows.length}/${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${cullCoverageText(summary)}`;
     const signature = JSON.stringify([heading, rows.map(row => [row.id, row.status])]);
     if (signature !== cullViewSignature) {
       cullViewSignature = signature;
@@ -273,8 +282,13 @@ OWEH.register("ui-dashboard", helpers => {
           const male = planViewCell("td", row.name || row.id);
           male.title = `Male ID ${row.id}`;
           const dominators = (row.dominators || []).map(item => item.name || item.id).join(", ");
-          const better = planViewCell("td", `${dominators}${Number(row.dominatorCount || 0) > (row.dominators || []).length ? ` +${Number(row.dominatorCount) - (row.dominators || []).length}` : ""}`);
-          better.title = (row.dominators || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
+          const noPair = row.reason === "no-endpoint-pair";
+          const better = planViewCell("td", noPair
+            ? "no FF/00 pair in any slot"
+            : `${dominators}${Number(row.dominatorCount || 0) > (row.dominators || []).length ? ` +${Number(row.dominatorCount) - (row.dominators || []).length}` : ""}`);
+          better.title = noPair
+            ? "No aligned FF or 00 pair (RR|GG|BB) in Body, Scales or Extra"
+            : (row.dominators || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
           tr.append(
             planViewCell("td", String(index + 1), "oweh-plan-num"),
             male,
@@ -283,7 +297,8 @@ OWEH.register("ui-dashboard", helpers => {
             planViewCell("td", `${Number(row.exactChannels || 0)}/15`),
             planViewCell("td", String(Number(row.distance || 0))),
             better,
-            planViewCell("td", row.status === "error" ? `error: ${row.error || "?"}` : String(row.status || "queued"), "oweh-plan-status")
+            planViewCell("td", row.status === "error" ? `error: ${row.error || "?"}`
+              : (row.status === "skipped" && row.error ? `skipped: ${row.error}` : String(row.status || "queued")), "oweh-plan-status")
           );
           return tr;
         }));

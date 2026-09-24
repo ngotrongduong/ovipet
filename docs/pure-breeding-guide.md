@@ -86,6 +86,11 @@ lineages dominate it. Identical males count as dominating each other, so the fir
 stay and later copies can go. **Confirm cull** moves the marked males to **Males discard**,
 which is reversible, and it never deletes or sells a pet.
 
+v5.6.1 adds a second rule: a male with **no aligned FF or 00 pair** in any of the five slots
+(hex read as `RR|GG|BB`, so `EFF1F0` does not count) can never give a child an endpoint
+channel, and is marked too. **Generated** males (wand icon on the profile) are never marked
+by either rule, and Confirm cull re-reads each profile before moving to make sure.
+
 The same review reports **channel coverage**: target channels that no present male or female
 hits exactly. Such a channel can never be bred pure from the current stock, however long the
 campaign runs, so it needs a new pet (generated or bought) that is exact there.
