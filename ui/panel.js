@@ -189,7 +189,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.4.1</span>
+          <span class="oweh-version">v5.4.2</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>

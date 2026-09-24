@@ -77,6 +77,22 @@ function loadDomain(extra = {}) {
   }
   assert.equal(crowded.Blob.examples.length, api.MAX_EXAMPLES, "examples are capped");
 
+  // A full species drops its most redundant silhouette, not its oldest (rare outlines survive).
+  const full = {};
+  const fullRgba = Array.from({ length: api.MAX_EXAMPLES }, noise);
+  for (const rgba of fullRgba) api.addExample(full, "Mix", api.shapeFromRgba(rgba));
+  assert.equal(full.Mix.examples.length, api.MAX_EXAMPLES);
+  const oldest = full.Mix.examples[0];
+  const twinSource = full.Mix.examples[5];
+  const twinRgba = Uint8ClampedArray.from(fullRgba[5]);
+  for (let i = 0; i < 10; i += 1) twinRgba[i * 4 + 3] = twinRgba[i * 4 + 3] ? 0 : 255;
+  const twin = api.shapeFromRgba(twinRgba);
+  assert.equal(api.hamming(twin, twinSource), 10);
+  assert.equal(api.addExample(full, "Mix", twin).added, true);
+  assert.equal(full.Mix.examples.length, api.MAX_EXAMPLES);
+  assert.ok(full.Mix.examples.includes(oldest), "the oldest distinct silhouette is kept");
+  assert.ok(full.Mix.examples.includes(twin) && !full.Mix.examples.includes(twinSource), "the older of the closest pair is dropped");
+
   // Ranking: a close learned silhouette wins over every other option.
   const ranked = api.rankOptions({ shape: catVariant, options: ["Bird", "Cat", "Dog"], library: { Cat: library.Cat, Bird: { examples: [bird] } } });
   assert.deepEqual(plain(ranked), { species: "Cat", method: "shape-match", distance: 10 });

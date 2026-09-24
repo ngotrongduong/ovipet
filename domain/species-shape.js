@@ -20,11 +20,14 @@
   // examples yet is the better bet (the image is probably a species we have never learned).
   const MATCH_DISTANCE = 150;
   const DEDUPE_DISTANCE = 6;
-  // Mutations change the outline a lot, so more variants per species are kept.
-  const MAX_EXAMPLES = 40;
+  // Mutations change the outline a lot, so many variants per species are kept (~38 KB per species).
+  const MAX_EXAMPLES = 150;
   const MIN_FILLED_BITS = 24;
   const POPCOUNT = Array.from({ length: 16 }, (_, value) =>
     (value & 1) + ((value >> 1) & 1) + ((value >> 2) & 1) + ((value >> 3) & 1));
+  // charCode of "0"-"9"/"a"-"f" -> nibble value (hamming runs O(n^2) when a species is full).
+  const HEX_VALUE = new Uint8Array(128);
+  for (let value = 0; value < 16; value += 1) HEX_VALUE[value.toString(16).charCodeAt(0)] = value;
 
   function validShape(value) {
     return typeof value === "string" && value.length === HEX_LENGTH && /^[0-9a-f]+$/.test(value);
@@ -53,7 +56,7 @@
     if (!validShape(a) || !validShape(b)) return BITS;
     let distance = 0;
     for (let index = 0; index < HEX_LENGTH; index += 1) {
-      distance += POPCOUNT[parseInt(a[index], 16) ^ parseInt(b[index], 16)];
+      distance += POPCOUNT[HEX_VALUE[a.charCodeAt(index)] ^ HEX_VALUE[b.charCodeAt(index)]];
     }
     return distance;
   }
@@ -90,15 +93,32 @@
     return { species: known[0].species, method: "shape-nearest", distance: known[0].distance };
   }
 
-  // Adds one confirmed silhouette to a library entry. Near-duplicates are skipped; the newest
+  // When a species is full, the most redundant silhouette is dropped instead of the oldest: of
+  // the closest pair, the older one goes. A rare mutation outline therefore survives a flood of
+  // near-identical common ones.
+  function dropMostRedundant(examples) {
+    let best = { distance: BITS + 1, index: 0 };
+    for (let i = 0; i < examples.length; i += 1) {
+      for (let j = i + 1; j < examples.length; j += 1) {
+        const distance = hamming(examples[i], examples[j]);
+        if (distance < best.distance) best = { distance, index: i };
+      }
+    }
+    return examples.filter((_, index) => index !== best.index);
+  }
+
+  // Adds one confirmed silhouette to a library entry. Near-duplicates are skipped; at most
   // MAX_EXAMPLES distinct silhouettes (different genes/extra parts) are kept.
   function addExample(library, species, shape, at = Date.now()) {
     const name = String(species || "").trim();
     if (!name || !validShape(shape)) return { library, added: false };
     const examples = examplesOf(library, name);
     if (examples.some(example => hamming(example, shape) <= DEDUPE_DISTANCE)) return { library, added: false };
-    library[name] = { examples: [...examples, shape].slice(-MAX_EXAMPLES), updatedAt: at };
-    return { library, added: true };
+    let next = [...examples, shape];
+    while (next.length > MAX_EXAMPLES) next = dropMostRedundant(next);
+    const added = next.includes(shape);
+    library[name] = { examples: next, updatedAt: added ? at : library[name]?.updatedAt || at };
+    return { library, added };
   }
 
   function mergeLibraries(target, incoming) {
