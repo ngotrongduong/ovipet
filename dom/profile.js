@@ -100,6 +100,8 @@
     const ancestors = pedigree.map(node => node.id);
     return {
       id, name, gender, species, colors, ancestors, pedigree, pedigreeVerified,
+      // v5.6.1: the wand icon next to the gender marks a Generated pet (never culled).
+      generated: Boolean(root.querySelector('main img[title="Generated"]')),
       parentIds: pedigree.filter(node => node.generation === 1).map(node => node.id),
       url: href, updatedAt: now,
       foodPercent: Number.isFinite(foodPercent) ? foodPercent : null,

@@ -322,7 +322,7 @@
     "owehEggRun", "owehSweep", "owehWorker",
     "owehBreedCampaign", "owehBreedQueue", "owehPetIndex", "owehPetScanQueue",
     "owehHatchlingRun", "owehHatchlingQueue",
-    "owehFriendRemoval", "owehDatabaseMeta", "owehSweepNotice"
+    "owehFriendRemoval", "owehDatabaseMeta", "owehSweepNotice", "owehCullPreview"
   ]);
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && Object.keys(changes).some(key => activityStorageKeys.has(key))) {
@@ -345,7 +345,8 @@
       petRecord: OWEH.domain.petRecord,
       pedigree: OWEH.domain.pedigree,
       breedingScore: OWEH.domain.breedingScore,
-      breedingPlan: OWEH.domain.breedingPlan
+      breedingPlan: OWEH.domain.breedingPlan,
+      maleCull: OWEH.domain.maleCull
     },
     gameActions: OWEH.core.gameActions,
     petFetch,

@@ -14,6 +14,9 @@
 
   const MALES_ENCLOSURE = "Males";
   const BREEDING_STOCK_ENCLOSURE = "Breeding Stock";
+  // v5.6.0: males the cull review moved out of the program. Sort and both planners ignore
+  // pets here so a culled male is never pulled back into Males or offered as a partner.
+  const CULL_ENCLOSURE = "Males discard";
   const DEFAULT_BREEDING_STOCK_MAX_DISTANCE = 96;
   const BREED_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const BREEDING_STRATEGIES = Object.freeze({
@@ -65,6 +68,10 @@
       || normalized === normalizeEnclosureLabel(MALES_ENCLOSURE);
   }
 
+  function isCullEnclosure(value) {
+    return normalizeEnclosureLabel(value) === normalizeEnclosureLabel(CULL_ENCLOSURE);
+  }
+
   function hasEndpointColorPair(pet) {
     return TARGET_KEYS.some(key => {
       const value = String(pet?.colors?.[key] || "").replace("#", "").toUpperCase();
@@ -73,7 +80,7 @@
   }
 
   function desiredProgramEnclosure(pet, breedingStockMaxDistance = DEFAULT_BREEDING_STOCK_MAX_DISTANCE) {
-    if (!pet) return null;
+    if (!pet || isCullEnclosure(pet.enclosure)) return null;
     if (String(pet.gender || "").toLowerCase() === "male") return MALES_ENCLOSURE;
     if (String(pet.gender || "").toLowerCase() !== "female") return null;
     const pure = classifyNewbornName(pet.colors?.body1?.replace("#", "") || pet.name);
@@ -142,7 +149,7 @@
     const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
     return Object.values(pets || {})
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
-        && (sameFf || isBreedingFemaleEnclosure(pet.enclosure))
+        && !isCullEnclosure(pet.enclosure) && (sameFf || isBreedingFemaleEnclosure(pet.enclosure))
         && completeForTarget(pet, target));
   }
 
@@ -151,7 +158,8 @@
     const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
     const labels = new Set();
     for (const pet of Object.values(pets || {})) {
-      if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || !completeForTarget(pet, target)) continue;
+      if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || isCullEnclosure(pet.enclosure)
+        || !completeForTarget(pet, target)) continue;
       if (!sameFf && normalizeEnclosureLabel(pet.enclosure) !== normalizeEnclosureLabel(MALES_ENCLOSURE)) continue;
       if (pet.enclosure) labels.add(String(pet.enclosure));
     }
@@ -192,10 +200,11 @@
     const eligible = eligibilityIndex(options.gameEligible);
     const females = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
-        && pedigreeUsable(pet, eligible) && completeForTarget(pet, target));
+        && !isCullEnclosure(pet.enclosure) && pedigreeUsable(pet, eligible) && completeForTarget(pet, target));
     sortByPureMetrics(females, target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
+        && !isCullEnclosure(pet.enclosure)
         && (pet.pedigreeVerified === true || eligible.size > 0) && completeForTarget(pet, target));
 
     const usage = recentMaleUsage(history, now);
@@ -414,6 +423,7 @@
   OWEH.domain.breedingPlan = Object.freeze({
     MALES_ENCLOSURE,
     BREEDING_STOCK_ENCLOSURE,
+    CULL_ENCLOSURE,
     DEFAULT_BREEDING_STOCK_MAX_DISTANCE,
     BREED_HISTORY_WINDOW_MS,
     BREEDING_STRATEGIES,
@@ -424,6 +434,7 @@
     isPureLineEnclosure,
     isBreedingFemaleEnclosure,
     isBreedingProgramEnclosure,
+    isCullEnclosure,
     hasEndpointColorPair,
     desiredProgramEnclosure,
     recentMaleUsage,

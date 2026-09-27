@@ -9,7 +9,7 @@ OWEH.register("ui-dashboard", helpers => {
   const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
   const STRAIGHT_JOB_LABELS = {
-    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", cull: "Male cull"
   };
   let updating = false;
   let timer = null;
@@ -77,6 +77,236 @@ OWEH.register("ui-dashboard", helpers => {
     if (discard) discard.disabled = !preview;
   }
 
+  // Side window next to the panel: the full pair list of the current plan (or of the confirmed
+  // campaign while/after it runs). Read-only presentation of durable storage; it never plans,
+  // confirms or breeds. The window opens by itself once per new plan/campaign; after the user
+  // closes it, the "View pairs" button reopens it.
+  const SECONDARY_LABELS = { body2: "Body 2", scales: "Scales", extra1: "Extra 1", extra2: "Extra 2" };
+  let planViewKey = "";
+  let planViewSignature = "";
+
+  function formatChance(pure) {
+    const value = Number(pure?.pureProbability);
+    if (!Number.isFinite(value) || value <= 0) return "—";
+    const percent = value * 100;
+    return percent >= 0.01 ? `${percent.toFixed(2)}%` : `${percent.toExponential(1)}%`;
+  }
+
+  function planViewSource(state) {
+    const preview = state.owehBreedPreview;
+    const campaign = state.owehBreedCampaign || {};
+    const queue = Array.isArray(state.owehBreedQueue) ? state.owehBreedQueue : [];
+    const strategyName = value => value === "same-ff-target" ? "Same-FF target" : "Pure-line";
+    if (campaign.active && queue.length) {
+      return { key: `campaign:${campaign.startedAt || 0}`, mode: "running", rows: queue, strategy: strategyName(campaign.strategy), species: campaign.species, progress: Number(campaign.femaleIndex || 0), campaign };
+    }
+    const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
+    if (preview?.queue?.length && age <= BREED_PREVIEW_MAX_AGE_MS) {
+      return { key: `plan:${preview.createdAt || 0}`, mode: "plan", rows: preview.queue, strategy: strategyName(preview.strategy), species: preview.species, limit: Number(state.owehBreedPairLimit || 0), preview };
+    }
+    if (campaign.confirmedAt && queue.length) {
+      return { key: `campaign:${campaign.startedAt || 0}`, mode: "finished", rows: queue, strategy: strategyName(campaign.strategy), species: campaign.species, progress: queue.length, campaign };
+    }
+    return null;
+  }
+
+  function planViewRows(source) {
+    return source.rows.map((row, index) => {
+      const pure = row?.pure || null;
+      const candidates = Array.isArray(row?.maleCandidates) ? row.maleCandidates : [];
+      const chosen = candidates[Number(row?.maleCandidateIndex || 0)] || candidates[0] || null;
+      let status = "queued";
+      if (!row?.maleId) status = "no safe male";
+      if (source.mode === "plan" && source.limit && index >= source.limit) status = "over limit";
+      if (source.mode !== "plan") {
+        if (index < source.progress) status = "done";
+        else if (index === source.progress && source.mode === "running") status = "breeding";
+      }
+      const secondaryDistance = Number(row?.maleSecondaryBestDistance);
+      return {
+        index: index + 1,
+        female: row?.name || String(row?.id || "?"),
+        femaleId: String(row?.id || ""),
+        male: row?.maleId ? (row.maleName || String(row.maleId)) : "—",
+        maleId: row?.maleId ? String(row.maleId) : "",
+        body1: pure ? `${Number(pure.body1ReachableChannels || 0)}/3 · +${Number(pure.body1NewExactChannels || 0)} FF` : "—",
+        chance: formatChance(pure),
+        secondary: row?.maleSecondaryBestDistance !== null && Number.isFinite(secondaryDistance)
+          ? `${SECONDARY_LABELS[row.maleSecondaryBestKey] || row.maleSecondaryBestKey || "slot"} ${secondaryDistance}`
+          : "—",
+        candidates: candidates.length ? `${Math.min(Number(row?.maleCandidateIndex || 0) + 1, candidates.length)}/${candidates.length}` : "0",
+        gameListed: chosen?.gameListed === true ? "yes" : "",
+        status
+      };
+    });
+  }
+
+  function planViewCell(tag, text, className) {
+    const cell = document.createElement(tag);
+    cell.textContent = text;
+    if (className) cell.className = className;
+    return cell;
+  }
+
+  function renderBreedPlanView(state, panelHidden) {
+    const view = document.getElementById("oweh-breed-plan-view");
+    if (!view) return;
+    const source = planViewSource(state);
+    const opener = document.querySelector("#oweh-view-breed-plan");
+    if (opener) opener.disabled = !source;
+    if (!source) {
+      view.classList.add("oweh-hidden");
+      planViewKey = "";
+      planViewSignature = "";
+      return;
+    }
+    if (source.key !== planViewKey) {
+      planViewKey = source.key;
+      view.dataset.dismissed = "";
+    }
+    view.classList.toggle("oweh-hidden", panelHidden || view.dataset.dismissed === "1");
+    const rows = planViewRows(source);
+    const pairs = rows.filter(row => row.maleId).length;
+    const heading = source.mode === "plan"
+      ? `${source.strategy} plan · ${source.species || "all species"} · ${pairs} pair(s) / ${rows.length} female(s)${source.limit ? ` · limit ${source.limit}` : ""} · waiting for Confirm`
+      : `${source.strategy} campaign · ${source.species || "all species"} · ${Math.min(source.progress, rows.length)}/${rows.length} processed · ${Number(source.campaign?.bredCount || 0)} bred${source.mode === "finished" ? " · finished" : ""}`;
+    const signature = JSON.stringify([heading, rows]);
+    if (signature === planViewSignature) return;
+    planViewSignature = signature;
+    const meta = view.querySelector("#oweh-plan-view-meta");
+    if (meta) meta.textContent = heading;
+    const body = view.querySelector("#oweh-plan-view-rows");
+    if (!body) return;
+    body.replaceChildren(...rows.map(row => {
+      const tr = document.createElement("tr");
+      tr.className = `oweh-plan-row oweh-plan-${row.status.replace(/\s+/g, "-")}`;
+      const female = planViewCell("td", row.female);
+      female.title = `Female ID ${row.femaleId}`;
+      const male = planViewCell("td", row.male);
+      if (row.maleId) male.title = `Male ID ${row.maleId}`;
+      tr.append(
+        planViewCell("td", String(row.index), "oweh-plan-num"),
+        female,
+        male,
+        planViewCell("td", row.body1),
+        planViewCell("td", row.chance),
+        planViewCell("td", row.secondary),
+        planViewCell("td", row.candidates),
+        planViewCell("td", row.gameListed),
+        planViewCell("td", row.status, "oweh-plan-status")
+      );
+      return tr;
+    }));
+  }
+
+  // v5.6.0 male cull review: the meta line under Breeding and a second side window listing the
+  // males a cull would move. Presentation only — Plan/Confirm live in features/male-cull.js.
+  let cullViewKey = "";
+  let cullViewSignature = "";
+
+  function cullPreviewState(preview) {
+    const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
+    const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+    const queued = rows.filter(row => row?.status === "queued").length;
+    const running = Boolean(preview?.running) && Date.now() - Number(preview.updatedAt || 0) < 60 * 1000;
+    return { age, rows, queued, running, fresh: Boolean(preview) && (running || age <= BREED_PREVIEW_MAX_AGE_MS) };
+  }
+
+  function cullCoverageText(summary) {
+    const missing = Object.entries(summary?.coverage || {})
+      .filter(([, row]) => row?.missing?.length)
+      .map(([name, row]) => `${name}: ${row.missing.join(", ")}`);
+    return missing.length ? `no exact pet yet for ${missing.join(" | ")}` : "every target channel has an exact pet";
+  }
+
+  function cullBreakdownText(summary) {
+    return [
+      `${Number(summary?.noPair || 0)} no FF/00 pair`,
+      `${Number(summary?.dominated || 0)} covered by ≥${Number(summary?.minDominators || 2)} better`,
+      summary?.generated ? `${summary.generated} Generated kept` : "",
+      summary?.unchecked ? `${summary.unchecked} unchecked — run Update database` : ""
+    ].filter(Boolean).join(", ");
+  }
+
+  function renderCullPreview(panel, preview) {
+    const box = panel.querySelector("#oweh-cull-preview");
+    if (!box) return;
+    const { age, rows, queued, running, fresh } = cullPreviewState(preview);
+    let text = "No cull plan yet — press Plan cull";
+    if (preview && !fresh) text = "The last cull plan expired (older than 15 minutes) — plan again";
+    if (preview && fresh) {
+      const summary = preview.summary || {};
+      const moved = rows.filter(row => row?.status === "moved").length;
+      text = `${rows.length} of ${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${queued} queued${running ? " · moving now" : ` · built ${Math.max(0, Math.round(age / 60000))}m ago`} · ${cullCoverageText(summary)}${preview.enclosureMissing ? " · run Update database so the Males discard enclosure is known" : ""}`;
+    }
+    if (box.textContent !== text) box.textContent = text;
+    const confirm = panel.querySelector("#oweh-cull-confirm");
+    const discard = panel.querySelector("#oweh-cull-discard");
+    const opener = panel.querySelector("#oweh-view-cull");
+    if (confirm) confirm.disabled = !fresh || !queued || running;
+    if (discard) discard.disabled = !preview || running;
+    if (opener) opener.disabled = !preview || !rows.length;
+  }
+
+  function renderCullView(state, panelHidden) {
+    const view = document.getElementById("oweh-cull-view");
+    if (!view) return false;
+    const preview = state.owehCullPreview;
+    const { rows } = cullPreviewState(preview);
+    if (!preview || !rows.length) {
+      view.classList.add("oweh-hidden");
+      cullViewKey = "";
+      cullViewSignature = "";
+      return false;
+    }
+    const key = String(preview.createdAt || 0);
+    if (key !== cullViewKey) {
+      cullViewKey = key;
+      view.dataset.dismissed = "";
+    }
+    const hidden = panelHidden || view.dataset.dismissed === "1";
+    view.classList.toggle("oweh-hidden", hidden);
+    const summary = preview.summary || {};
+    const moved = rows.filter(row => row?.status === "moved").length;
+    const heading = `${rows.length}/${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${cullCoverageText(summary)}`;
+    const signature = JSON.stringify([heading, rows.map(row => [row.id, row.status])]);
+    if (signature !== cullViewSignature) {
+      cullViewSignature = signature;
+      const meta = view.querySelector("#oweh-cull-view-meta");
+      if (meta) meta.textContent = heading;
+      const body = view.querySelector("#oweh-cull-view-rows");
+      if (body) {
+        body.replaceChildren(...rows.map((row, index) => {
+          const tr = document.createElement("tr");
+          tr.className = `oweh-plan-row oweh-cull-${String(row.status || "queued")}`;
+          const male = planViewCell("td", row.name || row.id);
+          male.title = `Male ID ${row.id}`;
+          const dominators = (row.dominators || []).map(item => item.name || item.id).join(", ");
+          const noPair = row.reason === "no-endpoint-pair";
+          const better = planViewCell("td", noPair
+            ? "no FF/00 pair in any slot"
+            : `${dominators}${Number(row.dominatorCount || 0) > (row.dominators || []).length ? ` +${Number(row.dominatorCount) - (row.dominators || []).length}` : ""}`);
+          better.title = noPair
+            ? "No aligned FF or 00 pair (RR|GG|BB) in Body, Scales or Extra"
+            : (row.dominators || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
+          tr.append(
+            planViewCell("td", String(index + 1), "oweh-plan-num"),
+            male,
+            planViewCell("td", row.species || ""),
+            planViewCell("td", row.enclosure || ""),
+            planViewCell("td", `${Number(row.exactChannels || 0)}/15`),
+            planViewCell("td", String(Number(row.distance || 0))),
+            better,
+            planViewCell("td", row.status === "error" ? `error: ${row.error || "?"}`
+              : (row.status === "skipped" && row.error ? `skipped: ${row.error}` : String(row.status || "queued")), "oweh-plan-status")
+          );
+          return tr;
+        }));
+      }
+    }
+    return !hidden;
+  }
+
   async function update() {
     if (updating) return;
     const panel = document.getElementById(panelId);
@@ -100,7 +330,9 @@ OWEH.register("ui-dashboard", helpers => {
         owehFriendRemoval: { active: false },
         owehDatabaseMeta: { catalogCount: 0, completeProfiles: 0, missingProfiles: 0, enclosureCount: 0, catalogAt: 0 },
         owehSweepNotice: null,
-        owehBreedPreview: null
+        owehBreedPreview: null,
+        owehBreedPairLimit: 0,
+        owehCullPreview: null
       });
       const notice = state.owehSweepNotice;
       if (notice?.text && notice.at > lastShownSweepNotice && Date.now() - notice.at < 15000) {
@@ -114,6 +346,7 @@ OWEH.register("ui-dashboard", helpers => {
       }
       refreshHealth(false);
       renderBreedPreview(panel, state.owehBreedPreview, state.owehBreedCampaign);
+      renderCullPreview(panel, state.owehCullPreview);
       // A new plan or a finished pairing changes cooldowns: recount right away instead of in 30s.
       const nextReadinessKey = `${state.owehBreedPreview?.createdAt || 0}|${state.owehBreedCampaign?.active}|${state.owehBreedCampaign?.bredCount || 0}|${state.owehDatabaseMeta?.catalogAt || 0}`;
       const readinessChanged = nextReadinessKey !== readinessKey;
@@ -166,7 +399,11 @@ OWEH.register("ui-dashboard", helpers => {
         }));
       }
       lastJobCount = jobs.length;
-      panel.classList.toggle("oweh-hidden", !isPanelVisible(lastJobCount));
+      const panelHidden = !isPanelVisible(lastJobCount);
+      panel.classList.toggle("oweh-hidden", panelHidden);
+      // Both side windows share one spot; an open cull review takes it over the pair list.
+      const cullVisible = renderCullView(state, panelHidden);
+      renderBreedPlanView(state, panelHidden || cullVisible);
       const summaryText = lastJobCount ? `${lastJobCount} automation${lastJobCount === 1 ? "" : "s"} running` : "No automation running";
       if (summary.textContent !== summaryText) summary.textContent = summaryText;
       const headerText = lastJobCount ? `${lastJobCount} active` : "Idle";

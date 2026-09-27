@@ -144,6 +144,8 @@
       enclosureId,
       enclosureLabel,
       enclosureOptions,
+      // v5.6.1: `<img title="Generated" src=".../wand.png">` beside the gender icon.
+      generated: /<img\b[^>]*\btitle\s*=\s*["']Generated["']/i.test(html),
       canName: /'pet_name','PetID=/.test(html),
       canRename: /'pet_rename','PetID=/.test(html),
       canFeed: /'pet_feed','PetID=/.test(html)
@@ -223,6 +225,7 @@
       ancestors: nodes.map(node => node.id),
       pedigree: nodes,
       pedigreeVerified: verified,
+      generated: profile.generated === true,
       parentIds: nodes.filter(node => node.generation === 1).map(node => node.id),
       url: url || `https://ovipets.com/#!/?src=pets&sub=profile&pet=${petId}`,
       updatedAt: now,

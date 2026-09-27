@@ -97,6 +97,23 @@ function harness(routes, initial = {}) {
   const cancelled = await full.service.collectCatalog({ isCancelled: () => ++calls > 1 });
   assert.equal(cancelled.cancelled, true);
 
+  // ---- v5.6.1 skipTab (Males discard): never fetched, id kept, last snapshot carried forward
+  const skipping = harness({
+    "/?src=pets&sub=overview&!=cb": samples.overview,
+    [enclosureRoute(0)]: emptyEnclosure(0),
+    [enclosureRoute(1)]: emptyEnclosure(1),
+    [enclosureRoute(8)]: emptyEnclosure(8),
+    [enclosureRoute(9)]: samples.enclosure
+  }, { owehEnclosureSnapshots: { 1: { fingerprint: "old", count: 1, records: [{ id: "777", name: "Kept" }] } } });
+  const skipScan = await skipping.service.collectCatalog({ skipTab: tab => tab.id === "1" });
+  assert.ok(!skipping.fetched.some(url => url.startsWith(enclosureRoute(1))), "the skipped enclosure is never fetched");
+  assert.equal(skipping.store.owehEnclosureIds["** ** FF"], "1", "its id is still recorded for moves");
+  assert.equal(skipping.store.owehEnclosureSnapshots["1"].fingerprint, "old", "its snapshot is carried forward");
+  assert.equal(skipScan.catalog.find(pet => pet.id === "777")?.enclosureId, "1", "its known pets stay in the catalog");
+
+  // ---- Generated is sticky across reads
+  assert.equal(mergePetRecord({ generated: true }, { id: "1", generated: false }).generated, true);
+
   // ---- profile + pedigree read
   const reader = harness({
     [profilePath("157155269", "4973830")]: samples.namedProfile,

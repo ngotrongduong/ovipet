@@ -9,6 +9,8 @@ class FakeClassList {
   constructor() { this.values = new Set(); }
   toggle(name, enabled) { if (enabled) this.values.add(name); else this.values.delete(name); }
   contains(name) { return this.values.has(name); }
+  add(name) { this.values.add(name); }
+  remove(name) { this.values.delete(name); }
 }
 class FakeElement {
   constructor() {
@@ -20,9 +22,10 @@ class FakeElement {
     this.className = "";
   }
   replaceChildren(...children) { this.children = children; }
+  append(...children) { this.children.push(...children); }
 }
 
-function setup({ pets = {} } = {}) {
+function setup({ pets = {}, withPlanView = false } = {}) {
   const clock = { now: 1_000_000 };
   const state = {
     owehEggRun: { active: false, count: 0 },
@@ -59,9 +62,15 @@ function setup({ pets = {} } = {}) {
     "#oweh-db-meta": meta
   };
   panel.querySelector = selector => selectors[selector] || null;
+  const planView = new FakeElement();
+  planView.classList.add("oweh-hidden");
+  const planMeta = new FakeElement();
+  const planRows = new FakeElement();
+  const viewButton = new FakeElement();
+  planView.querySelector = selector => ({ "#oweh-plan-view-meta": planMeta, "#oweh-plan-view-rows": planRows })[selector] || null;
   const document = {
-    getElementById: id => id === "panel" ? panel : null,
-    querySelector: selector => ({ "#oweh-db-health": health, "#oweh-breed-ready": ready })[selector] || null,
+    getElementById: id => id === "panel" ? panel : (withPlanView && id === "oweh-breed-plan-view" ? planView : null),
+    querySelector: selector => ({ "#oweh-db-health": health, "#oweh-breed-ready": ready, ...(withPlanView ? { "#oweh-view-breed-plan": viewButton } : {}) })[selector] || null,
     createElement: () => new FakeElement()
   };
   const log = { status: [], healthRequests: 0, visibilityCounts: [] };
@@ -99,7 +108,7 @@ function setup({ pets = {} } = {}) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../jobs/core.js"), "utf8"), sandbox, { filename: "core.js" });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../ui/dashboard.js"), "utf8"), sandbox, { filename: "dashboard.js" });
   const modules = sandbox.OWEH.boot(helpers);
-  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, ready, preview, confirm, discard, log, timers };
+  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, ready, preview, confirm, discard, log, timers, planView, planMeta, planRows, viewButton };
 }
 
 (async () => {
@@ -211,6 +220,52 @@ function setup({ pets = {} } = {}) {
     await env.api.update();
     assert.equal(env.confirm.disabled, true, "an expired plan cannot be confirmed");
     assert.ok(env.preview.textContent.includes("expired"));
+  }
+
+  // The side window lists every planned pair, opens once per plan, stays closed after the user
+  // closes it, and follows the confirmed campaign progress.
+  {
+    const env = setup({ withPlanView: true });
+    env.state.owehWorker = { owner: "breed", phase: "running", leaseUntil: env.clock.now + 30_000 };
+    env.state.owehBreedPairLimit = 2;
+    env.state.owehBreedPreview = {
+      strategy: "same-ff-target", createdAt: env.clock.now - 60_000, species: "Catus", femaleCount: 3, pairable: 2, unpaired: 1,
+      queue: [
+        { id: "1", name: "Fem", maleId: "3", maleName: "Mal", maleSecondaryBestKey: "scales", maleSecondaryBestDistance: 12,
+          pure: { body1ReachableChannels: 3, body1NewExactChannels: 1, pureProbability: 0.125 },
+          maleCandidateIndex: 0, maleCandidates: [{ maleId: "3", gameListed: true }, { maleId: "4" }] },
+        { id: "2", name: "Other", maleId: null, maleCandidates: [] },
+        { id: "5", name: "Third", maleId: "4", maleName: "Two", maleSecondaryBestDistance: null }
+      ]
+    };
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), false, "a new plan opens the side window");
+    assert.equal(env.viewButton.disabled, false);
+    assert.ok(env.planMeta.textContent.includes("Same-FF target plan · Catus · 2 pair(s) / 3 female(s) · limit 2"));
+    assert.equal(env.planRows.children.length, 3, "every female of the plan is listed, not a 3-pair sample");
+    const cells = row => env.planRows.children[row].children.map(cell => cell.textContent);
+    assert.deepEqual(cells(0), ["1", "Fem", "Mal", "3/3 · +1 FF", "12.50%", "Scales 12", "1/2", "yes", "queued"]);
+    assert.deepEqual(cells(1).slice(1, 3).concat(cells(1)[8]), ["Other", "—", "no safe male"]);
+    assert.equal(cells(2)[8], "over limit");
+    assert.equal(cells(2)[5], "—");
+
+    env.planView.dataset.dismissed = "1";
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), true, "closing keeps it closed for the same plan");
+
+    env.state.owehBreedPreview = null;
+    env.state.owehBreedCampaign = { active: true, startedAt: env.clock.now, confirmedAt: env.clock.now, femaleIndex: 1, bredCount: 1, strategy: "pure-line", species: "Catus" };
+    env.state.owehBreedQueue = [{ id: "1", name: "Fem", maleId: "3" }, { id: "5", name: "Third", maleId: "4" }];
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), false, "the confirmed campaign reopens it");
+    assert.ok(env.planMeta.textContent.includes("1/2 processed · 1 bred"));
+    assert.deepEqual(env.planRows.children.map(row => row.children[8].textContent), ["done", "breeding"]);
+
+    env.state.owehBreedCampaign = { active: false };
+    env.state.owehBreedQueue = [];
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), true);
+    assert.equal(env.viewButton.disabled, true);
   }
 
   // Schedule coalesces repeated requests into one timer.

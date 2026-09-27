@@ -50,6 +50,7 @@ function setup(initial = {}, overrides = {}) {
         DEFAULT_BREEDING_STOCK_MAX_DISTANCE: 96,
         isBreedingProgramEnclosure: name => /^FF/.test(String(name || "")),
         desiredProgramEnclosure: pet => pet.wants || null,
+        isCullEnclosure: name => String(name || "").replace(/\s+/g, "").toUpperCase() === "MALESDISCARD",
         normalizeEnclosureLabel: value => String(value || "").replace(/\s+/g, "").toUpperCase()
       }
     },
@@ -126,11 +127,12 @@ const HOUR = 60 * 60 * 1000;
         2: { id: "2", owned: true, name: "full", foodPercent: 100, foodCheckedAt: now - HOUR },
         3: { id: "3", owned: true, name: "recent", lastFedAt: now - HOUR },
         4: { id: "4", owned: false, name: "not mine" },
-        5: { id: "5", owned: true, present: false, name: "gone" }
+        5: { id: "5", owned: true, present: false, name: "gone" },
+        6: { id: "6", owned: true, name: "discarded", enclosure: "males discard" }
       }
     });
     await env.start("maintain");
-    assert.deepEqual([...env.log.fed], ["1"], "only the hungry owned pet is fed");
+    assert.deepEqual([...env.log.fed], ["1"], "only the hungry owned pet is fed — never Males discard");
     assert.equal(env.store.owehPets["1"].foodPercent, undefined, "dispatch must not be persisted as confirmed full food state");
     assert.ok(env.store.owehPets["1"].feedDispatchedAt > 0, "dispatch timestamp should provide only a short retry guard");
     assert.equal(env.store.owehPets["1"].name, "hungry", "a partial write keeps the rest of the record");
