@@ -6,7 +6,7 @@
 // the narrow breedingActions adapter; planner math remains in domain/.
 OWEH.register("feature-breeding", helpers => {
   const {
-    storageGet, storageSet, getPetsByIds, setStatus,
+    storageGet, storageSet, getPetsByIds, setStatus, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
     requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone,
     isWorkerOwner, workerClient, routes, domain, gameActions, settings, breedingActions
   } = helpers;
@@ -54,15 +54,11 @@ OWEH.register("feature-breeding", helpers => {
     }
     const strategy = normalizeBreedingStrategy(strategyOverride
       || await storageGet("owehBreedStrategy", BREEDING_STRATEGIES.PURE_LINE));
-    if (!routes.isPetsOverview()) {
-      await storageSet({
-        owehBreedStrategy: strategy,
-        owehBreedStartRequest: { active: true, strategy, requestedAt: Date.now() }
-      });
-      setStatus(`Opening Overview to build a full-enclosure ${strategyLabel(strategy)} breeding snapshot...`);
-      routes.navigateTo("?src=pets&sub=overview");
-      return;
-    }
+    // v5.7.0: planning is command-first — the catalog, profiles and partner lists are all
+    // fetched as JSONP panels, so the worker tab never navigates (and needs no Overview).
+    // `resumeFromIndex` (a start request left by a pre-v5.7.0 profile index) plans normally.
+    void resumeFromIndex;
+    const cancelled = () => generation != null && workerClient.getGeneration() !== generation;
     planning = true;
     try {
       const target = { ...colors.STRICT_PURE_TARGET };
@@ -80,63 +76,14 @@ OWEH.register("feature-breeding", helpers => {
         return;
       }
 
-      const catalog = resumeFromIndex
-        ? await storageGet("owehBreedCatalog", [])
-        : await breedingActions.collectAllOverviewPets();
-      if (!catalog.length) {
-        setStatus("No pet cards found while scanning all enclosures");
-        reportWorkerDone();
-        return;
-      }
-      // Fail closed on a partial scan: pets in unscanned enclosures would be marked absent and
-      // left out of pairing, so the plan would be built from part of the stock.
-      if (!resumeFromIndex && (await storageGet("owehEnclosureScanStats", null))?.partial === true) {
-        setStatus("Breeding cancelled: not every enclosure loaded during the scan, so no plan was built — nothing was bred. Try again.");
-        reportWorkerDone();
-        return;
-      }
-
-      const nextOwnUserId = catalog.find(pet => pet.usr)?.usr || breedingActions.getOwnUserId();
-      breedingActions.setOwnUserId(nextOwnUserId);
-      const pets = await storageGet("owehPets", {});
-      const visibleIds = new Set(catalog.map(item => item.id));
-      const missing = [];
+      const snapshot = await planningSnapshot(strategy, cancelled);
+      if (!snapshot) return;
+      const { pets, ownUserId, catalogCount } = snapshot;
       const now = Date.now();
-      for (const item of catalog) {
-        const cached = pets[item.id];
-        if (petRecord.petProfileNeedsRefresh(cached, item, false)) missing.push(item);
-        pets[item.id] = {
-          ...(cached || {}), ...item, owned: true, present: true,
-          catalogModified: item.modified || cached?.catalogModified || null,
-          lastSeenAt: now
-        };
-      }
-      for (const pet of Object.values(pets)) {
-        if (pet?.owned && pet.id && !visibleIds.has(pet.id)) pet.present = false;
-      }
-      await storageSet({
-        owehOwnUserId: nextOwnUserId,
-        owehPets: pets,
-        owehBreedCatalog: catalog,
-        owehDatabaseMeta: petRecord.databaseMetaFor(pets, catalog, missing.length, now)
-      });
-
-      if (missing.length) {
-        await storageSet({
-          owehPetScanQueue: missing,
-          owehPetIndex: {
-            active: true, breedPlanning: true, breedStrategy: strategy, index: 0, autoRename: true,
-            returnHash: "#!/?src=pets&sub=overview", renamed: 0, indexed: 0
-          }
-        });
-        reportWorkerPhase(`indexing 0/${missing.length}`);
-        setStatus(`Breeding snapshot: ${catalog.length} pets; collecting metadata for only ${missing.length} new/changed pet(s)`);
-        routes.navigateTo(routes.petProfilePath(missing[0].id, nextOwnUserId));
-        return;
-      }
-
       const history = await storageGet("owehBreedHistory", []);
-      const gameEligible = await readGameEligible(pets, target, strategy, nextOwnUserId);
+      reportWorkerPhase("partner lists");
+      const gameEligible = await readGameEligible(pets, target, strategy, ownUserId, cancelled);
+      if (cancelled()) return;
       const plan = breedingPlan.buildDatabaseBreedPlan(pets, target, history, {
         now,
         strategy,
@@ -164,7 +111,7 @@ OWEH.register("feature-breeding", helpers => {
           unpaired: plan.unpaired,
           species: plan.focusSpecies,
           shortlistSize: plan.shortlistSize,
-          catalogCount: catalog.length,
+          catalogCount,
           target
         },
         owehBreedStrategy: planStrategy,
@@ -177,12 +124,120 @@ OWEH.register("feature-breeding", helpers => {
     }
   }
 
+  // v5.7.0: a catalog this recent (from Update database or an earlier plan) is reused as is;
+  // an older one is re-fetched first. Pets in Males discard are never read.
+  const CATALOG_FRESH_MS = 10 * 60 * 1000;
+  // An incomplete record (usually an unverified pedigree) read this recently is not re-read on
+  // every plan; a catalog change (profileStale) always forces a read.
+  const PROFILE_RETRY_MS = 60 * 60 * 1000;
+  const PLAN_CONCURRENCY = 3;
+  const PLAN_SAVE_EVERY = 10;
+  const isCullPet = pet => Boolean(breedingPlan.isCullEnclosure?.(pet?.enclosure));
+
+  async function planningSnapshot(strategy, cancelled) {
+    const petFetch = helpers.petFetch;
+    const [pets, scanStats, enclosureIds, storedOwnUserId] = await Promise.all([
+      storageGet("owehPets", {}),
+      storageGet("owehEnclosureScanStats", null),
+      storageGet("owehEnclosureIds", {}),
+      storageGet("owehOwnUserId", null)
+    ]);
+    const now = Date.now();
+    let ownUserId = storedOwnUserId || breedingActions.getOwnUserId();
+    const fresh = scanStats && scanStats.partial !== true && now - Number(scanStats.at || 0) < CATALOG_FRESH_MS
+      && Object.keys(enclosureIds || {}).length > 0 && Object.values(pets).some(pet => pet?.owned && pet.present !== false);
+    let catalogCount;
+    if (fresh) {
+      catalogCount = Object.values(pets).filter(pet => pet?.owned && pet.present !== false).length;
+      setStatus(`${strategyLabel(strategy)} plan: using the pet database (catalog ${Math.round((now - Number(scanStats.at)) / 60000)} min old, ${catalogCount} pets)`);
+    } else {
+      setStatus(`${strategyLabel(strategy)} plan: reading every enclosure...`);
+      const scan = await petFetch.collectCatalog({
+        isCancelled: cancelled,
+        skipTab: tab => breedingPlan.isCullEnclosure(tab.label),
+        onProgress: (index, total, tab) => reportWorkerPhase(`catalog ${index + 1}/${total} · ${tab.label}`)
+      });
+      if (scan.cancelled || cancelled()) return null;
+      if (!scan.catalog.length) {
+        setStatus("No pet cards found while scanning all enclosures");
+        reportWorkerDone();
+        return null;
+      }
+      // Fail closed on a partial scan: pets in unscanned enclosures would be left out of
+      // pairing, so the plan would be built from part of the stock.
+      if (scan.partial) {
+        setStatus("Breeding cancelled: not every enclosure loaded during the scan, so no plan was built — nothing was bred. Try again.");
+        reportWorkerDone();
+        return null;
+      }
+      ownUserId = scan.ownUserId || scan.catalog.find(pet => pet.usr)?.usr || ownUserId;
+      breedingActions.setOwnUserId(ownUserId);
+      const merged = petRecord.mergeCatalogScan(pets, scan.catalog, { partial: false, now, keepUnseen: isCullPet });
+      await storageSet({
+        owehOwnUserId: ownUserId,
+        ...(Object.keys(merged.changed).length ? { owehPets: merged.changed } : {}),
+        owehDatabaseMeta: petRecord.databaseMetaFor(pets, scan.catalog, merged.stale, now)
+      });
+      catalogCount = scan.catalog.length;
+    }
+    if (!(await refreshPlanningProfiles(pets, ownUserId, cancelled))) return null;
+    return { pets, ownUserId, catalogCount };
+  }
+
+  // Fetches the profile of every new/changed/incomplete pet the plan could use (the verified
+  // pedigree is kept and not re-fetched). No renames here — Update database owns naming.
+  async function refreshPlanningProfiles(pets, ownUserId, cancelled) {
+    const petFetch = helpers.petFetch;
+    const now = Date.now();
+    const queue = Object.values(pets).filter(pet => pet?.owned && pet.present !== false
+      && /^\d+$/.test(String(pet.id)) && !isCullPet(pet)
+      && (pet.profileStale || (!petRecord.isCompletePetRecord(pet)
+        && now - Number(pet.lastProfileScanAt || 0) >= PROFILE_RETRY_MS)));
+    if (!queue.length) return true;
+    const changed = {};
+    const flush = async () => {
+      const ids = Object.keys(changed);
+      if (!ids.length) return;
+      const batch = {};
+      for (const id of ids) {
+        batch[id] = changed[id];
+        delete changed[id];
+      }
+      await storageSet({ owehPets: batch });
+    };
+    let cursor = 0;
+    let done = 0;
+    let errors = 0;
+    const worker = async () => {
+      while (cursor < queue.length && !cancelled()) {
+        const cached = queue[cursor];
+        cursor += 1;
+        const read = await petFetch.readAndMerge(cached, ownUserId).catch(() => ({ ok: false }));
+        if (read.ok) {
+          pets[read.pet.id] = read.pet;
+          changed[read.pet.id] = read.pet;
+        } else {
+          errors += 1;
+        }
+        done += 1;
+        reportWorkerPhase(`profiles ${done}/${queue.length}`);
+        setStatus(`Breeding plan: reading ${queue.length} new/changed profile(s) ${done}/${queue.length}${errors ? ` · ${errors} error(s)` : ""}`);
+        if (Object.keys(changed).length >= PLAN_SAVE_EVERY) await flush();
+        await sleep(settings.DEFAULT_REQUEST_DELAY);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PLAN_CONCURRENCY, queue.length) }, worker));
+    await flush();
+    return !cancelled();
+  }
+
   // v5.5.2: read each plannable female's own Breeding tab (read-only JSONP) for the enclosures
   // that hold candidate males. The partners OviPets lists there already passed the game's
   // relatedness and cooldown checks, so the plan uses that list instead of the local pedigree
   // (which is often unverified). A failed or empty read leaves that female on the local rule.
+  // v5.7.0: three females are read at a time, sharing one read budget.
   const GAME_ELIGIBLE_MAX_READS = 400;
-  async function readGameEligible(pets, target, strategy, ownUserId) {
+  async function readGameEligible(pets, target, strategy, ownUserId, cancelled = () => false) {
     const petFetch = helpers.petFetch;
     if (!petFetch?.readBreedingPartners || !breedingPlan.plannableFemales) return {};
     const enclosureIds = await storageGet("owehEnclosureIds", {});
@@ -197,23 +252,32 @@ OWEH.register("feature-breeding", helpers => {
     const result = {};
     if (!enclosures.length || !females.length) return result;
     let reads = 0;
-    for (let index = 0; index < females.length; index += 1) {
-      if (reads + enclosures.length > GAME_ELIGIBLE_MAX_READS) break;
-      const female = females[index];
-      setStatus(`Reading OviPets' own partner list ${index + 1}/${females.length}: ${female.name || female.id}`);
-      const partners = new Set();
-      let failed = false;
-      for (const enclosureId of enclosures) {
-        reads += 1;
-        try {
-          (await petFetch.readBreedingPartners(female.id, enclosureId, ownUserId)).forEach(id => partners.add(String(id)));
-        } catch {
-          failed = true;
-          break;
+    let cursor = 0;
+    let done = 0;
+    const worker = async () => {
+      while (cursor < females.length && !cancelled()) {
+        // The budget is reserved before the first await so parallel workers cannot overrun it.
+        if (reads + enclosures.length > GAME_ELIGIBLE_MAX_READS) return;
+        reads += enclosures.length;
+        const female = females[cursor];
+        cursor += 1;
+        const partners = new Set();
+        let failed = false;
+        for (const enclosureId of enclosures) {
+          try {
+            (await petFetch.readBreedingPartners(female.id, enclosureId, ownUserId)).forEach(id => partners.add(String(id)));
+          } catch {
+            failed = true;
+            break;
+          }
         }
+        if (!failed && partners.size) result[String(female.id)] = [...partners];
+        done += 1;
+        reportWorkerPhase(`partner lists ${done}/${females.length}`);
+        setStatus(`Reading OviPets' own partner lists ${done}/${females.length}`);
       }
-      if (!failed && partners.size) result[String(female.id)] = [...partners];
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(PLAN_CONCURRENCY, females.length) }, worker));
     return result;
   }
 

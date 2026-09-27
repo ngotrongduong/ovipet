@@ -66,12 +66,26 @@ const worker = globalThis.OWEH.core.workerClient;
   worker.reportWorkerPhase("halfway");
   assert.deepEqual(sent.at(-1), { type: "workerPhase", generation: 10, phase: "halfway" });
 
+  // v5.7.0: reports within one second collapse into one trailing report with the latest text.
+  const phaseCount = () => sent.filter(message => message.type === "workerPhase").length;
+  worker.reportWorkerPhase("profiles 1/9");
+  worker.reportWorkerPhase("profiles 2/9");
+  assert.equal(phaseCount(), 1, "a report inside the throttle window is deferred");
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  assert.equal(phaseCount(), 2);
+  assert.deepEqual(sent.filter(message => message.type === "workerPhase").at(-1),
+    { type: "workerPhase", generation: 10, phase: "profiles 2/9" });
+  worker.reportWorkerPhase("profiles 3/9");
+  assert.equal(phaseCount(), 2);
+
   worker.handleStopMessage({ owner: "feed", generation: 9 }, handler);
   assert.equal(stops, 1);
   assert.equal(worker.getGeneration(), 10, "stale stop must not clear the current generation");
   worker.handleStopMessage({ owner: "feed", generation: 10 }, handler);
   assert.equal(stops, 2);
   assert.equal(worker.getGeneration(), null);
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  assert.equal(phaseCount(), 2, "a deferred report is dropped once its generation stops");
 
   worker.resync("breed", 20);
   assert.equal(worker.getOwner(), "breed");

@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-09-25
-Current release baseline: v5.6.1
+Last updated: 2026-09-28
+Current release baseline: v5.7.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
@@ -20,7 +20,7 @@ Original supplied v5.3.0 snapshot:
 Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
-- Node test files: 64/64 PASS;
+- Node test files: 72/72 PASS;
 - content.js: 464 lines (composition/wiring + a few live helpers; see "content.js service split");
 - background.js: 205 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;

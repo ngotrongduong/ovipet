@@ -45,41 +45,17 @@ OWEH.register("job-maintain", helpers => {
     const { catalog, partial } = scan;
     catalogService.setOwnUserId(scan.ownUserId || catalog.find(pet => pet.usr)?.usr);
     const pets = await storageGet("owehPets", {});
-    const visibleIds = new Set(catalog.map(item => item.id));
-    let added = 0;
-    let stale = 0;
-    for (const item of catalog) {
-      const cached = pets[item.id];
-      if (!cached) added += 1;
-      // Computed BEFORE catalogModified is overwritten; the flag survives until a profile
-      // read clears it.
-      const needsProfile = petRecord.petProfileNeedsRefresh(cached, item, false) || Boolean(cached?.profileStale);
-      if (needsProfile) stale += 1;
-      pets[item.id] = {
-        ...(cached || {}),
-        ...item,
-        owned: true,
-        present: true,
-        catalogModified: item.modified || cached?.catalogModified || null,
-        profileStale: needsProfile,
-        lastSeenAt: Date.now()
-      };
-    }
-    // Pets in an enclosure that failed to load are unknown, not gone.
-    let missing = 0;
-    if (!partial) {
-      for (const pet of Object.values(pets)) {
-        // Males discard is never read, so its pets are not "gone" just because they were unseen.
-        if (pet?.owned && pet.id && !visibleIds.has(pet.id) && pet.present !== false
-          && !breedingPlan.isCullEnclosure(pet.enclosure)) {
-          pet.present = false;
-          missing += 1;
-        }
-      }
-    }
+    // Pets in an enclosure that failed to load (partial) are unknown, not gone; Males discard
+    // is never read, so its pets are not "gone" just because they were unseen. v5.7.0: only
+    // the records this scan changed are written back.
+    const { changed, added, stale, missing } = petRecord.mergeCatalogScan(pets, catalog, {
+      partial,
+      now: Date.now(),
+      keepUnseen: pet => breedingPlan.isCullEnclosure(pet.enclosure)
+    });
     await storageSet({
       owehOwnUserId: catalogService.getOwnUserId(),
-      owehPets: pets,
+      ...(Object.keys(changed).length ? { owehPets: changed } : {}),
       owehDatabaseMeta: petRecord.databaseMetaFor(pets, catalog, stale, Date.now())
     });
     const enclosures = new Set(catalog.map(pet => pet.enclosureId ?? pet.enclosure)).size;
@@ -115,23 +91,13 @@ OWEH.register("job-maintain", helpers => {
     };
 
     async function refresh(cached) {
-      const read = await petFetch.readPet(cached.id, ownUserId);
+      // A verified pedigree is never re-fetched (it cannot change); only the profile is read.
+      const read = await petFetch.readAndMerge(cached, ownUserId);
       if (!read.ok) {
         result.errors += 1;
         return;
       }
-      const { profile, record } = read;
-      const pet = petFetch.mergePetRecord(cached, record);
-      Object.assign(pet, {
-        onCooldown: cached.onCooldown,
-        enclosure: profile.enclosureLabel || cached.enclosure,
-        enclosureId: profile.enclosureId || cached.enclosureId,
-        catalogModified: cached.catalogModified || cached.modified || null,
-        lastProfileScanAt: Date.now(),
-        profileStale: false,
-        present: true,
-        owned: true
-      });
+      const { profile, pet } = read;
       if (pet.pedigreeVerified !== true) result.unverified += 1;
       if (autoRename) {
         const expected = colors.suggestedPetName(pet);

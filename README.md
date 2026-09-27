@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.6.1**
+Current release: **v5.7.0**
 
 ## Engineering objective
 
@@ -16,6 +16,15 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.7.0 Fast planner — no navigation, fewer requests and writes
+
+- **Plan pure-line / Plan same-FF no longer navigates.** The planner reuses the pet database when its catalog is complete and under 10 minutes old (for example right after **Update database**); otherwise it fetches every enclosure with the same read-only commands Update database uses. It works from any OviPets page and never scans or reads **Males discard**.
+- New or changed pets have their profile fetched in place, three at a time, instead of handing over to the navigated Pet Index. Incomplete profiles read within the last hour are not re-read on every plan. The planner never renames — Update database still owns naming.
+- A pet whose pedigree is already verified is re-read without its Pedigree panel (a pedigree never changes), halving profile requests in Update database, the planner and Confirm cull.
+- OviPets' own partner lists are read three females at a time under the same 400-read budget.
+- Update database and the planner write only pet records that actually changed instead of rewriting the whole database after every catalog scan.
+- Worker phase reports are throttled to one per second (latest text wins), and the idle page refresh skips storage reads for jobs that are not running.
 
 ## v5.6.1 Male cull — no-pair rule, Generated protection, Males discard left alone
 

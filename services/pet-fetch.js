@@ -123,10 +123,14 @@
 
     // Profile + pedigree in parallel. A failed pedigree read is reported as unverified rather
     // than failing the pet, exactly like a navigated profile whose Pedigree tab never loaded.
-    async function readPet(id, usr = null) {
+    //
+    // v5.7.0: `skipPedigree` leaves the pedigree panel unread (reported unverified). Only
+    // callers that merge through mergePetRecord onto an already-verified record use it — the
+    // pedigree of an existing pet never changes, and the merge restores the verified copy.
+    async function readPet(id, usr = null, { skipPedigree = false } = {}) {
       const [profileResult, pedigreeResult] = await Promise.allSettled([
         fetchPanel(profilePath(id, usr)),
-        fetchPanel(pedigreePath(id))
+        skipPedigree ? Promise.reject(new Error("pedigree-skipped")) : fetchPanel(pedigreePath(id))
       ]);
       if (profileResult.status !== "fulfilled") {
         return { ok: false, reason: `profile:${profileResult.reason?.message || "fetch"}` };
@@ -142,6 +146,27 @@
       return { ok: true, profile, pedigree, record };
     }
 
+    // v5.7.0: the one "re-read a known pet" path shared by Update database and the breeding
+    // planner. Returns the merged record (verified pedigree kept, pedigree panel skipped when
+    // already verified) with the bookkeeping fields every database refresh sets.
+    async function readAndMerge(cached, usr = null) {
+      const read = await readPet(cached.id, usr, { skipPedigree: cached?.pedigreeVerified === true });
+      if (!read.ok) return read;
+      const { profile, record } = read;
+      const pet = mergePetRecord(cached, record);
+      Object.assign(pet, {
+        onCooldown: cached.onCooldown,
+        enclosure: profile.enclosureLabel || cached.enclosure,
+        enclosureId: profile.enclosureId || cached.enclosureId,
+        catalogModified: cached.catalogModified || cached.modified || null,
+        lastProfileScanAt: Date.now(),
+        profileStale: false,
+        present: true,
+        owned: true
+      });
+      return { ok: true, profile, pet };
+    }
+
     async function readHatchery() {
       return markup.parseHatchery(await fetchPanel(HATCHERY_PATH));
     }
@@ -152,7 +177,7 @@
       return markup.parseBreedingPartners(await fetchPanel(breedingPath(id, enclosureId, usr)), id);
     }
 
-    return Object.freeze({ fetchPanel, collectCatalog, readPet, readHatchery, readBreedingPartners, mergePetRecord });
+    return Object.freeze({ fetchPanel, collectCatalog, readPet, readAndMerge, readHatchery, readBreedingPartners, mergePetRecord });
   }
 
   // A fresh read never downgrades a verified pedigree to an unverified one (the pedigree

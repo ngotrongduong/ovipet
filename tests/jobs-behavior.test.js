@@ -12,6 +12,15 @@ const vm = require("node:vm");
 const FILES = ["core.js", "runner.js", "maintain.js", "ninja.js", "requests.js"];
 const ONLY = step => ({ catalog: false, profiles: false, sort: false, feed: false, [step]: true });
 
+// The real catalog merge (domain/pet-record.js), so the catalog step is tested against the
+// same "write only what changed" rule the extension runs.
+const realPetRecord = (() => {
+  const sandbox = vm.createContext({ Object, Array, Set, Number, String, Boolean, JSON, Error });
+  sandbox.OWEH = { domain: { colors: { TARGET_KEYS: ["body1R"], suggestedPetName: () => null } } };
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "domain", "pet-record.js"), "utf8"), sandbox);
+  return sandbox.OWEH.domain.petRecord;
+})();
+
 function setup(initial = {}, overrides = {}) {
   const store = JSON.parse(JSON.stringify(initial));
   const log = { statuses: [], done: 0, phases: [], navigations: [], fed: [], requested: [], moved: [], renamed: [], reads: [], sleeps: 0, ranking: 0 };
@@ -44,6 +53,11 @@ function setup(initial = {}, overrides = {}) {
       petRecord: {
         petProfileNeedsRefresh: overrides.petProfileNeedsRefresh || (() => false),
         isCompletePetRecord: pet => Boolean(pet?.complete),
+        mergeCatalogScan: (pets, catalog, options) => {
+          const result = realPetRecord.mergeCatalogScan(pets, catalog, options);
+          log.catalogWrites = Object.keys(result.changed);
+          return result;
+        },
         databaseMetaFor: (pets, catalog, stale, now) => ({ catalogAt: now, catalogCount: catalog.length, stale, completeProfiles: 0, missingProfiles: stale })
       },
       breedingPlan: {
@@ -82,7 +96,21 @@ function setup(initial = {}, overrides = {}) {
           record: { id, name: `fresh${id}`, complete: true, pedigreeVerified: true, foodPercent: 100, foodCheckedAt: Date.now() }
         };
       }),
-      mergePetRecord: (previous, record) => ({ ...(previous || {}), ...record })
+      mergePetRecord: (previous, record) => ({ ...(previous || {}), ...record }),
+      // Mirrors services/pet-fetch.js readAndMerge on top of the stubbed readPet.
+      async readAndMerge(cached, usr) {
+        const read = await helpers.petFetch.readPet(cached.id, usr, { skipPedigree: cached.pedigreeVerified === true });
+        if (!read.ok) return read;
+        const pet = {
+          ...cached, ...read.record,
+          onCooldown: cached.onCooldown,
+          enclosure: read.profile.enclosureLabel || cached.enclosure,
+          enclosureId: read.profile.enclosureId || cached.enclosureId,
+          catalogModified: cached.catalogModified || cached.modified || null,
+          lastProfileScanAt: Date.now(), profileStale: false, present: true, owned: true
+        };
+        return { ok: true, profile: read.profile, pet };
+      }
     },
     ninjaService: {
       performNinjaChatScan: overrides.performNinjaChatScan || (async () => [{ id: "9" }])
@@ -234,6 +262,27 @@ const HOUR = 60 * 60 * 1000;
     await env.start("maintain");
     assert.ok(env.log.statuses.some(text => text.includes("nothing changed")));
     assert.equal(env.store.owehPets, undefined, "an empty scan must never wipe the database");
+  }
+  // v5.7.0: only the records a scan changed are written back.
+  {
+    const same = {
+      id: "5", owned: true, present: true, name: "same", usr: "77", gender: "Female", species: "Dragon",
+      pedigreeVerified: true, ancestors: [], colors: { body1R: "FF" },
+      enclosure: "A", enclosureId: 1, modified: "3", catalogModified: "3", profileStale: false
+    };
+    const env = setup({
+      owehMaintainSteps: ONLY("catalog"),
+      owehPets: { 5: same, 6: { ...same, id: "6", name: "moved" } }
+    }, {
+      collectCatalog: async () => ({ catalog: [
+        { id: "5", name: "same", usr: "77", enclosure: "A", enclosureId: 1, modified: "3" },
+        { id: "6", name: "moved", usr: "77", enclosure: "B", enclosureId: 2, modified: "3" }
+      ], partial: false, ownUserId: "77" })
+    });
+    await env.start("maintain");
+    assert.deepEqual([...env.log.catalogWrites], ["6"], "an unchanged pet is not rewritten");
+    assert.equal(env.store.owehPets["6"].enclosure, "B");
+    assert.equal(env.store.owehPets["6"].profileStale, false, "a move alone does not need a profile read");
   }
   // A partial scan must not mark unscanned pets as gone.
   {
