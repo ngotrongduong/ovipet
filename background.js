@@ -22,7 +22,7 @@ const speciesMemory = globalThis.OWEH_BG?.speciesMemory;
 const speciesShapes = globalThis.OWEH_BG?.speciesShapes;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
 if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesMemory || !speciesShapes || !stateHealthService) throw new Error("OviPets background services failed to initialize");
-const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
+const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
   WORKER_HEALTH_ALARM, WORKER_HEALTH_INTERVAL_MINUTES, readSharedWorkerTask, isWorkerLeaseLive,
@@ -169,6 +169,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "petDbGetAll") {
     getAllPets().then(pets => sendResponse({ ok: true, pets }))
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message?.type === "petDbGetFields") {
+    getPetFields({ fields: Array.isArray(message.fields) ? message.fields : [], gender: message.gender || null })
+      .then(pets => sendResponse({ ok: true, pets }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
     return true;
   }

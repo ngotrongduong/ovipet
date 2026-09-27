@@ -146,13 +146,6 @@ function setup({ pets = {}, withPlanView = false } = {}) {
     assert.equal(env.api.getJobCount(), 1);
     assert.ok(!env.jobs.children[0].textContent.includes("planning"));
 
-    const indexing = setup();
-    indexing.state.owehWorker = { owner: "breed", phase: "indexing 0/1", leaseUntil: indexing.clock.now + 30_000 };
-    indexing.state.owehPetIndex = { active: true, breedPlanning: true, index: 0 };
-    indexing.state.owehPetScanQueue = [{}];
-    await indexing.api.update();
-    assert.equal(indexing.api.getJobCount(), 1);
-    assert.ok(indexing.jobs.children[0].textContent.includes("Pet index"));
   }
 
   // An expired lease must not keep the UI stuck in a false busy state.

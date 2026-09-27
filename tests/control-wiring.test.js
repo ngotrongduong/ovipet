@@ -7,7 +7,8 @@ const path = require("path");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
 const panelSource = fs.readFileSync(path.join(__dirname, "..", "ui", "panel.js"), "utf8");
-const overviewCatalogSource = fs.readFileSync(path.join(__dirname, "..", "services", "overview-catalog.js"), "utf8");
+// v5.9.0: the catalog scan lives in services/pet-fetch.js (the navigated scan was removed).
+const overviewCatalogSource = fs.readFileSync(path.join(__dirname, "..", "services", "pet-fetch.js"), "utf8");
 const workerControlSource = fs.readFileSync(path.join(__dirname, "..", "services", "worker-control.js"), "utf8");
 const statusSource = fs.readFileSync(path.join(__dirname, "..", "services", "status.js"), "utf8");
 const ownEggsSource =fs.readFileSync(path.join(__dirname, "..", "features", "own-eggs.js"), "utf8");
@@ -84,12 +85,12 @@ if (!workerControlSource.includes("const orphanedJob = workerClient.getOwner() =
   || !source.includes("await recoverAfterReload();")) {
   throw new Error("Worker-tab reload must release an orphaned one-button job lease");
 }
-if (!overviewCatalogSource.includes("if (!found.size) return [];")) {
+if (!overviewCatalogSource.includes("if (!found.size) return { catalog: [], partial: true, ownUserId };")) {
   throw new Error("An empty Overview scan must not overwrite saved enclosure ids");
 }
 // An enclosure tab that never activates still shows the previous enclosure's cards; the scan
 // must skip it, flag itself partial and merge (not overwrite) the saved enclosure ids.
-if (!overviewCatalogSource.includes("skippedEnclosures += 1;")
+if (!overviewCatalogSource.includes("skipped += 1;")
   || !overviewCatalogSource.includes("owehEnclosureIds: partial ? { ...previousEnclosureIds, ...enclosureIds } : enclosureIds")) {
   throw new Error("A partial Overview scan must be flagged and must not drop saved enclosures");
 }

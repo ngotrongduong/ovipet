@@ -14,7 +14,7 @@ if (modules.length !== 8) throw new Error(`Expected 8 compact modules, found ${m
 for (const required of [
   "oweh-active-summary", "oweh-active-jobs", "oweh-header-state", "oweh-collapse",
   "owehEggRun", "owehSweep", "owehBreedCampaign",
-  "owehPetIndex", "owehHatchlingRun", "owehWorker"
+  "owehHatchlingRun", "owehWorker"
 ]) {
   if (!uiSource.includes(required)) throw new Error(`Dashboard requirement missing: ${required}`);
 }

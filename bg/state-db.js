@@ -131,6 +131,23 @@
     return Object.fromEntries((rows || []).map(pet => [String(pet.id), pet]));
   }
 
+  // v5.9.0: a slim read for panel counters. Returns only owned, present pets (optionally of one
+  // gender) with just the requested fields, so the page never receives the whole database.
+  const PROJECTABLE_FIELDS = new Set(["id", "gender", "enclosure", "onCooldown", "pedigreeVerified", "species", "owned", "present"]);
+  async function getPetFields({ fields = [], gender = null } = {}) {
+    const keep = ["id", ...fields.filter(field => PROJECTABLE_FIELDS.has(field))];
+    const rows = await getAllRows("pets");
+    const out = {};
+    for (const pet of rows || []) {
+      if (!pet?.owned || pet.present === false) continue;
+      if (gender && pet.gender !== gender) continue;
+      const slim = { owned: true, present: true };
+      for (const field of keep) if (pet[field] !== undefined) slim[field] = pet[field];
+      out[String(pet.id)] = slim;
+    }
+    return out;
+  }
+
   async function getPetsByIds(ids) {
     await migrateLegacyPetsOnce();
     const unique = [...new Set((ids || []).map(id => String(id || "")).filter(Boolean))];
@@ -252,6 +269,6 @@
   OWEH_BG.stateDb = {
     STATE_DB_NAME, STATE_DB_VERSION, TASK_LEASE_MS,
     openStateDb, closeStateDb, dbTransaction, requestResult, migrateLegacyPetsOnce, getAllRows,
-    getAllPets, getPetsByIds, mergePets, getTask, putTaskLease, heartbeatTasks, releaseTask
+    getAllPets, getPetFields, getPetsByIds, mergePets, getTask, putTaskLease, heartbeatTasks, releaseTask
   };
 })();

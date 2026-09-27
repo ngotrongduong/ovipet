@@ -131,6 +131,14 @@
     return result.pets || {};
   }
 
+  // Owned, present pets with only the requested fields (see bg/state-db.js getPetFields).
+  async function getPetFields(fields, { gender = null } = {}) {
+    const result = await runtimeRequest({ type: "petDbGetFields", fields, gender });
+    if (result.contextInvalidated) return {};
+    if (!result.ok) throw new Error(result.error || "pet-db-get-fields-failed");
+    return result.pets || {};
+  }
+
   async function storageSet(values) {
     const next = { ...values };
     if (next.owehPets) {
@@ -155,6 +163,7 @@
     runtimeRequest,
     storageGet,
     getPetsByIds,
+    getPetFields,
     storageSet,
     storageGetMany,
     isExtensionContextInvalidated,

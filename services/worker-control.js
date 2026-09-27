@@ -40,7 +40,6 @@
       diagnosticLog("warning", "control", "automation.stop-all", {});
       await stops.stopFriendSweep();
       await stops.stopBreedCampaign();
-      await stops.stopPetIndex();
       await stops.stopHatchlings();
       await stops.stopOwnEggs();
       await runtimeRequest({ type: "eggBatchStop" });

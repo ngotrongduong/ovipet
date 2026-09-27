@@ -142,8 +142,7 @@ setTimeout(() => {
     // Callable members of the service groups the modules actually invoke.
     const callable = {
       "": ["storageGet", "storageSet", "sleep", "holdAwake", "setStatus", "runtimeRequest", "sendGameCommand", "diagnosticLog", "waitForGameReady", "waitForStableValue"],
-      catalogService: ["waitForOverviewShell", "collectAllOverviewPets", "updateRetentionRanking"],
-      petIndexActions: ["openTab", "renamePet", "updateRetentionRanking"],
+      catalogService: ["updateRetentionRanking"],
       ninjaService: ["performNinjaChatScan"],
       friendDirectory: ["scanFriends", "hasVisibleFriends"],
       hatchlingActions: ["getOwnUserId", "updateRetentionRanking"],
