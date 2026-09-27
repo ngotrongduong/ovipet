@@ -50,9 +50,16 @@ OWEH.register("ui-dashboard", helpers => {
     if (!force && Date.now() - lastReadinessAt < 30000) return cachedReadiness;
     lastReadinessAt = Date.now();
     // v5.9.0: only the females' counter fields cross the message boundary, not the database.
-    const pets = getPetFields
-      ? await getPetFields(["gender", "enclosure", "onCooldown", "pedigreeVerified"], { gender: "Female" })
-      : await storageGet("owehPets", {});
+    let pets;
+    try {
+      pets = getPetFields
+        ? await getPetFields(["gender", "enclosure", "onCooldown", "pedigreeVerified"], { gender: "Female" })
+        : await storageGet("owehPets", {});
+    } catch (error) {
+      // A failed read must not start the 30 s window: the next ordinary refresh retries.
+      lastReadinessAt = 0;
+      throw error;
+    }
     const summary = breedingReadiness(pets);
     cachedReadiness = summary;
     target.textContent = summary.total
