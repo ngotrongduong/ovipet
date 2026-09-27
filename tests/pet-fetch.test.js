@@ -110,6 +110,44 @@ function harness(routes, initial = {}) {
   assert.equal(skipping.store.owehEnclosureIds["** ** FF"], "1", "its id is still recorded for moves");
   assert.equal(skipping.store.owehEnclosureSnapshots["1"].fingerprint, "old", "its snapshot is carried forward");
   assert.equal(skipScan.catalog.find(pet => pet.id === "777")?.enclosureId, "1", "its known pets stay in the catalog");
+  assert.deepEqual([...skipping.store.owehEnclosureSnapshots["1"].ids], ["777"], "a legacy snapshot is slimmed to ids");
+  assert.equal(skipping.store.owehEnclosureSnapshots["1"].records, undefined);
+
+  // ---- v5.8.0 snapshots keep only fingerprint + ids, never the pet records
+  const fullSnapshot = full.store.owehEnclosureSnapshots["9"];
+  assert.equal(fullSnapshot.records, undefined, "pet records live in the database, not the snapshot");
+  assert.deepEqual([...fullSnapshot.ids], scan.catalog.map(pet => pet.id));
+
+  // ---- v5.8.0 enclosures are read two at a time, catalog order stays by tab
+  let inFlight = 0;
+  let peak = 0;
+  const parallel = harness({
+    "/?src=pets&sub=overview&!=cb": samples.overview,
+    [enclosureRoute(0)]: emptyEnclosure(0),
+    [enclosureRoute(1)]: emptyEnclosure(1),
+    [enclosureRoute(8)]: emptyEnclosure(8),
+    [enclosureRoute(9)]: samples.enclosure
+  });
+  const slowService = createPetFetch({
+    storageGet: async (key, fallback) => (key in parallel.store ? parallel.store[key] : fallback),
+    storageSet: async values => Object.assign(parallel.store, values),
+    runtimeRequest: async () => ({ ok: true }),
+    sleep: async () => {},
+    markup: globalThis.OWEH.dom.markup,
+    fingerprint: text => `fp${text.length}`,
+    fetchImpl: async url => {
+      if (!url.includes("sec=pets")) return { ok: true, status: 200, text: async () => samples.cb(samples.overview) };
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      inFlight -= 1;
+      const body = url.includes("enclosure=9&") ? samples.enclosure : emptyEnclosure(0);
+      return { ok: true, status: 200, text: async () => samples.cb(body) };
+    }
+  });
+  const parallelScan = await slowService.collectCatalog();
+  assert.equal(peak, 2, "two enclosures are read at once, never more");
+  assert.deepEqual(parallelScan.catalog.map(pet => pet.id), scan.catalog.map(pet => pet.id));
 
   // ---- Generated is sticky across reads
   assert.equal(mergePetRecord({ generated: true }, { id: "1", generated: false }).generated, true);

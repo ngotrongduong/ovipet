@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.7.2**
+Current release: **v5.8.0**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.8.0 Faster, smaller enclosure scan
+
+- **Update database** and the planner's catalog read now fetch two enclosures at a time instead of one after another. Each read is still one request with the same short pause, so at most two requests are in flight.
+- Enclosure snapshots (`owehEnclosureSnapshots`) keep only a fingerprint and the pet ids; the full pet records already live in the pet database. Old snapshots are slimmed automatically on the next scan, so extension storage shrinks noticeably. **Males discard** is still never read and its pets stay known.
 
 ## v5.7.2 Cached IndexedDB connection
 

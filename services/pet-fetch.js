@@ -8,12 +8,26 @@
   if (!globalThis.OWEH) throw new Error("jobs/core.js must load before services/pet-fetch.js");
 
   const PANEL_TIMEOUT_MS = 15000;
+  const CATALOG_CONCURRENCY = 2;
   const OVERVIEW_PATH = "/?src=pets&sub=overview";
   const HATCHERY_PATH = "/?src=pets&sub=hatchery";
 
   const profilePath = (id, usr) => `/?src=pets&sub=profile&usr=${/^\d+$/.test(String(usr || "")) ? usr : 0}&pet=${id}`;
   const pedigreePath = id => `/?src=pets&sub=profile&sec=pedigree&pet=${id}`;
   const breedingPath = (id, enclosureId, usr) => `/?src=pets&sub=profile&sec=breeding&usr=${/^\d+$/.test(String(usr || "")) ? usr : 0}&pet=${id}&enclosure=${enclosureId}`;
+
+  // Snapshots written before v5.8.0 carried every pet record; keep only fingerprint + ids.
+  function slimSnapshots(snapshots) {
+    const slim = {};
+    for (const [key, snapshot] of Object.entries(snapshots || {})) {
+      if (!snapshot || typeof snapshot !== "object") continue;
+      const { records, ...rest } = snapshot;
+      slim[key] = Array.isArray(records) && !Array.isArray(rest.ids)
+        ? { ...rest, ids: records.map(pet => pet?.id).filter(Boolean) }
+        : rest;
+    }
+    return slim;
+  }
 
   function createPetFetch(deps) {
     const {
@@ -59,55 +73,78 @@
     // v5.6.1: `skipTab(tab)` marks an enclosure that is never fetched (Males discard). Its id is
     // still recorded (moves need it) and its last snapshot is carried forward unread, so its
     // pets stay known instead of being reported gone.
+    //
+    // v5.8.0: a snapshot keeps only the fingerprint and pet ids (the records live in the pet
+    // database), and enclosures are read CATALOG_CONCURRENCY at a time.
     async function collectCatalog({ isCancelled = () => false, onProgress = () => {}, skipTab = () => false } = {}) {
-      const [previousSnapshots, previousEnclosureIds] = await Promise.all([
+      const [storedSnapshots, previousEnclosureIds] = await Promise.all([
         storageGet("owehEnclosureSnapshots", {}),
         storageGet("owehEnclosureIds", {})
       ]);
+      const previousSnapshots = slimSnapshots(storedSnapshots);
       const overview = await fetchPanel(OVERVIEW_PATH);
       const tabs = markup.parseEnclosureTabs(overview);
       const ownUserId = ownUserIdFrom(overview, tabs);
+      const results = new Array(tabs.length);
+      let partial = tabs.length < Object.keys(previousEnclosureIds || {}).length;
+      let cancelled = false;
+      let cursor = 0;
+
+      async function readTab(index) {
+        const tab = tabs[index];
+        onProgress(index, tabs.length, tab);
+        if (skipTab(tab)) {
+          const previous = previousSnapshots[tab.id];
+          const pets = (previous?.ids || []).map(id => ({ id, enclosure: tab.label, enclosureId: tab.id }));
+          return { tab, skippedTab: true, previous, pets };
+        }
+        try {
+          const panel = tab.panel.startsWith("/") ? tab.panel : `/${tab.panel}`;
+          const pets = markup.parseEnclosurePets(await fetchPanel(panel), { id: tab.id, label: tab.label });
+          await sleep(pauseMs);
+          return { tab, pets };
+        } catch {
+          return { tab, failed: true, pets: [] };
+        }
+      }
+
+      const worker = async () => {
+        while (cursor < tabs.length) {
+          if (isCancelled()) { cancelled = true; return; }
+          const index = cursor;
+          cursor += 1;
+          results[index] = await readTab(index);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CATALOG_CONCURRENCY, tabs.length) }, worker));
+      if (cancelled) return { catalog: [], partial: true, ownUserId, cancelled: true };
+
       const found = new Map();
       const enclosureIds = {};
       const nextSnapshots = {};
       let skipped = 0;
       let reused = 0;
-      let partial = tabs.length < Object.keys(previousEnclosureIds || {}).length;
-      for (let index = 0; index < tabs.length; index += 1) {
-        if (isCancelled()) return { catalog: [], partial: true, ownUserId, cancelled: true };
-        const tab = tabs[index];
-        onProgress(index, tabs.length, tab);
-        if (skipTab(tab)) {
-          enclosureIds[tab.label] = tab.id;
-          const previous = previousSnapshots[tab.id];
-          if (previous) {
-            nextSnapshots[tab.id] = previous;
-            (previous.records || []).forEach(pet => found.set(pet.id, { ...pet, enclosure: tab.label, enclosureId: tab.id }));
-          }
-          continue;
-        }
-        let pets;
-        try {
-          const panel = tab.panel.startsWith("/") ? tab.panel : `/${tab.panel}`;
-          pets = markup.parseEnclosurePets(await fetchPanel(panel), { id: tab.id, label: tab.label });
-        } catch {
+      for (const { tab, pets, failed, skippedTab, previous } of results) {
+        if (failed) {
           partial = true;
           skipped += 1;
           continue;
         }
         enclosureIds[tab.label] = tab.id;
+        pets.forEach(pet => found.set(pet.id, pet));
+        if (skippedTab) {
+          if (previous) nextSnapshots[tab.id] = previous;
+          continue;
+        }
         const signature = pets
           .map(pet => `${pet.id}:${pet.modified || ""}:${Number(pet.onCooldown)}:${pet.name}`)
           .sort().join("|") || "__empty__";
         const print = fingerprint(signature);
-        const previous = previousSnapshots[tab.id];
-        if (previous?.fingerprint === print) reused += 1;
-        pets.forEach(pet => found.set(pet.id, pet));
+        if (previousSnapshots[tab.id]?.fingerprint === print) reused += 1;
         nextSnapshots[tab.id] = {
           fingerprint: print, enclosure: tab.label, enclosureId: tab.id,
-          count: pets.length, records: pets, scannedAt: Date.now()
+          count: pets.length, ids: pets.map(pet => pet.id), scannedAt: Date.now()
         };
-        if (index < tabs.length - 1) await sleep(pauseMs);
       }
       if (!found.size) return { catalog: [], partial: true, ownUserId };
       const scanned = tabs.length - skipped;
