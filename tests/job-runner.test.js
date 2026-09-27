@@ -138,6 +138,39 @@ function makeHelpers(overrides = {}) {
     assert.equal(Object.keys(wired).join(","), "#a,#b");
   }
 
+  // A failed release is retried once and reported; it is never displayed as "stopped".
+  {
+    let attempts = 0;
+    const { helpers, log } = makeHelpers({
+      requestReleaseWorker: async () => { attempts += 1; return { ok: false, error: "idb-error" }; }
+    });
+    const createJob = load(helpers);
+    const job = createJob({ owner: "demo", label: "Demo", url: "u", run: async () => {} });
+    const response = await job.stop();
+    assert.equal(attempts, 2, "one retry");
+    assert.equal(response.ok, false);
+    assert.match(log.statuses.at(-1), /could not release the shared background tab \(idb-error\)/);
+    assert.ok(!log.statuses.some(text => text === '"Demo" stopped'));
+  }
+
+  // Stop pressed in the worker tab cancels the running job locally as well.
+  {
+    const { helpers } = makeHelpers();
+    const createJob = load(helpers);
+    let release;
+    const seen = [];
+    const job = createJob({
+      owner: "demo", label: "Demo", url: "u",
+      run: async ctx => { await new Promise(resolve => { release = resolve; }); seen.push(ctx.isCancelled()); }
+    });
+    const running = job.workerHandler.start(1, {});
+    await new Promise(resolve => setImmediate(resolve));
+    await job.stop();
+    release();
+    await running;
+    assert.deepEqual(seen, [true]);
+  }
+
   console.log("job runner tests passed");
 })().catch(error => {
   console.error(error);

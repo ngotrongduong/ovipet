@@ -234,3 +234,15 @@ test("male cull feature: failed move is recorded, discard clears the review", as
   assert.equal(store.owehCullPreview, null);
   assert.equal(log.moves.length, 1);
 });
+
+test("male cull feature: a queued male already in Males discard is skipped without a profile read", async () => {
+  const { store, log, feature } = featureSetup();
+  await feature.api.plan();
+  // The move landed and the pet record was saved, but the tab closed before progress was saved.
+  store.owehPets.m.enclosure = "Males discard";
+  await feature.workerHandlers.cull.start(1);
+  assert.deepEqual(log.reads, [], "no profile request for a pet in Males discard");
+  assert.equal(log.moves.length, 0);
+  assert.equal(store.owehCullPreview.rows[0].status, "skipped");
+  assert.equal(store.owehCullPreview.rows[0].error, "already-in-discard");
+});

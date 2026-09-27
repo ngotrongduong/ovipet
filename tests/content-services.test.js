@@ -178,6 +178,83 @@ function load(file, extra = {}) {
       assert.match(statuses.at(-1), /^Stop All:/);
     }
 
+    // A failing stop never skips the other stops or the shared-lease release.
+    {
+      const calls = [];
+      const requests = [];
+      const statuses = [];
+      const logs = [];
+      const failing = workerControl.createWorkerControl({
+        runtimeRequest: async message => { requests.push(message); return { ok: true }; },
+        storageGetMany: async () => ({ owehEggRun: { active: false } }),
+        workerClient: {},
+        releaseFinishedWorker: () => {},
+        requestReleaseWorker: async () => { calls.push("releaseWorker"); return { ok: false, error: "idb" }; },
+        diagnosticLog: (...args) => logs.push(args),
+        setStatus: text => statuses.push(text),
+        instanceId: "me",
+        getCurrentTabId: () => 5,
+        stops: {
+          stopFriendSweep: async () => { calls.push("sweep"); throw new Error("storage get failed"); },
+          stopBreedCampaign: async () => calls.push("breed"),
+          stopHatchlings: async () => calls.push("hatchlings"),
+          stopOwnEggs: async () => calls.push("ownEggs")
+        },
+        localWorkerHandlers: {},
+        collectWorkerHandlers: () => ({}),
+        recoverSweepWorker: async () => {},
+        onEggBatchProgress: () => {},
+        goToNextFriend: () => {}
+      });
+      await failing.stopAllAutomation();
+      assert.deepEqual(calls, ["sweep", "breed", "hatchlings", "ownEggs", "releaseWorker"]);
+      assert.deepEqual(plain(requests), [{ type: "eggBatchStop" }]);
+      assert.ok(logs.some(entry => entry[2] === "automation.stop-all.step-failed"));
+      assert.match(statuses.at(-1), /could not fully stop sweep, shared-worker/);
+    }
+
+    // Heartbeat cancels a one-button job whose lease is no longer this tab's generation.
+    {
+      const stopped = [];
+      let owned = true;
+      let owner = "maintain";
+      const logs = [];
+      const control = workerControl.createWorkerControl({
+        runtimeRequest: async () => ({ ok: true }),
+        storageGetMany: async () => ({ owehEggRun: { active: false } }),
+        workerClient: {
+          getOwner: () => owner,
+          getGeneration: () => 7,
+          heartbeatSharedWorker: async () => {},
+          isWorkerOwner: async expected => owned && expected === owner,
+          clearLocal: () => { owner = null; }
+        },
+        releaseFinishedWorker: () => {},
+        requestReleaseWorker: async () => ({ ok: true }),
+        diagnosticLog: (...args) => logs.push(args),
+        setStatus: () => {},
+        instanceId: "me",
+        getCurrentTabId: () => 5,
+        stops: {},
+        localWorkerHandlers: { breed: { start() {}, stop: () => stopped.push("breed") } },
+        collectWorkerHandlers: () => ({ maintain: { start() {}, stop: () => stopped.push("maintain") } }),
+        recoverSweepWorker: async () => {},
+        onEggBatchProgress: () => {},
+        goToNextFriend: () => {}
+      });
+      await control.sendTaskHeartbeat();
+      assert.deepEqual(stopped, [], "a live lease keeps the job running");
+      owned = false;
+      await control.sendTaskHeartbeat();
+      assert.deepEqual(stopped, ["maintain"]);
+      assert.equal(owner, null, "local ownership is cleared");
+      assert.equal(logs.at(-1)[2], "worker.lease-lost");
+      // Durable-progress features are left to their own per-step ownership checks.
+      owner = "breed";
+      await control.sendTaskHeartbeat();
+      assert.deepEqual(stopped, ["maintain"]);
+    }
+
     // Heartbeat reports an owned egg run and always renews the shared worker.
     {
       const { service, calls, requests } = make({ eggRun: { active: true, ownerTabId: 5 } });

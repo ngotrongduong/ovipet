@@ -12,12 +12,14 @@ const local = { normal: "stored" };
 const runtimeMessages = [];
 const localWrites = [];
 let petDb = { 7: { id: "7", name: "pet" } };
+let petDbFails = false;
 
 globalThis.chrome = {
   runtime: {
     lastError: null,
     sendMessage(message, callback) {
       runtimeMessages.push(message);
+      if (petDbFails && String(message.type).startsWith("petDb")) return callback({ ok: false, error: "idb-broken" });
       if (message.type === "petDbGetAll") return callback({ ok: true, pets: petDb });
       if (message.type === "petDbGetMany") {
         const pets = {};
@@ -74,6 +76,15 @@ const storage = globalThis.OWEH.core.storage;
   assert.ok(runtimeMessages.some(message => message.type === "petDbGetAll"));
   assert.ok(runtimeMessages.some(message => message.type === "petDbGetMany"));
   assert.ok(runtimeMessages.some(message => message.type === "petDbMerge"));
+
+  // Pet database failures fail closed: no stale legacy map, no legacy write.
+  local.owehPets = { 9: { id: "9", enclosure: "Males" } };
+  petDbFails = true;
+  await assert.rejects(storage.storageGet("owehPets", {}), /idb-broken/, "a failed pet read never falls back to the legacy map");
+  const writesBefore = localWrites.length;
+  await assert.rejects(storage.storageSet({ owehPets: { 9: { id: "9", enclosure: "Males discard" } }, progress: 1 }), /idb-broken/);
+  assert.equal(localWrites.length, writesBefore, "nothing from a failed pet merge batch is written to chrome.storage.local");
+  petDbFails = false;
 
   console.log("storage client behavior tests passed");
 })().catch(error => {

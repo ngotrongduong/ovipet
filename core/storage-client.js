@@ -115,10 +115,13 @@
   }
 
   async function storageGet(key, fallback) {
+    // The pet database is authoritative. A failed read fails closed: the pre-migration
+    // chrome.storage.local.owehPets map is stale (it can still list a culled male in "Males").
     if (key === "owehPets") {
       const result = await runtimeRequest({ type: "petDbGetAll" });
       if (result.ok) return result.pets || {};
       if (result.contextInvalidated) return fallback;
+      throw new Error(result.error || "pet-db-get-all-failed");
     }
     const value = await localGet({ [key]: fallback });
     return value[key];
@@ -145,6 +148,9 @@
       const result = await runtimeRequest({ type: "petDbMerge", pets: next.owehPets });
       if (result.ok) delete next.owehPets;
       else if (result.contextInvalidated) return false;
+      // Never write pet records to the legacy map, and never save the rest of this batch
+      // (progress that describes those records) without them.
+      else throw new Error(result.error || "pet-db-merge-failed");
     }
     if (!Object.keys(next).length) return true;
     return localSet(next);

@@ -335,6 +335,28 @@ const HOUR = 60 * 60 * 1000;
     assert.equal(env.store.owehPets["1"].lastProfileScanAt, undefined);
     assert.ok(env.log.statuses.some(text => text.includes("1 error(s)")));
   }
+  // A worker that throws lets the in-flight profiles settle and saves them before failing.
+  {
+    let slowFinished = false;
+    const env = setup({
+      owehMaintainSteps: ONLY("profiles"),
+      owehPets: {
+        1: { id: "1", owned: true, complete: false, name: "x" },
+        2: { id: "2", owned: true, complete: false, name: "y" }
+      }
+    }, {
+      readPet: async id => {
+        if (id === "1") throw new Error("boom");
+        for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve));
+        slowFinished = true;
+        return { ok: true, profile: { enclosureLabel: "FF ** **" }, record: { id, name: `fresh${id}`, complete: true } };
+      }
+    });
+    await env.start("maintain");
+    assert.equal(slowFinished, true, "the job waits for the in-flight profile read");
+    assert.equal(env.store.owehPets["2"].name, "fresh2", "the settled profile is saved before the error is reported");
+    assert.ok(env.log.statuses.some(text => text.includes("boom")), "the error is still reported");
+  }
 
   // ---- whole pass: catalog feeds the profile queue, then sort and feed use fresh data -----
   {
