@@ -79,8 +79,8 @@ OWEH.register("ui-dashboard", helpers => {
 
   // Side window next to the panel: the full pair list of the current plan (or of the confirmed
   // campaign while/after it runs). Read-only presentation of durable storage; it never plans,
-  // confirms or breeds. The window opens by itself once per new plan/campaign; after the user
-  // closes it, the "View pairs" button reopens it.
+  // confirms or breeds. v5.7.1: the window never opens by itself — it starts closed on every
+  // page and only the "View pairs" button opens it (data-open="1"); × closes it again.
   const SECONDARY_LABELS = { body2: "Body 2", scales: "Scales", extra1: "Extra 1", extra2: "Extra 2" };
   let planViewKey = "";
   let planViewSignature = "";
@@ -156,15 +156,13 @@ OWEH.register("ui-dashboard", helpers => {
     if (opener) opener.disabled = !source;
     if (!source) {
       view.classList.add("oweh-hidden");
+      view.dataset.open = "";
       planViewKey = "";
       planViewSignature = "";
       return;
     }
-    if (source.key !== planViewKey) {
-      planViewKey = source.key;
-      view.dataset.dismissed = "";
-    }
-    view.classList.toggle("oweh-hidden", panelHidden || view.dataset.dismissed === "1");
+    if (source.key !== planViewKey) planViewKey = source.key;
+    view.classList.toggle("oweh-hidden", panelHidden || view.dataset.open !== "1");
     const rows = planViewRows(source);
     const pairs = rows.filter(row => row.maleId).length;
     const heading = source.mode === "plan"
@@ -255,16 +253,14 @@ OWEH.register("ui-dashboard", helpers => {
     const { rows } = cullPreviewState(preview);
     if (!preview || !rows.length) {
       view.classList.add("oweh-hidden");
+      view.dataset.open = "";
       cullViewKey = "";
       cullViewSignature = "";
       return false;
     }
-    const key = String(preview.createdAt || 0);
-    if (key !== cullViewKey) {
-      cullViewKey = key;
-      view.dataset.dismissed = "";
-    }
-    const hidden = panelHidden || view.dataset.dismissed === "1";
+    cullViewKey = String(preview.createdAt || 0);
+    // Like the pair list, the cull review only opens from its View button.
+    const hidden = panelHidden || view.dataset.open !== "1";
     view.classList.toggle("oweh-hidden", hidden);
     const summary = preview.summary || {};
     const moved = rows.filter(row => row?.status === "moved").length;
