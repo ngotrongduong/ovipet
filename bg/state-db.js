@@ -9,7 +9,56 @@
   const TASK_LEASE_MS = 45 * 1000;
   let legacyMigrationPromise = null;
 
+  // One IndexedDB connection is cached for the whole service-worker lifetime instead of
+  // opening/closing per operation. Callers still receive a handle with close(); it is a
+  // no-op so existing `finally(() => db.close())` sites keep working. The cache drops
+  // itself when the browser closes the connection or another version wants to upgrade.
+  let connectionPromise = null;
+
+  function resetStateDbConnection() {
+    const pending = connectionPromise;
+    connectionPromise = null;
+    return pending;
+  }
+
+  function wrapConnection(raw) {
+    return {
+      raw,
+      get objectStoreNames() { return raw.objectStoreNames; },
+      transaction(...args) {
+        try {
+          return raw.transaction(...args);
+        } catch (error) {
+          // Connection closed underneath us: forget it so the next call reopens.
+          if (error?.name === "InvalidStateError") resetStateDbConnection();
+          throw error;
+        }
+      },
+      close() {}
+    };
+  }
+
   function openStateDb() {
+    if (!connectionPromise) {
+      const pending = openRawStateDb().then(raw => {
+        const drop = () => { if (connectionPromise === pending) connectionPromise = null; };
+        raw.onversionchange = () => { drop(); try { raw.close(); } catch (_) {} };
+        raw.onclose = drop;
+        return wrapConnection(raw);
+      });
+      connectionPromise = pending;
+      pending.catch(() => { if (connectionPromise === pending) connectionPromise = null; });
+    }
+    return connectionPromise;
+  }
+
+  async function closeStateDb() {
+    const pending = resetStateDbConnection();
+    if (!pending) return;
+    try { (await pending).raw.close(); } catch (_) {}
+  }
+
+  function openRawStateDb() {
     return new Promise((resolve, reject) => {
       if (typeof indexedDB === "undefined") return reject(new Error("indexeddb-unavailable"));
       const request = indexedDB.open(STATE_DB_NAME, STATE_DB_VERSION);
@@ -202,7 +251,7 @@
 
   OWEH_BG.stateDb = {
     STATE_DB_NAME, STATE_DB_VERSION, TASK_LEASE_MS,
-    openStateDb, dbTransaction, requestResult, migrateLegacyPetsOnce, getAllRows,
+    openStateDb, closeStateDb, dbTransaction, requestResult, migrateLegacyPetsOnce, getAllRows,
     getAllPets, getPetsByIds, mergePets, getTask, putTaskLease, heartbeatTasks, releaseTask
   };
 })();

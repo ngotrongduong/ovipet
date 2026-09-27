@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.7.1**
+Current release: **v5.7.2**
 
 ## Engineering objective
 
@@ -16,6 +16,10 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.7.2 Cached IndexedDB connection
+
+- The background keeps one IndexedDB connection open for the whole service-worker lifetime instead of opening and closing one for every pet/command/task read or write. Faster database work during Update database, the planner and job leases; no behavior change. The connection reopens by itself if the browser closes it or a newer version needs to upgrade.
 
 ## v5.7.1 Side windows stay closed
 
