@@ -239,7 +239,10 @@ function setup({ pets = {}, withPlanView = false } = {}) {
       ]
     };
     await env.api.update();
-    assert.equal(env.planView.classList.contains("oweh-hidden"), false, "a new plan opens the side window");
+    assert.equal(env.planView.classList.contains("oweh-hidden"), true, "a new plan never opens the side window by itself");
+    env.planView.dataset.open = "1"; // the View pairs button
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), false, "View pairs opens it");
     assert.equal(env.viewButton.disabled, false);
     assert.ok(env.planMeta.textContent.includes("Same-FF target plan · Catus · 2 pair(s) / 3 female(s) · limit 2"));
     assert.equal(env.planRows.children.length, 3, "every female of the plan is listed, not a 3-pair sample");
@@ -249,15 +252,18 @@ function setup({ pets = {}, withPlanView = false } = {}) {
     assert.equal(cells(2)[8], "over limit");
     assert.equal(cells(2)[5], "—");
 
-    env.planView.dataset.dismissed = "1";
+    env.planView.dataset.open = ""; // the × button
     await env.api.update();
-    assert.equal(env.planView.classList.contains("oweh-hidden"), true, "closing keeps it closed for the same plan");
+    assert.equal(env.planView.classList.contains("oweh-hidden"), true, "closing keeps it closed");
 
     env.state.owehBreedPreview = null;
     env.state.owehBreedCampaign = { active: true, startedAt: env.clock.now, confirmedAt: env.clock.now, femaleIndex: 1, bredCount: 1, strategy: "pure-line", species: "Catus" };
     env.state.owehBreedQueue = [{ id: "1", name: "Fem", maleId: "3" }, { id: "5", name: "Third", maleId: "4" }];
     await env.api.update();
-    assert.equal(env.planView.classList.contains("oweh-hidden"), false, "the confirmed campaign reopens it");
+    assert.equal(env.planView.classList.contains("oweh-hidden"), true, "the confirmed campaign does not reopen it");
+    env.planView.dataset.open = "1";
+    await env.api.update();
+    assert.equal(env.planView.classList.contains("oweh-hidden"), false);
     assert.ok(env.planMeta.textContent.includes("1/2 processed · 1 bred"));
     assert.deepEqual(env.planRows.children.map(row => row.children[8].textContent), ["done", "breeding"]);
 
@@ -265,6 +271,7 @@ function setup({ pets = {}, withPlanView = false } = {}) {
     env.state.owehBreedQueue = [];
     await env.api.update();
     assert.equal(env.planView.classList.contains("oweh-hidden"), true);
+    assert.equal(env.planView.dataset.open, "", "a vanished plan resets the window to closed");
     assert.equal(env.viewButton.disabled, true);
   }
 

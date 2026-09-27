@@ -135,7 +135,8 @@ OWEH.register("feature-male-cull", helpers => {
           // fresh profile read right before the move must agree. A failed read skips the male.
           let fresh = null;
           if (pet && pet.generated === false && petFetch?.readPet) {
-            fresh = await petFetch.readPet(row.id, ownUserId).catch(() => null);
+            // Only the Generated flag matters here, so the pedigree panel is not fetched.
+            fresh = await petFetch.readPet(row.id, ownUserId, { skipPedigree: true }).catch(() => null);
           }
           const freshGenerated = !fresh?.ok || fresh.profile?.generated !== false;
           if (fresh?.ok && fresh.profile?.generated === true) {

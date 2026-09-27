@@ -227,16 +227,16 @@ OWEH.register("ui-panel", helpers => {
       </div>
     `;
     view.querySelector("#oweh-plan-view-close").addEventListener("click", () => {
-      view.dataset.dismissed = "1";
+      view.dataset.open = "";
       view.classList.add("oweh-hidden");
     });
     panel.querySelector("#oweh-view-breed-plan")?.addEventListener("click", () => {
-      view.dataset.dismissed = "";
+      view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
       // Both side windows share one spot: opening the pair list steps the cull review aside.
       const cullView = document.getElementById("oweh-cull-view");
       if (cullView) {
-        cullView.dataset.dismissed = "1";
+        cullView.dataset.open = "";
         cullView.classList.add("oweh-hidden");
       }
     });
@@ -273,12 +273,17 @@ OWEH.register("ui-panel", helpers => {
       </div>
     `;
     view.querySelector("#oweh-cull-view-close").addEventListener("click", () => {
-      view.dataset.dismissed = "1";
+      view.dataset.open = "";
       view.classList.add("oweh-hidden");
     });
     panel.querySelector("#oweh-view-cull")?.addEventListener("click", () => {
-      view.dataset.dismissed = "";
+      view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
+      const planView = document.getElementById("oweh-breed-plan-view");
+      if (planView) {
+        planView.dataset.open = "";
+        planView.classList.add("oweh-hidden");
+      }
     });
     document.body.appendChild(view);
     return view;
@@ -298,7 +303,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.6.1</span>
+          <span class="oweh-version">v5.7.1</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>

@@ -133,6 +133,35 @@ function harness(routes, initial = {}) {
   assert.equal(partialRead.record.pedigreeVerified, false, "a failed pedigree read is unverified, not an error");
   assert.equal(noPedigree.fetched.filter(url => url.includes("sec=pedigree")).length, 2, "one retry per panel");
 
+  // ---- v5.7.0: readAndMerge skips the pedigree panel of an already-verified pet
+  const verifiedCached = {
+    id: "157155269", name: "old", owned: true, pedigreeVerified: true, ancestors: ["9"], parentIds: ["9"],
+    pedigree: [{ id: "9" }], onCooldown: true, enclosure: "Old", catalogModified: "m7", profileStale: true
+  };
+  const skipReader = harness({
+    [profilePath("157155269", "4973830")]: samples.namedProfile,
+    "/?src=pets&sub=profile&sec=pedigree&pet=157155269": samples.pedigree
+  });
+  const skipped = await skipReader.service.readAndMerge(verifiedCached, "4973830");
+  assert.equal(skipped.ok, true);
+  assert.equal(skipReader.fetched.filter(url => url.includes("sec=pedigree")).length, 0, "a verified pedigree is not re-fetched");
+  assert.equal(skipped.pet.pedigreeVerified, true);
+  assert.deepEqual([...skipped.pet.parentIds], ["9"], "the verified pedigree is kept");
+  assert.equal(skipped.pet.name, "F5FAF2-F20B18-13101B");
+  assert.equal(skipped.pet.onCooldown, true);
+  assert.equal(skipped.pet.catalogModified, "m7");
+  assert.equal(skipped.pet.profileStale, false);
+  assert.equal(skipped.pet.enclosureId, "8");
+
+  const unverifiedReader = harness({
+    [profilePath("157155269", "4973830")]: samples.namedProfile,
+    "/?src=pets&sub=profile&sec=pedigree&pet=157155269": samples.pedigree
+  });
+  const verifiedNow = await unverifiedReader.service.readAndMerge({ ...verifiedCached, pedigreeVerified: false }, "4973830");
+  assert.equal(unverifiedReader.fetched.filter(url => url.includes("sec=pedigree")).length, 1);
+  assert.equal(verifiedNow.pet.pedigreeVerified, true);
+  assert.equal(verifiedNow.pet.parentIds.length, 2);
+
   const missing = await harness({}).service.readPet("1");
   assert.equal(missing.ok, false);
   assert.match(missing.reason, /^profile:/);

@@ -15,7 +15,9 @@ const source = [
 for (const required of [
   "const RECENT_FULL_FOOD_MS = 20 * 60 * 60 * 1000",
   "function petProfileNeedsRefresh(cached, item, autoRename = false)",
-  "petRecord.petProfileNeedsRefresh(cached, item, false)",
+  // v5.7.0: the catalog merge moved into domain/pet-record.js mergeCatalogScan.
+  "petProfileNeedsRefresh(cached, item, false) || Boolean(cached?.profileStale)",
+  "petRecord.mergeCatalogScan(pets, catalog,",
   "knownFullRecently",
   "fedRecently",
   "dispatchedRecently",

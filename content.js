@@ -270,6 +270,30 @@
       || isOviPetsChatPage() || isPetsOverview() || jobCount > 0);
   }
 
+  // v5.7.0: refresh() runs on every DOM mutation of the SPA. The state machines below each
+  // start with a storage read just to learn they are idle, so their `active` flags are mirrored
+  // here (seeded once, then kept current by storage.onChanged) and an idle machine is skipped
+  // without touching storage. Every flag starts true, so nothing is skipped before the seed.
+  const ACTIVITY_FLAG_KEYS = Object.freeze({
+    owehPetIndex: "petIndex",
+    owehBreedStartRequest: "breedStart",
+    owehBreedCampaign: "breedCampaign",
+    owehHatchlingRun: "hatchlingRun"
+  });
+  const activityFlags = { petIndex: true, breedStart: true, breedCampaign: true, hatchlingRun: true };
+  function setActivityFlag(key, value) {
+    const name = ACTIVITY_FLAG_KEYS[key];
+    if (!name) return false;
+    const active = Boolean(value?.active);
+    const started = active && !activityFlags[name];
+    activityFlags[name] = active;
+    return started;
+  }
+  storageGetMany({ owehPetIndex: null, owehBreedStartRequest: null, owehBreedCampaign: null, owehHatchlingRun: null })
+    .then(values => Object.keys(ACTIVITY_FLAG_KEYS).forEach(key => setActivityFlag(key, values?.[key])))
+    .catch(() => {});
+  let lastRefreshHash = null;
+
   function refresh() {
     const route = classifyRoute();
     panelModule?.sync(dashboardModule?.getJobCount() || 0);
@@ -280,13 +304,18 @@
     if (route.hatchery || route.petProfile) ownEggsModule?.process();
     if (route.hatchery) ownEggsModule?.maybeAutoStart();
     if (route.friendHatchery) maybeAutoStartSweep();
-    petIndexModule?.process();
-    if (route.petsOverview) maybeContinueBreedStart();
-    processBreedCampaign();
-    processHatchlingRun();
+    if (activityFlags.petIndex) petIndexModule?.process();
+    if (route.petsOverview && activityFlags.breedStart) maybeContinueBreedStart();
+    if (activityFlags.breedCampaign) processBreedCampaign();
+    if (activityFlags.hatchlingRun) processHatchlingRun();
     panelModule?.updatePetNameSuggestion();
     panelModule?.updateBlacklistCount();
-    scheduleActivityDashboard();
+    // Storage changes redraw the dashboard through storage.onChanged; a DOM mutation only
+    // matters when it moved the tab to another page.
+    if (location.hash !== lastRefreshHash) {
+      lastRefreshHash = location.hash;
+      scheduleActivityDashboard();
+    }
   }
 
   const refreshScheduler = createRefreshScheduler(refresh);
@@ -325,7 +354,15 @@
     "owehFriendRemoval", "owehDatabaseMeta", "owehSweepNotice", "owehCullPreview"
   ]);
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "local" && Object.keys(changes).some(key => activityStorageKeys.has(key))) {
+    if (areaName !== "local") return;
+    let started = false;
+    for (const key of Object.keys(changes)) {
+      if (setActivityFlag(key, changes[key].newValue)) started = true;
+    }
+    // A machine that just became active gets its first tick now instead of waiting for the
+    // next DOM mutation.
+    if (started) scheduleRefresh(0, "activity-started");
+    if (Object.keys(changes).some(key => activityStorageKeys.has(key))) {
       scheduleActivityDashboard(0);
     }
   });
@@ -378,7 +415,6 @@
     },
     breedingActions: {
       readHatchlingRun: () => hatchlingModule?.read() || storageGet("owehHatchlingRun", { active: false }),
-      collectAllOverviewPets,
       getOwnUserId: () => ownUserId,
       setOwnUserId: id => { if (id) ownUserId = id; }
     },

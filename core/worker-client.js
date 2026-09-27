@@ -24,6 +24,7 @@
   }
 
   function clearLocal() {
+    cancelPendingPhase();
     owner = null;
     generation = null;
     startedGeneration = null;
@@ -52,9 +53,42 @@
     return runtimeRequest({ type: "releaseWorker", owner: expectedOwner });
   }
 
+  // v5.7.0: every phase report is an IndexedDB write plus a storage mirror that makes every
+  // OviPets tab redraw its dashboard. Jobs report per pet (every ~100 ms while feeding), so
+  // reports are coalesced: the first goes out at once, later ones within the window collapse
+  // into one trailing report carrying the latest text. The lease (45 s) is never at risk.
+  const PHASE_MIN_INTERVAL_MS = 1000;
+  let lastPhaseAt = 0;
+  let pendingPhase = null;
+  let phaseTimer = null;
+
+  function cancelPendingPhase() {
+    if (phaseTimer !== null) clearTimeout(phaseTimer);
+    phaseTimer = null;
+    pendingPhase = null;
+  }
+
+  function sendPhase(phaseGeneration, phase) {
+    lastPhaseAt = Date.now();
+    void runtimeRequest({ type: "workerPhase", generation: phaseGeneration, phase });
+  }
+
   function reportWorkerPhase(phase) {
     if (generation == null) return;
-    void runtimeRequest({ type: "workerPhase", generation, phase });
+    const wait = PHASE_MIN_INTERVAL_MS - (Date.now() - lastPhaseAt);
+    if (wait <= 0 && phaseTimer === null) {
+      sendPhase(generation, phase);
+      return;
+    }
+    pendingPhase = { generation, phase };
+    if (phaseTimer !== null) return;
+    phaseTimer = setTimeout(() => {
+      phaseTimer = null;
+      const next = pendingPhase;
+      pendingPhase = null;
+      // A report queued for a generation that has since ended is dropped, never replayed.
+      if (next && next.generation === generation) sendPhase(next.generation, next.phase);
+    }, Math.max(0, wait));
   }
 
   function reportWorkerDone() {

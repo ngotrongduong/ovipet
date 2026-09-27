@@ -11,9 +11,13 @@ const source = `${content}\n${planner}\n${petRecord}\n${breedingFeature}`;
 
 for (const required of [
   "function buildDatabaseBreedPlan(pets, target, history = [], options = {})",
-  "collectAllOverviewPets()",
-  "petRecord.petProfileNeedsRefresh(cached, item, false)",
-  "owehBreedCatalog",
+  // v5.7.0: planning is command-first — fetched catalog (or a fresh database), fetched
+  // profiles, never Males discard.
+  "petFetch.collectCatalog({",
+  "skipTab: tab => breedingPlan.isCullEnclosure(tab.label)",
+  "petRecord.mergeCatalogScan(pets, scan.catalog,",
+  "petFetch.readAndMerge(cached, ownUserId)",
+  "CATALOG_FRESH_MS",
   "owehDatabaseMeta",
   "schemaVersion: 4",
   "database-direct-v2",
@@ -44,7 +48,9 @@ for (const required of [
 for (const removed of [
   "collectBreedingCandidatesAcrossEnclosures",
   "processBreedCampaignStep",
-  "cacheCandidate(candidateId"
+  "cacheCandidate(candidateId",
+  "breedPlanning: true",
+  "collectAllOverviewPets()"
 ]) {
   if (source.includes(removed)) throw new Error(`Legacy per-female navigation remains: ${removed}`);
 }
