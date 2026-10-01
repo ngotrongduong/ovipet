@@ -116,8 +116,8 @@ function setup({
         }
       },
       breedingPlan: {
-        BREEDING_STRATEGIES: { PURE_LINE: "pure-line", SAME_FF_TARGET: "same-ff-target" },
-        normalizeBreedingStrategy: value => value === "same-ff-target" ? "same-ff-target" : "pure-line",
+        BREEDING_STRATEGIES: { PURE_LINE: "pure-line", SAME_FF_TARGET: "same-ff-target", NEWBORN_OUTCROSS: "newborn-outcross" },
+        normalizeBreedingStrategy: value => ["same-ff-target", "newborn-outcross"].includes(value) ? value : "pure-line",
         isCullEnclosure: name => String(name || "").replace(/\s+/g, "").toUpperCase() === "MALESDISCARD",
         buildDatabaseBreedPlan: (_pets, _target, _history, options) => { log.planOptions.push(clone(options)); return clone(effectivePlan); }
       }
@@ -171,6 +171,22 @@ function setup({
     await env.api.requestStart("same-ff-target");
     assert.equal(env.store.owehBreedStrategy, "same-ff-target");
     assert.deepEqual(env.log.claims, [["breed", "https://ovipets.com/#!/?src=pets&sub=overview"]]);
+  }
+
+  // v5.10.0: the Newborn outcross button keeps its own strategy through start, plan and preview.
+  {
+    const env = setup();
+    await env.api.requestStart("newborn-outcross");
+    assert.equal(env.store.owehBreedStrategy, "newborn-outcross");
+    assert.ok(env.log.status.some(text => text.includes("Newborn outcross")));
+  }
+  {
+    const catalog = [{ id: "10", usr: "77", name: "F", modified: "m1" }];
+    const env = setup({ overview: false, catalog });
+    await env.api.startWorker(9, false, "newborn-outcross");
+    assert.equal(env.log.planOptions[0].strategy, "newborn-outcross");
+    assert.equal(env.store.owehBreedPreview.strategy, "newborn-outcross");
+    assert.ok(env.log.status.some(text => text.startsWith("Newborn outcross plan ready")));
   }
 
   // v5.7.0: planning is command-first — it works from any page and never navigates. The catalog
@@ -312,6 +328,25 @@ function setup({
     assert.equal(env.store.owehBreedCampaign.bredCount, 1);
     assert.equal(env.store.owehBreedCampaign.active, false);
     assert.equal(env.log.done, 1);
+  }
+
+  // A Newborn outcross pair is bred the same direct way and reports the male's endpoint pairs.
+  {
+    const pure = { distance: 40, lockedChannels: 0, body1ReachableChannels: 1, body1NewExactChannels: 1, reachableChannels: 9 };
+    const env = setup({
+      campaign: { active: true, mode: "database-direct-v2", strategy: "newborn-outcross", femaleIndex: 0, bredCount: 0, errors: 0, unpaired: 0, startedAt: 321 },
+      queue: [{ id: "10", name: "Female N", maleId: "20", pure, maleEndpointPairs: 4, maleSecondaryBestDistance: 12, maleSecondaryBestKey: "scales" }],
+      pets: {
+        "10": { id: "10", name: "Female N", gender: "Female", enclosure: "Newborn", onCooldown: false, pedigreeVerified: true, ancestors: ["a"] },
+        "20": { id: "20", name: "Male S", gender: "Male", pedigreeVerified: true, ancestors: ["b"] }
+      }
+    });
+    await env.api.process();
+    assert.deepEqual(env.log.breedCalls, [["10", "20", 321]]);
+    assert.equal(env.store.owehBreedHistory[0].strategy, "newborn-outcross");
+    assert.ok(env.log.status.some(text => text.includes("Newborn outcross · male has 4 target FF/00 pair(s)")),
+      "the outcross status must name the male's endpoint pairs");
+    assert.equal(env.store.owehBreedCampaign.active, false);
   }
 
   // OviPets may still reject a cached pair (most importantly when the server knows a

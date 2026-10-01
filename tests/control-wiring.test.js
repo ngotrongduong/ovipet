@@ -30,7 +30,8 @@ const missing = [...new Set(bindings.filter(id => !htmlIds.has(id)))];
 if (missing.length) throw new Error(`Bindings reference missing controls: ${missing.join(", ")}`);
 for (const id of [
   "oweh-maintain-start", "oweh-start", "oweh-start-hatchlings",
-  "oweh-ninja-start", "oweh-requests-start", "oweh-start-sweep", "oweh-start-breed", "oweh-start-breed-target"
+  "oweh-ninja-start", "oweh-requests-start", "oweh-start-sweep", "oweh-start-breed", "oweh-start-breed-target",
+  "oweh-start-breed-outcross"
 ]) {
   if (!bindings.includes(id)) throw new Error(`Critical button is not bound: ${id}`);
 }

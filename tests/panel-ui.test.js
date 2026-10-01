@@ -53,7 +53,7 @@ function setup() {
       panelId: "panel", tooltipId: "tooltip", instanceId: "instance",
       stopAllAutomation() {}, saveCurrentPet() {}, refreshDatabaseHealth: async () => null, rankPartners() {},
       startOwnEggs() {}, stopOwnEggs() {}, scanFriends() {}, requestFriendSweepWorker() {}, requestGoToNextFriend() {},
-      stopFriendSweep() {}, copyBlacklistCsv() {}, applySuggestedName() {}, requestStartBreedCampaign() {}, requestStartBreedTargetCampaign() {}, stopBreedCampaign() {},
+      stopFriendSweep() {}, copyBlacklistCsv() {}, applySuggestedName() {}, requestStartBreedCampaign() {}, requestStartBreedTargetCampaign() {}, requestStartBreedOutcrossCampaign() {}, stopBreedCampaign() {},
       copyRetentionReviewCsv() {}, requestStartHatchlingProcessing() {}, stopHatchlingProcessing() {},
       confirmBreedPreview() {}, discardBreedPreview() {}, setBreedPairLimit: async value => Number(value) || 0,
       getPetNameSuggestion: () => suggestion,
