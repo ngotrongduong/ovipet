@@ -36,7 +36,25 @@
       && Number(task.leaseUntil || 0) > now;
   }
 
-  async function mirrorSharedWorkerState(task) {
+  // Mirror writes are serialized and each one re-reads the authoritative row, so an older
+  // snapshot (a heartbeat that finished after a release) can never land last and leave a
+  // stale live owner in chrome.storage.local. The passed task is only a read-failure fallback.
+  let mirrorChain = Promise.resolve();
+  function mirrorSharedWorkerState(task) {
+    const run = mirrorChain.then(async () => {
+      let current = task;
+      try {
+        current = await readSharedWorkerTask();
+      } catch {
+        // Keep the caller's snapshot; the next mirror write corrects it.
+      }
+      return writeSharedWorkerMirror(current);
+    });
+    mirrorChain = run.catch(() => {});
+    return run;
+  }
+
+  async function writeSharedWorkerMirror(task) {
     const now = Date.now();
     const owehWorker = isWorkerLeaseLive(task, now)
       ? {
@@ -234,7 +252,7 @@
     // newer live claim. Only clear the mirror when this call actually released the row;
     // otherwise restore it from the authoritative task currently in IndexedDB.
     if (released) {
-      await chrome.storage.local.set({ owehWorker: null });
+      await mirrorSharedWorkerState(null);
       diag("info", "worker.released", { owner: released.owner, generation: released.generation, tabId: released.ownerTabId, previousStatus: released.status });
     } else await mirrorSharedWorkerState(await readSharedWorkerTask());
     return released;

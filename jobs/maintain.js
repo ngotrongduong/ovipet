@@ -87,7 +87,13 @@ OWEH.register("job-maintain", helpers => {
       if (!Object.keys(changed).length) return;
       const batch = { ...changed };
       for (const id of Object.keys(changed)) delete changed[id];
-      await storageSet({ owehPets: batch });
+      try {
+        await storageSet({ owehPets: batch });
+      } catch (error) {
+        // Keep the unsaved records (a newer copy wins) so the final flush retries them.
+        for (const [id, pet] of Object.entries(batch)) if (!(id in changed)) changed[id] = pet;
+        throw error;
+      }
     };
 
     async function refresh(cached) {
@@ -122,20 +128,32 @@ OWEH.register("job-maintain", helpers => {
     }
 
     let cursor = 0;
+    // One worker failing stops the others from taking new pets, but the job waits for every
+    // in-flight profile/rename to settle and saves what changed before it reports the error.
+    let failure = null;
     const worker = async () => {
-      while (cursor < queue.length && !isCancelled()) {
-        const cached = queue[cursor];
-        cursor += 1;
-        await refresh(cached);
-        done += 1;
-        phase(`profiles ${done}/${queue.length}`);
-        status(`Update database: profiles ${done}/${queue.length} · renamed ${result.renamed} · errors ${result.errors}`);
-        if (Object.keys(changed).length >= SAVE_EVERY) await flush();
-        await sleep(settings.DEFAULT_REQUEST_DELAY);
+      try {
+        while (cursor < queue.length && !isCancelled() && !failure) {
+          const cached = queue[cursor];
+          cursor += 1;
+          await refresh(cached);
+          done += 1;
+          phase(`profiles ${done}/${queue.length}`);
+          status(`Update database: profiles ${done}/${queue.length} · renamed ${result.renamed} · errors ${result.errors}`);
+          if (Object.keys(changed).length >= SAVE_EVERY) await flush();
+          await sleep(settings.DEFAULT_REQUEST_DELAY);
+        }
+      } catch (error) {
+        failure = failure || error;
       }
     };
     await Promise.all(Array.from({ length: Math.min(PROFILE_CONCURRENCY, queue.length) }, worker));
-    await flush();
+    try {
+      await flush();
+    } catch (error) {
+      failure = failure || error;
+    }
+    if (failure) throw failure;
     if (result.read) {
       const meta = await storageGet("owehDatabaseMeta", {});
       await storageSet({

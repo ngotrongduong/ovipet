@@ -246,7 +246,10 @@ OWEH.register("feature-hatchlings", helpers => {
     runToken += 1;
     const state = await read();
     if (state.active) await storageSet({ owehHatchlingRun: { ...state, active: false } });
-    await requestReleaseWorker("hatchlings");
+    const released = await requestReleaseWorker("hatchlings");
+    // The durable flag above is already cleared; a failed release must still be visible.
+    if (released?.ok === false) setStatus(`Hatchling processing: Stop could not release the shared background tab (${released.error || "no response"}) — press Stop again`);
+    return released;
   }
 
   function stopLocal() {

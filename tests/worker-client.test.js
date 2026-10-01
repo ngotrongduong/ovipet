@@ -59,9 +59,13 @@ const worker = globalThis.OWEH.core.workerClient;
     "a different generation must not replace an active local generation");
   assert.equal(starts, 1);
 
-  workerMirror = { owner: "feed", leaseUntil: Date.now() + 10_000 };
+  workerMirror = { owner: "feed", generation: 10, leaseUntil: Date.now() + 10_000 };
   assert.equal(await worker.isWorkerOwner("feed"), true);
   assert.equal(await worker.isWorkerOwner("catalog"), false);
+  // A newer claim by the same owner name (another tab took over after this lease expired).
+  workerMirror = { owner: "feed", generation: 11, leaseUntil: Date.now() + 10_000 };
+  assert.equal(await worker.isWorkerOwner("feed"), false, "another generation's lease is not ours");
+  workerMirror = { owner: "feed", generation: 10, leaseUntil: Date.now() + 10_000 };
 
   worker.reportWorkerPhase("halfway");
   assert.deepEqual(sent.at(-1), { type: "workerPhase", generation: 10, phase: "halfway" });

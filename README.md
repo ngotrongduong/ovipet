@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.9.0**
+Current release: **v5.9.1**
 
 ## Engineering objective
 
@@ -16,6 +16,16 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.9.1 Review hardening (stop, leases, pet database failures)
+
+- **Stop** now reports honestly: Stop All tries every feature even if one fails, always releases the shared tab, and says which part could not stop. A job's or feature's Stop retries a failed release once and tells you to press Stop again instead of showing "stopped".
+- A job that loses the shared-tab lease (a newer run took over) stops itself instead of carrying on. Lease ownership is checked per run (generation), not only by owner name.
+- If the pet database cannot be read or written, work stops with an error instead of falling back to the old pre-migration pet list, which could still show culled males in their old enclosures.
+- **Breed** never picks a male that is in Males discard, sold, or gone. **Cull males** skips a queued male that is already in Males discard.
+- A game command whose journal entry cannot be marked as sent is not sent at all, so a reload cannot resend it.
+- **Update database** waits for the profile reads already in flight and saves them before it reports an error.
+- The background-tab status shown in the panel can no longer show an old owner after the tab was released.
 
 ## v5.9.0 Lighter dashboard, legacy scan code removed
 

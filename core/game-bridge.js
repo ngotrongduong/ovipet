@@ -32,11 +32,14 @@
       // Persist the no-return boundary before crossing into page code. If this isolated
       // world is destroyed immediately after dispatch, a reload will reconcile instead
       // of blindly sending the same mutation again.
-      await runtimeRequest({
+      // If that boundary cannot be saved, the entry stays "queued" — truthful, because the
+      // command is then never sent.
+      const marked = await runtimeRequest({
         type: "commandJournalUpdate",
         id: journalId,
         patch: { status: "dispatched", dispatchedAt: Date.now() }
       });
+      if (!marked?.ok) return { ok: false, reason: marked?.error || "journal-failed" };
     }
 
     const result = await new Promise(resolve => {

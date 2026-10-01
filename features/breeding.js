@@ -372,7 +372,10 @@ OWEH.register("feature-breeding", helpers => {
     if (campaign.active) await storageSet({ owehBreedCampaign: { ...campaign, active: false } });
     // Stop also withdraws an unconfirmed plan so a later click cannot confirm a stale one.
     await storageSet({ owehBreedPreview: null });
-    await requestReleaseWorker("breed");
+    const released = await requestReleaseWorker("breed");
+    // The durable flag above is already cleared; a failed release must still be visible.
+    if (released?.ok === false) setStatus(`Breeding: Stop could not release the shared background tab (${released.error || "no response"}) — press Stop again`);
+    return released;
   }
 
   function stopLocal() {
@@ -453,7 +456,9 @@ OWEH.register("feature-breeding", helpers => {
       const maleId = String(candidate?.maleId || "");
       if (!maleId || rejected.has(maleId)) continue;
       const male = pets[maleId];
-      if (!male || male.gender !== "Male" || male.onCooldown) continue;
+      // Re-checked from the database right before dispatch: a male that left the program
+      // (not owned, gone, or moved to Males discard since the plan) is never sent.
+      if (!male || male.gender !== "Male" || male.onCooldown || male.owned === false || male.present === false || isCullPet(male)) continue;
       // Game-listed candidates came from this female's own Breeding tab at planning time.
       const compatibility = candidate?.gameListed === true
         ? { safe: true, reason: "game-listed", overlapIds: [] }

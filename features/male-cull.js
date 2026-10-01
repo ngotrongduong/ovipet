@@ -131,6 +131,15 @@ OWEH.register("feature-male-cull", helpers => {
           const done = rows.filter(item => item.status !== "queued").length;
           phase(`cull ${done + 1}/${rows.length}`);
           const pet = (await getPetsByIds([row.id]))[row.id];
+          // Already in Males discard (e.g. moved, then the tab closed before progress was
+          // saved): skip before any profile request — pets there are never read.
+          if (pet && breedingPlan.isCullEnclosure(pet.enclosure)) {
+            row.status = "skipped";
+            row.error = "already-in-discard";
+            counts.skipped += 1;
+            await save({ running: true });
+            continue;
+          }
           // A Generated male is never moved: the database flag must say "not Generated" AND a
           // fresh profile read right before the move must agree. A failed read skips the male.
           let fresh = null;

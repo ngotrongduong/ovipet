@@ -36,6 +36,7 @@ class FakeDocument {
 }
 
 const runtimeMessages = [];
+let journalUpdateFails = false;
 globalThis.CustomEvent = FakeCustomEvent;
 globalThis.document = new FakeDocument();
 globalThis.location = { href: "https://ovipets.com/#!/?pet=7", hash: "#!/?pet=7" };
@@ -45,7 +46,7 @@ globalThis.chrome = {
     sendMessage(message, callback) {
       runtimeMessages.push(message);
       if (message.type === "commandJournalBegin") return callback({ ok: true });
-      if (message.type === "commandJournalUpdate") return callback({ ok: true });
+      if (message.type === "commandJournalUpdate") return callback(journalUpdateFails ? { ok: false, error: "idb-write-failed" } : { ok: true });
       return callback({ ok: true });
     }
   },
@@ -68,6 +69,14 @@ const bridge = globalThis.OWEH.core.gameBridge;
   const journal = runtimeMessages.filter(message => message.type === "commandJournalUpdate");
   assert.equal(journal[0].patch.status, "dispatched", "journal must persist the no-return boundary before dispatch");
   assert.equal(journal.at(-1).patch.status, "callback-confirmed", "successful callback must confirm the journal entry");
+
+  // No dispatch unless the "dispatched" journal state was saved first.
+  journalUpdateFails = true;
+  const commandsBefore = document.commands.length;
+  const unjournaled = await bridge.sendGameCommand("pet_breed", 11, {}, 50, false, "breed:x:11:12");
+  assert.deepEqual(unjournaled, { ok: false, reason: "idb-write-failed" });
+  assert.equal(document.commands.length, commandsBefore, "a command whose dispatched state could not be saved is never sent");
+  journalUpdateFails = false;
 
   document.respond = false;
   const timeout = await bridge.sendGameCommand("pet_rename", 8, {}, 5);

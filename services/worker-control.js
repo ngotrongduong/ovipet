@@ -36,15 +36,32 @@
     // release whatever it currently thinks is claimed. The one-button jobs under jobs/ keep no
     // storage flag at all, so the final generic release below is what stops them. Sequential,
     // not Promise.all, so no two stops ever race on the same storage key.
+    // Each cleanup is independent: one failing stop must not skip the others, and the shared
+    // lease is released in `finally` whatever happened before it.
     async function stopAllAutomation() {
       diagnosticLog("warning", "control", "automation.stop-all", {});
-      await stops.stopFriendSweep();
-      await stops.stopBreedCampaign();
-      await stops.stopHatchlings();
-      await stops.stopOwnEggs();
-      await runtimeRequest({ type: "eggBatchStop" });
-      await requestReleaseWorker();
-      setStatus("Stop All: cleared every automation flag and released the shared background tab");
+      const failed = [];
+      const attempt = async (name, fn) => {
+        try {
+          const result = await fn();
+          if (result?.ok === false) failed.push(name);
+        } catch (error) {
+          failed.push(name);
+          diagnosticLog("error", "control", "automation.stop-all.step-failed", { step: name, message: error?.message || String(error) });
+        }
+      };
+      try {
+        await attempt("sweep", stops.stopFriendSweep);
+        await attempt("breed", stops.stopBreedCampaign);
+        await attempt("hatchlings", stops.stopHatchlings);
+        await attempt("own-eggs", stops.stopOwnEggs);
+        await attempt("egg-batch", () => runtimeRequest({ type: "eggBatchStop" }));
+      } finally {
+        await attempt("shared-worker", () => requestReleaseWorker());
+      }
+      setStatus(failed.length
+        ? `Stop All: could not fully stop ${failed.join(", ")} — press Stop All again`
+        : "Stop All: cleared every automation flag and released the shared background tab");
     }
 
     async function sendTaskHeartbeat() {
@@ -53,6 +70,23 @@
       if (state.owehEggRun.active && ownedByThisTab(state.owehEggRun)) ids.push("egg-run");
       if (ids.length) await runtimeRequest({ type: "taskHeartbeat", ids });
       await workerClient.heartbeatSharedWorker();
+      await cancelJobIfLeaseLost();
+    }
+
+    // A one-button job (jobs/runner.js) only checks its own `stopped` flag, so it would keep
+    // working after this tab lost the lease (expired, or a Stop message never arrived). The
+    // features with durable progress (sweep/breed/hatchlings) are not stopped here: they
+    // already re-check ownership every step and can resume from their records.
+    async function cancelJobIfLeaseLost() {
+      const owner = workerClient.getOwner?.();
+      if (owner == null || !workerClient.isWorkerOwner) return;
+      const handler = collectWorkerHandlers()[owner];
+      if (!handler?.stop) return;
+      if (await workerClient.isWorkerOwner(owner)) return;
+      if (workerClient.getOwner?.() !== owner) return;
+      diagnosticLog("warning", "worker", "worker.lease-lost", { owner, generation: workerClient.getGeneration?.() ?? null, tabId: getCurrentTabId() });
+      handler.stop();
+      workerClient.clearLocal?.();
     }
 
     function startHeartbeat(isExtensionContextInvalidated, intervalMs = 15000) {

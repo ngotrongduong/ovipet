@@ -33,9 +33,20 @@ OWEH.register("runner", helpers => {
         : `"${label}" started in the shared background tab`);
     }
 
+    // Cancels locally first (a no-op unless this tab runs the job), then releases the lease.
+    // A failed release is retried once and reported — never shown as "stopped".
     async function stop() {
-      await requestReleaseWorker(owner);
+      stopped = true;
+      const release = () => Promise.resolve(requestReleaseWorker(owner))
+        .catch(error => ({ ok: false, error: error?.message || String(error) }));
+      let response = await release();
+      if (response?.ok === false) response = await release();
+      if (response?.ok === false) {
+        setStatus(`"${label}": Stop could not release the shared background tab (${response.error || "no response"}) — press Stop again`);
+        return response;
+      }
       setStatus(`"${label}" stopped`);
+      return response;
     }
 
     async function start(generation, extra) {

@@ -353,6 +353,33 @@ function setup({
     assert.equal(env.store.owehBreedCampaign.active, false);
   }
 
+  // A queued male that left the program after planning (moved to Males discard, gone, or no
+  // longer owned) is re-checked right before dispatch and never sent.
+  {
+    const pure = { distance: 0 };
+    const env = setup({
+      campaign: { active: true, mode: "database-direct-v2", strategy: "pure-line", femaleIndex: 0, bredCount: 0, errors: 0, unpaired: 0, startedAt: 789 },
+      queue: [{
+        id: "10", name: "Female A", maleId: "20", maleCandidateIndex: 0, rejectedMaleIds: [], pure,
+        maleCandidates: [
+          { maleId: "20", maleName: "Culled", pure },
+          { maleId: "30", maleName: "Gone", pure },
+          { maleId: "40", maleName: "Sold", pure },
+          { maleId: "50", maleName: "Keeper", pure }
+        ]
+      }],
+      pets: {
+        "10": { id: "10", name: "Female A", gender: "Female", onCooldown: false, pedigreeVerified: true, ancestors: ["fa"] },
+        "20": { id: "20", name: "Culled", gender: "Male", enclosure: "Males discard", pedigreeVerified: true, ancestors: ["m2"] },
+        "30": { id: "30", name: "Gone", gender: "Male", present: false, pedigreeVerified: true, ancestors: ["m3"] },
+        "40": { id: "40", name: "Sold", gender: "Male", owned: false, pedigreeVerified: true, ancestors: ["m4"] },
+        "50": { id: "50", name: "Keeper", gender: "Male", enclosure: "Males", pedigreeVerified: true, ancestors: ["m5"] }
+      }
+    });
+    await env.api.process();
+    assert.deepEqual(env.log.breedCalls, [["10", "50", 789]]);
+  }
+
   // Runtime pedigree validation is fail-closed even if a corrupt/legacy queue somehow
   // reaches execution. No direct breeding command may be sent for an unverified female.
   {

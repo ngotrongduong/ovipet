@@ -211,7 +211,10 @@ OWEH.register("feature-friend-sweep", helpers => {
     // active flag can block independent egg turning forever.
     const sweep = await read();
     if (sweep.active) await storageSet({ owehSweep: { active: false, index: 0, maxFriends: 0, cycle: 1, waitingUntil: 0 } });
-    await requestReleaseWorker("sweep");
+    const released = await requestReleaseWorker("sweep");
+    // The durable flag above is already cleared; a failed release must still be visible.
+    if (released?.ok === false) setStatus(`Friend sweep: Stop could not release the shared background tab (${released.error || "no response"}) — press Stop again`);
+    return released;
   }
 
   async function goNext() {

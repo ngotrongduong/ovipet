@@ -42,7 +42,10 @@
   async function isWorkerOwner(expectedOwner) {
     if (owner !== expectedOwner) return false;
     const worker = await storageGet("owehWorker", null);
-    return Boolean(worker) && worker.owner === expectedOwner && Date.now() < Number(worker.leaseUntil || 0);
+    if (!worker || worker.owner !== expectedOwner || Date.now() >= Number(worker.leaseUntil || 0)) return false;
+    // Same owner name is not enough: after this tab's lease expired, a newer claim by the same
+    // feature (another tab/generation) must not read as ours.
+    return worker.generation == null || generation == null || Number(worker.generation) === Number(generation);
   }
 
   function requestClaimWorker(nextOwner, url, extra = {}) {
