@@ -26,10 +26,9 @@
   });
   // v5.10.0: an outcross male must carry at least this many target endpoint pairs (FF/00).
   const OUTCROSS_MIN_ENDPOINT_PAIRS = 2;
-  // v5.10.1: an outcross female is judged on the three colors her name shows (Body 1, Body 2,
-  // Scales). Extra 1 / Extra 2 almost always carry a 00 somewhere, so checking all five slots
-  // left only a couple of the Newborn females in the plan.
-  const OUTCROSS_FEMALE_KEYS = Object.freeze(["body1", "body2", "scales"]);
+  // v5.10.2: the outcross plan takes every female in the Newborn enclosure — no color-based
+  // exclusion (an FF/00 pair anywhere no longer keeps a female out).
+  const OUTCROSS_FEMALE_ENCLOSURE = "Newborn";
   const PURE_ENCLOSURE_BY_MASK = Object.freeze({
     "100": "FF ** **",
     "010": "** FF **",
@@ -140,8 +139,9 @@
     return count;
   }
 
-  const isOutcrossFemale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Female"
-    && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target) && !hasEndpointColorPair(pet, OUTCROSS_FEMALE_KEYS);
+  // Only cooldown keeps a Newborn female out: OviPets cannot breed her until it ends.
+  const isOutcrossFemale = pet => pet?.present !== false && pet?.owned && pet.gender === "Female"
+    && !pet.onCooldown && normalizeEnclosureLabel(pet.enclosure) === normalizeEnclosureLabel(OUTCROSS_FEMALE_ENCLOSURE);
   const isOutcrossMale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Male"
     && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target)
     && targetEndpointPairCount(pet, target) >= OUTCROSS_MIN_ENDPOINT_PAIRS;
@@ -175,7 +175,7 @@
   function plannableFemales(pets, target, strategy) {
     const normalized = normalizeBreedingStrategy(strategy);
     if (normalized === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
-      return Object.values(pets || {}).filter(pet => isOutcrossFemale(pet, target));
+      return Object.values(pets || {}).filter(isOutcrossFemale);
     }
     const sameFf = normalized === BREEDING_STRATEGIES.SAME_FF_TARGET;
     return Object.values(pets || {})
@@ -326,15 +326,15 @@
   }
 
   function buildNewbornOutcrossPlan(pets, target, history, options, now) {
-    // Outcross strategy for females with no FF/00 pair in Body 1, Body 2 or Scales (usually
-    // still in Newborn). Each one is paired with a same-species male that carries at least
+    // Outcross strategy for every female in the Newborn enclosure, whatever her colors (v5.10.2).
+    // Each one is paired with a same-species male that carries at least
     // OUTCROSS_MIN_ENDPOINT_PAIRS target endpoint pairs, so the egg can inherit exact target
     // channels the mother lacks. Among qualifying males the one whose Body 2 / Scales /
     // Extra 1 / Extra 2 has the slot closest to target wins; more endpoint pairs, recent use,
     // lineage use and total secondary distance break ties.
     const eligible = eligibilityIndex(options.gameEligible);
     const females = Object.values(pets)
-      .filter(pet => isOutcrossFemale(pet, target) && pedigreeUsable(pet, eligible));
+      .filter(pet => isOutcrossFemale(pet) && pedigreeUsable(pet, eligible));
     sortByPureMetrics(females, target);
     const males = Object.values(pets)
       .filter(pet => isOutcrossMale(pet, target) && (pet.pedigreeVerified === true || eligible.size > 0));
@@ -360,7 +360,8 @@
           usageCount: usage.get(String(male.id)) || 0,
           lineageUse: lineageUsage.get(lineageKey(male)) || 0
         }))
-        .filter(item => item.pedigree.safe && Number.isFinite(item.pure.distance))
+        // Ranking uses the male's colors only, so a female with unread colors still gets a male.
+        .filter(item => item.pedigree.safe)
         .sort((a, b) => {
           const bestDelta = Number(a.secondary?.bestDistance ?? Infinity)
             - Number(b.secondary?.bestDistance ?? Infinity);
@@ -565,7 +566,7 @@
     BREED_HISTORY_WINDOW_MS,
     BREEDING_STRATEGIES,
     OUTCROSS_MIN_ENDPOINT_PAIRS,
-    OUTCROSS_FEMALE_KEYS,
+    OUTCROSS_FEMALE_ENCLOSURE,
     PURE_ENCLOSURE_BY_MASK,
     NEWBORN_ENCLOSURES,
     normalizeEnclosureLabel,

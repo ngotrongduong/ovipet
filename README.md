@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.10.1**
+Current release: **v5.10.2**
 
 ## Engineering objective
 
@@ -16,6 +16,12 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.10.2 Newborn outcross takes every Newborn female
+
+- **Plan Newborn outcross** now plans **every female in the Newborn enclosure**, whatever her colors. A female with an FF or 00 pair (in Body 1, Body 2, Scales or the extras) is no longer left out; only a female still on cooldown waits, because OviPets cannot breed her yet. Females in other enclosures are not part of this plan.
+- A female whose colors are not read yet still gets a male, since the male is chosen on his own colors.
+- The outcross plan may read up to 2000 partner lists (was 400), so every Newborn female gets OviPets' own partner list and none is dropped for lack of one.
 
 ## v5.10.1 Newborn outcross fixes
 
