@@ -5,7 +5,7 @@
     throw new Error("colors, pedigree and breeding-score must load before domain/breeding-plan.js");
   }
 
-  const { STRICT_PURE_TARGET, STRICT_TARGET_CHANNELS, TARGET_KEYS, petPureMetrics, comparePetPureMetrics } = OWEH.domain.colors;
+  const { STRICT_PURE_TARGET, STRICT_TARGET_CHANNELS, TARGET_KEYS, rgb, petPureMetrics, comparePetPureMetrics } = OWEH.domain.colors;
   const { pedigreeCompatibility, lineageKey } = OWEH.domain.pedigree;
   const {
     DEFAULT_MALE_SHORTLIST_SIZE, pairPureMetrics, comparePairPureMetrics, shortlistMales,
@@ -21,8 +21,11 @@
   const BREED_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const BREEDING_STRATEGIES = Object.freeze({
     PURE_LINE: "pure-line",
-    SAME_FF_TARGET: "same-ff-target"
+    SAME_FF_TARGET: "same-ff-target",
+    NEWBORN_OUTCROSS: "newborn-outcross"
   });
+  // v5.10.0: an outcross male must carry at least this many target endpoint pairs (FF/00).
+  const OUTCROSS_MIN_ENDPOINT_PAIRS = 2;
   const PURE_ENCLOSURE_BY_MASK = Object.freeze({
     "100": "FF ** **",
     "010": "** FF **",
@@ -105,9 +108,7 @@
   }
 
   function normalizeBreedingStrategy(value) {
-    return value === BREEDING_STRATEGIES.SAME_FF_TARGET
-      ? BREEDING_STRATEGIES.SAME_FF_TARGET
-      : BREEDING_STRATEGIES.PURE_LINE;
+    return Object.values(BREEDING_STRATEGIES).includes(value) ? value : BREEDING_STRATEGIES.PURE_LINE;
   }
 
   function completeForTarget(pet, target) {
@@ -118,6 +119,28 @@
     const values = Object.values(secondary?.distances || {}).filter(Number.isFinite);
     return values.length ? values.reduce((sum, value) => sum + value, 0) : Infinity;
   }
+
+  // Aligned RR/GG/BB pairs, over all five target slots, that already equal the target where the
+  // target itself is an endpoint (FF or 00). These are the channels an outcross male can pass
+  // on exactly, since offspring channels stay inside the parents' range.
+  function targetEndpointPairCount(pet, target) {
+    let count = 0;
+    for (const key of TARGET_KEYS) {
+      if (!target?.[key] || !pet?.colors?.[key]) continue;
+      const actual = rgb(pet.colors[key]);
+      const wanted = rgb(target[key]);
+      for (let index = 0; index < 3; index += 1) {
+        if ((wanted[index] === 0 || wanted[index] === 255) && actual[index] === wanted[index]) count += 1;
+      }
+    }
+    return count;
+  }
+
+  const isOutcrossFemale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Female"
+    && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target) && !hasEndpointColorPair(pet);
+  const isOutcrossMale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Male"
+    && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target)
+    && targetEndpointPairCount(pet, target) >= OUTCROSS_MIN_ENDPOINT_PAIRS;
 
   // v5.5.2: options.gameEligible = { [femaleId]: [maleId, ...] } read from each female's own
   // Breeding tab — the partners OviPets itself offers (related and cooling-down pets already
@@ -146,7 +169,11 @@
   // Females a plan may consider before the species focus / pedigree step, so the feature can
   // read their Breeding tab once. Same filters as the plans below minus pedigreeVerified.
   function plannableFemales(pets, target, strategy) {
-    const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
+    const normalized = normalizeBreedingStrategy(strategy);
+    if (normalized === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
+      return Object.values(pets || {}).filter(pet => isOutcrossFemale(pet, target));
+    }
+    const sameFf = normalized === BREEDING_STRATEGIES.SAME_FF_TARGET;
     return Object.values(pets || {})
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
         && !isCullEnclosure(pet.enclosure) && (sameFf || isBreedingFemaleEnclosure(pet.enclosure))
@@ -155,8 +182,15 @@
 
   // Enclosure labels holding at least one male a plan may pick (pure-line: Males only).
   function plannableMaleEnclosures(pets, target, strategy) {
-    const sameFf = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.SAME_FF_TARGET;
+    const normalized = normalizeBreedingStrategy(strategy);
+    const sameFf = normalized === BREEDING_STRATEGIES.SAME_FF_TARGET;
     const labels = new Set();
+    if (normalized === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
+      for (const pet of Object.values(pets || {})) {
+        if (isOutcrossMale(pet, target) && pet.enclosure) labels.add(String(pet.enclosure));
+      }
+      return [...labels];
+    }
     for (const pet of Object.values(pets || {})) {
       if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || isCullEnclosure(pet.enclosure)
         || !completeForTarget(pet, target)) continue;
@@ -178,7 +212,8 @@
       maleLineageUseBefore: Number(item.lineageUse || 0),
       maleSecondaryBestDistance: Number.isFinite(item.secondary?.bestDistance) ? item.secondary.bestDistance : null,
       maleSecondaryBestKey: item.secondary?.bestKey || null,
-      maleSecondaryTotalDistance: Number.isFinite(total) ? total : null
+      maleSecondaryTotalDistance: Number.isFinite(total) ? total : null,
+      maleEndpointPairs: Number.isFinite(item.endpointPairs) ? item.endpointPairs : null
     };
   }
 
@@ -286,6 +321,101 @@
     };
   }
 
+  function buildNewbornOutcrossPlan(pets, target, history, options, now) {
+    // Outcross strategy for females with no FF/00 pair in any target slot (usually still in
+    // Newborn). Each one is paired with a same-species male that carries at least
+    // OUTCROSS_MIN_ENDPOINT_PAIRS target endpoint pairs, so the egg can inherit exact target
+    // channels the mother lacks. Among qualifying males the one whose Body 2 / Scales /
+    // Extra 1 / Extra 2 has the slot closest to target wins; more endpoint pairs, recent use,
+    // lineage use and total secondary distance break ties.
+    const eligible = eligibilityIndex(options.gameEligible);
+    const females = Object.values(pets)
+      .filter(pet => isOutcrossFemale(pet, target) && pedigreeUsable(pet, eligible));
+    sortByPureMetrics(females, target);
+    const males = Object.values(pets)
+      .filter(pet => isOutcrossMale(pet, target) && (pet.pedigreeVerified === true || eligible.size > 0));
+
+    const usage = recentMaleUsage(history, now);
+    const lineageUsage = new Map();
+    for (const male of males) {
+      const count = usage.get(String(male.id)) || 0;
+      const key = lineageKey(male);
+      lineageUsage.set(key, (lineageUsage.get(key) || 0) + count);
+    }
+
+    let unpaired = 0;
+    const queue = females.map(female => {
+      const candidates = males
+        .filter(male => (male.species || "Unknown") === (female.species || "Unknown"))
+        .map(male => ({
+          male,
+          pure: pairPureMetrics(female, male, target),
+          secondary: bestSecondaryTargetDistance(male, target),
+          endpointPairs: targetEndpointPairCount(male, target),
+          pedigree: pairCompatibility(female, male, eligible),
+          usageCount: usage.get(String(male.id)) || 0,
+          lineageUse: lineageUsage.get(lineageKey(male)) || 0
+        }))
+        .filter(item => item.pedigree.safe && Number.isFinite(item.pure.distance))
+        .sort((a, b) => {
+          const bestDelta = Number(a.secondary?.bestDistance ?? Infinity)
+            - Number(b.secondary?.bestDistance ?? Infinity);
+          if (bestDelta) return bestDelta;
+          const endpointDelta = b.endpointPairs - a.endpointPairs;
+          if (endpointDelta) return endpointDelta;
+          const usageDelta = Number(a.usageCount || 0) - Number(b.usageCount || 0);
+          if (usageDelta) return usageDelta;
+          const lineageDelta = Number(a.lineageUse || 0) - Number(b.lineageUse || 0);
+          if (lineageDelta) return lineageDelta;
+          const totalDelta = secondaryTotalDistance(a.secondary) - secondaryTotalDistance(b.secondary);
+          if (totalDelta) return totalDelta;
+          return String(a.male.id || "").localeCompare(String(b.male.id || ""));
+        });
+
+      const chosen = candidates[0];
+      const maleCandidates = candidates.map(candidateSnapshot).filter(Boolean);
+      if (!chosen) unpaired += 1;
+      if (chosen) {
+        const maleId = String(chosen.male.id);
+        usage.set(maleId, (usage.get(maleId) || 0) + 1);
+        const key = lineageKey(chosen.male);
+        lineageUsage.set(key, (lineageUsage.get(key) || 0) + 1);
+      }
+      return {
+        id: female.id,
+        name: female.name,
+        species: female.species,
+        enclosure: female.enclosure || null,
+        maleId: chosen?.male.id || null,
+        maleName: chosen?.male.name || null,
+        pure: chosen?.pure || null,
+        maleCandidates,
+        maleCandidateIndex: 0,
+        rejectedMaleIds: [],
+        strategy: BREEDING_STRATEGIES.NEWBORN_OUTCROSS,
+        outcrossCandidateCount: candidates.length,
+        maleEndpointPairs: chosen ? chosen.endpointPairs : null,
+        maleUsageBefore: chosen?.usageCount || 0,
+        maleLineageUseBefore: chosen?.lineageUse || 0,
+        maleSecondaryBestDistance: Number.isFinite(chosen?.secondary?.bestDistance) ? chosen.secondary.bestDistance : null,
+        maleSecondaryBestKey: chosen?.secondary?.bestKey || null,
+        maleSecondaryTotalDistance: Number.isFinite(secondaryTotalDistance(chosen?.secondary))
+          ? secondaryTotalDistance(chosen?.secondary) : null,
+        maleBody1EquivalentPoolSize: 0
+      };
+    });
+
+    return {
+      queue,
+      strategy: BREEDING_STRATEGIES.NEWBORN_OUTCROSS,
+      focusSpecies: null,
+      femaleCount: females.length,
+      maleCount: males.length,
+      unpaired,
+      shortlistSize: males.length
+    };
+  }
+
   function buildDatabaseBreedPlan(pets, target, history = [], options = {}) {
     const now = Number(options.now);
     if (!Number.isFinite(now)) throw new Error("buildDatabaseBreedPlan requires a finite options.now");
@@ -293,6 +423,9 @@
     const strategy = normalizeBreedingStrategy(options.strategy);
     if (strategy === BREEDING_STRATEGIES.SAME_FF_TARGET) {
       return buildSameFfTargetPlan(pets, target, history, options, now);
+    }
+    if (strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
+      return buildNewbornOutcrossPlan(pets, target, history, options, now);
     }
     const eligible = eligibilityIndex(options.gameEligible);
     const breedableFemales = Object.values(pets)
@@ -427,6 +560,7 @@
     DEFAULT_BREEDING_STOCK_MAX_DISTANCE,
     BREED_HISTORY_WINDOW_MS,
     BREEDING_STRATEGIES,
+    OUTCROSS_MIN_ENDPOINT_PAIRS,
     PURE_ENCLOSURE_BY_MASK,
     NEWBORN_ENCLOSURES,
     normalizeEnclosureLabel,
@@ -439,6 +573,7 @@
     desiredProgramEnclosure,
     recentMaleUsage,
     normalizeBreedingStrategy,
+    targetEndpointPairCount,
     buildDatabaseBreedPlan,
     plannableFemales,
     plannableMaleEnclosures,

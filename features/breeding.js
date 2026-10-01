@@ -32,7 +32,9 @@ OWEH.register("feature-breeding", helpers => {
   }
 
   function strategyLabel(strategy) {
-    return strategy === BREEDING_STRATEGIES.SAME_FF_TARGET ? "Same-FF target improvement" : "Pure-line";
+    if (strategy === BREEDING_STRATEGIES.SAME_FF_TARGET) return "Same-FF target improvement";
+    if (strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) return "Newborn outcross";
+    return "Pure-line";
   }
 
   function normalizePairLimit(value) {
@@ -576,6 +578,10 @@ OWEH.register("feature-breeding", helpers => {
           const candidateText = Number(current.sameFfCandidateCount || 0)
             ? ` · ${current.sameFfCandidateCount} same-FF candidate(s)` : "";
           setStatus(`Command confirmed ${female.name} × ${male.name} · Same-FF target improvement${secondaryText}${candidateText}`);
+        } else if (campaign.strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
+          const endpointText = Number.isFinite(current.maleEndpointPairs)
+            ? ` · male has ${current.maleEndpointPairs} target FF/00 pair(s)` : "";
+          setStatus(`Command confirmed ${female.name} × ${male.name} · Newborn outcross${endpointText}${secondaryText}`);
         } else {
           const equivalentText = Number(current.maleBody1EquivalentPoolSize || 0) > 1
             ? ` · Body 1 equivalent pool ${current.maleBody1EquivalentPoolSize}`

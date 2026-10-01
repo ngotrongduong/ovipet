@@ -8,6 +8,8 @@ OWEH.register("ui-dashboard", helpers => {
   const breedingReadiness = helpers.domain?.breedingPlan?.breedingReadiness;
   const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
+  const STRATEGY_NAMES = { "same-ff-target": "Same-FF target", "newborn-outcross": "Newborn outcross" };
+  const strategyDisplayName = (value, fallback = "Pure-line") => STRATEGY_NAMES[value] || fallback;
   const STRAIGHT_JOB_LABELS = {
     maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", cull: "Male cull"
   };
@@ -78,7 +80,7 @@ OWEH.register("ui-dashboard", helpers => {
     let text = "No plan yet — press a Plan button";
     if (preview && !fresh) text = "The last plan expired (older than 15 minutes) — plan again";
     if (fresh) {
-      const strategy = preview.strategy === "same-ff-target" ? "Same-FF target" : "Pure-line";
+      const strategy = strategyDisplayName(preview.strategy);
       const pairs = preview.queue.filter(row => row?.maleId);
       const sample = pairs.slice(0, 3).map(row => `${row.name || row.id} × ${row.maleName || row.maleId}`).join(", ");
       text = `${strategy} plan · ${preview.species || "?"} · ${Number(preview.pairable ?? pairs.length)} pair(s) for ${Number(preview.femaleCount || 0)} female(s) · ${Number(preview.unpaired || 0)} unpaired · built ${Math.max(0, Math.round(age / 60000))}m ago${sample ? ` · ${sample}${pairs.length > 3 ? ", …" : ""}` : ""}`;
@@ -107,7 +109,7 @@ OWEH.register("ui-dashboard", helpers => {
     const preview = state.owehBreedPreview;
     const campaign = state.owehBreedCampaign || {};
     const queue = Array.isArray(state.owehBreedQueue) ? state.owehBreedQueue : [];
-    const strategyName = value => value === "same-ff-target" ? "Same-FF target" : "Pure-line";
+    const strategyName = value => strategyDisplayName(value);
     if (campaign.active && queue.length) {
       return { key: `campaign:${campaign.startedAt || 0}`, mode: "running", rows: queue, strategy: strategyName(campaign.strategy), species: campaign.species, progress: Number(campaign.femaleIndex || 0), campaign };
     }
@@ -378,7 +380,7 @@ OWEH.register("ui-dashboard", helpers => {
       }
       if (state.owehFriendRemoval?.active) jobs.push({ name: "Friend removal", detail: "confirming", tone: "friend" });
       if (state.owehBreedCampaign?.active) {
-        const strategy = state.owehBreedCampaign.strategy === "same-ff-target" ? "Same-FF target" : "Pure line";
+        const strategy = strategyDisplayName(state.owehBreedCampaign.strategy, "Pure line");
         jobs.push({ name: "Breeding", detail: `${strategy} · ${compactProgress(state.owehBreedCampaign.femaleIndex, state.owehBreedQueue.length)} · ${Number(state.owehBreedCampaign.bredCount || 0)} bred`, tone: "breed" });
       } else if (workerOwns("breed")) {
         // Planning (full-enclosure scan + pair selection) runs under the breed lease before the

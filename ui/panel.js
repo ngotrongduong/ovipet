@@ -24,6 +24,7 @@ OWEH.register("ui-panel", helpers => {
     applySuggestedName,
     requestStartBreedCampaign,
     requestStartBreedTargetCampaign,
+    requestStartBreedOutcrossCampaign,
     stopBreedCampaign,
     copyRetentionReviewCsv,
     confirmBreedPreview,
@@ -303,7 +304,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.9.1</span>
+          <span class="oweh-version">v5.10.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -362,6 +363,7 @@ OWEH.register("ui-panel", helpers => {
             <div class="oweh-actions">
               <button id="oweh-start-breed" type="button" data-tip="Pure-line strategy: scan the full enclosure snapshot, then choose complementary Body-1 FF pairs while preserving pedigree safety and male-line diversity. Builds a plan only; nothing is bred until you press Confirm.">Plan pure-line</button>
               <button id="oweh-start-breed-target" type="button" data-tip="Same-FF target-improvement strategy: scan every enclosure, take every breedable female, list every safe same-species male with the same Body-1 FF mask, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot. Builds a plan only; nothing is bred until you press Confirm.">Plan Same-FF target</button>
+              <button id="oweh-start-breed-outcross" type="button" data-tip="Newborn outcross strategy: take every breedable female with no FF or 00 pair in any color (usually still in Newborn), list every safe same-species male that already carries at least 2 target FF/00 pairs, then choose the male whose Body 2 / Scales / Extra 1 / Extra 2 contains the closest target slot. Builds a plan only; nothing is bred until you press Confirm.">Plan Newborn outcross</button>
               <button id="oweh-stop-breed" class="oweh-danger" type="button" data-tip="Stop the active breeding campaign (and withdraw an unconfirmed plan) without clearing cached pet data.">Stop</button>
             </div>
             <div id="oweh-breed-preview" class="oweh-inline-meta oweh-breed-preview">No plan yet — press a Plan button</div>
@@ -518,6 +520,7 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-apply-name", "Applying suggested name", applySuggestedName, missingControls);
     bindPanelAction(panel, "#oweh-start-breed", "Building pure-line breeding campaign", requestStartBreedCampaign, missingControls);
     bindPanelAction(panel, "#oweh-start-breed-target", "Building Same-FF target breeding campaign", requestStartBreedTargetCampaign, missingControls);
+    bindPanelAction(panel, "#oweh-start-breed-outcross", "Building Newborn outcross breeding campaign", requestStartBreedOutcrossCampaign, missingControls);
     bindPanelAction(panel, "#oweh-stop-breed", "Stopping breeding campaign", stopBreedCampaign, missingControls);
     bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
