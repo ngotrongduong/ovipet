@@ -87,7 +87,9 @@ OWEH.register("feature-breeding", helpers => {
       });
       if (!plan.femaleCount) {
         await storageSet({ owehBreedPreview: null });
-        setStatus("No blue-heart-free indexed females found across the enclosure snapshot");
+        setStatus(strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS
+          ? "No off-cooldown female found in the Newborn enclosure snapshot"
+          : "No blue-heart-free indexed females found across the enclosure snapshot");
         reportWorkerDone();
         return;
       }
@@ -232,7 +234,12 @@ OWEH.register("feature-breeding", helpers => {
   // (which is often unverified). A failed or empty read leaves that female on the local rule.
   // v5.7.0: three females are read at a time, sharing one read budget.
   const GAME_ELIGIBLE_MAX_READS = 400;
+  // v5.10.2: the outcross plan takes every Newborn female and its males span several
+  // enclosures, so it gets a larger budget — a female left without a list stays out of the plan.
+  const OUTCROSS_GAME_ELIGIBLE_MAX_READS = 2000;
   async function readGameEligible(pets, target, strategy, ownUserId, cancelled = () => false) {
+    const maxReads = normalizeBreedingStrategy(strategy) === BREEDING_STRATEGIES.NEWBORN_OUTCROSS
+      ? OUTCROSS_GAME_ELIGIBLE_MAX_READS : GAME_ELIGIBLE_MAX_READS;
     const petFetch = helpers.petFetch;
     if (!petFetch?.readBreedingPartners || !breedingPlan.plannableFemales) return {};
     const enclosureIds = await storageGet("owehEnclosureIds", {});
@@ -252,7 +259,7 @@ OWEH.register("feature-breeding", helpers => {
     const worker = async () => {
       while (cursor < females.length && !cancelled()) {
         // The budget is reserved before the first await so parallel workers cannot overrun it.
-        if (reads + enclosures.length > GAME_ELIGIBLE_MAX_READS) return;
+        if (reads + enclosures.length > maxReads) return;
         reads += enclosures.length;
         const female = females[cursor];
         cursor += 1;
