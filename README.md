@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.8.0**
+Current release: **v5.9.0**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.9.0 Lighter dashboard, legacy scan code removed
+
+- The Breeding readiness line on the dashboard now asks the background for just the female pets and the four fields it counts (gender, enclosure, cooldown, pedigree) instead of loading the whole pet database on every refresh. The dashboard also no longer loads the old pet-index scan queue.
+- Removed the legacy **Pet index** job (`features/pet-index.js`) and the old navigated, tab-by-tab Overview catalog scan. Update database and the planner have read the catalog by fetch since v5.5.0, so neither was reachable any more. No visible change apart from a slightly faster page load.
 
 ## v5.8.0 Faster, smaller enclosure scan
 

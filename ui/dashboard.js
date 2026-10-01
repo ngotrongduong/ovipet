@@ -4,7 +4,7 @@
 // renders only from durable storage + the shared-worker lease; content.js supplies the small
 // visibility/status callbacks needed to compose it with the rest of the panel.
 OWEH.register("ui-dashboard", helpers => {
-  const { storageGet, storageGetMany, runtimeRequest, setStatus, uiDashboardActions } = helpers;
+  const { storageGet, storageGetMany, getPetFields, runtimeRequest, setStatus, uiDashboardActions } = helpers;
   const breedingReadiness = helpers.domain?.breedingPlan?.breedingReadiness;
   const BREED_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
   const { panelId, isPanelVisible } = uiDashboardActions;
@@ -49,7 +49,18 @@ OWEH.register("ui-dashboard", helpers => {
     if (target.closest?.("details")?.open === false) return cachedReadiness;
     if (!force && Date.now() - lastReadinessAt < 30000) return cachedReadiness;
     lastReadinessAt = Date.now();
-    const summary = breedingReadiness(await storageGet("owehPets", {}));
+    // v5.9.0: only the females' counter fields cross the message boundary, not the database.
+    let pets;
+    try {
+      pets = getPetFields
+        ? await getPetFields(["gender", "enclosure", "onCooldown", "pedigreeVerified"], { gender: "Female" })
+        : await storageGet("owehPets", {});
+    } catch (error) {
+      // A failed read must not start the 30 s window: the next ordinary refresh retries.
+      lastReadinessAt = 0;
+      throw error;
+    }
+    const summary = breedingReadiness(pets);
     cachedReadiness = summary;
     target.textContent = summary.total
       ? `Females ready: ${summary.ready}/${summary.total} · ${summary.cooldown} on cooldown · ${summary.unverified} pedigree unverified`
@@ -319,8 +330,6 @@ OWEH.register("ui-dashboard", helpers => {
         owehWorker: null,
         owehBreedCampaign: { active: false, femaleIndex: 0, bredCount: 0 },
         owehBreedQueue: [],
-        owehPetIndex: { active: false, index: 0, indexed: 0 },
-        owehPetScanQueue: [],
         owehHatchlingRun: { active: false, phase: "", index: 0 },
         owehHatchlingQueue: [],
         owehFriendRemoval: { active: false },
@@ -368,13 +377,10 @@ OWEH.register("ui-dashboard", helpers => {
         jobs.push({ name: "Friend sweep", detail: `preparing · background (${state.owehWorker.phase || "starting"})`, tone: "friend" });
       }
       if (state.owehFriendRemoval?.active) jobs.push({ name: "Friend removal", detail: "confirming", tone: "friend" });
-      if (state.owehPetIndex?.active) {
-        jobs.push({ name: "Pet index", detail: compactProgress(state.owehPetIndex.index, state.owehPetScanQueue.length), tone: "pet" });
-      }
       if (state.owehBreedCampaign?.active) {
         const strategy = state.owehBreedCampaign.strategy === "same-ff-target" ? "Same-FF target" : "Pure line";
         jobs.push({ name: "Breeding", detail: `${strategy} · ${compactProgress(state.owehBreedCampaign.femaleIndex, state.owehBreedQueue.length)} · ${Number(state.owehBreedCampaign.bredCount || 0)} bred`, tone: "breed" });
-      } else if (workerOwns("breed") && !state.owehPetIndex?.active) {
+      } else if (workerOwns("breed")) {
         // Planning (full-enclosure scan + pair selection) runs under the breed lease before the
         // campaign record turns active; without this the panel read "Idle" for the whole scan.
         jobs.push({ name: "Breeding", detail: `planning · background (${state.owehWorker.phase || "starting"})`, tone: "breed" });

@@ -13,7 +13,7 @@
     return;
   }
   const {
-    runtimeRequest, storageGet, storageSet, storageGetMany, getPetsByIds,
+    runtimeRequest, storageGet, storageSet, storageGetMany, getPetsByIds, getPetFields,
     isExtensionContextInvalidated
   } = OWEH.core.storage;
   if (!OWEH.core?.gameBridge) {
@@ -104,7 +104,6 @@
   let friendEggsModule = null;
   let friendSweepModule = null;
   let ownEggsModule = null;
-  let petIndexModule = null;
   let hatchlingModule = null;
   let breedingModule = null;
   let dashboardModule = null;
@@ -136,10 +135,9 @@
     diagnosticLog, exportDiagnosticLog, clearDiagnosticLog, getDiagnosticSummary
   } = OWEH.services.diagnostics.createDiagnostics({ runtimeRequest, isExtensionContextInvalidated, setStatus });
   const {
-    waitForOverviewShell, waitForStableValue, collectAllOverviewPets
+    waitForStableValue
   } = OWEH.services.overviewCatalog.createOverviewCatalog({
-    storageGet, storageSet, runtimeRequest, sleep, getPageLoadDelayMs: () => pageLoadDelayMs,
-    overviewDom: OWEH.dom.overview, isTabActive, normalizeEnclosureLabel
+    sleep, overviewDom: OWEH.dom.overview
   });
   // Command-first reads: the JSONP panels the SPA itself loads, parsed without navigating.
   const petFetch = OWEH.services.petFetch.createPetFetch({
@@ -147,7 +145,7 @@
     markup: OWEH.dom.markup, fingerprint: OWEH.services.overviewCatalog.fastFingerprint
   });
   const {
-    openTab, renamePet, applySuggestedName, saveCurrentPet
+    applySuggestedName, saveCurrentPet
   } = OWEH.services.petEdit.createPetEdit({
     sleep, setStatus, storageGet, storageSet, getPageLoadDelayMs: () => pageLoadDelayMs,
     sendGameCommand, fastMovePetToEnclosure, currentPetId, findTab, isTabActive, readOverviewValue, readPet,
@@ -275,12 +273,11 @@
   // here (seeded once, then kept current by storage.onChanged) and an idle machine is skipped
   // without touching storage. Every flag starts true, so nothing is skipped before the seed.
   const ACTIVITY_FLAG_KEYS = Object.freeze({
-    owehPetIndex: "petIndex",
     owehBreedStartRequest: "breedStart",
     owehBreedCampaign: "breedCampaign",
     owehHatchlingRun: "hatchlingRun"
   });
-  const activityFlags = { petIndex: true, breedStart: true, breedCampaign: true, hatchlingRun: true };
+  const activityFlags = { breedStart: true, breedCampaign: true, hatchlingRun: true };
   function setActivityFlag(key, value) {
     const name = ACTIVITY_FLAG_KEYS[key];
     if (!name) return false;
@@ -289,7 +286,7 @@
     activityFlags[name] = active;
     return started;
   }
-  storageGetMany({ owehPetIndex: null, owehBreedStartRequest: null, owehBreedCampaign: null, owehHatchlingRun: null })
+  storageGetMany({ owehBreedStartRequest: null, owehBreedCampaign: null, owehHatchlingRun: null })
     .then(values => Object.keys(ACTIVITY_FLAG_KEYS).forEach(key => setActivityFlag(key, values?.[key])))
     .catch(() => {});
   let lastRefreshHash = null;
@@ -304,7 +301,6 @@
     if (route.hatchery || route.petProfile) ownEggsModule?.process();
     if (route.hatchery) ownEggsModule?.maybeAutoStart();
     if (route.friendHatchery) maybeAutoStartSweep();
-    if (activityFlags.petIndex) petIndexModule?.process();
     if (route.petsOverview && activityFlags.breedStart) maybeContinueBreedStart();
     if (activityFlags.breedCampaign) processBreedCampaign();
     if (activityFlags.hatchlingRun) processHatchlingRun();
@@ -328,7 +324,6 @@
     diagnosticLog, setStatus, instanceId: PANEL_INSTANCE, getCurrentTabId: () => currentTabId,
     stops: {
       stopFriendSweep, stopBreedCampaign, stopHatchlings: stopHatchlingProcessing,
-      stopPetIndex: () => petIndexModule?.stop(),
       stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped")
     },
     localWorkerHandlers: {
@@ -349,7 +344,7 @@
 
   const activityStorageKeys = new Set([
     "owehEggRun", "owehSweep", "owehWorker",
-    "owehBreedCampaign", "owehBreedQueue", "owehPetIndex", "owehPetScanQueue",
+    "owehBreedCampaign", "owehBreedQueue",
     "owehHatchlingRun", "owehHatchlingQueue",
     "owehFriendRemoval", "owehDatabaseMeta", "owehSweepNotice", "owehCullPreview"
   ]);
@@ -371,7 +366,7 @@
   // adapters are injected explicitly; only orchestration that still lives in content.js is grouped
   // behind narrow feature services. This keeps jobs from depending on one giant legacy object.
   const modules = OWEH.boot({
-    storageGet, storageSet, storageGetMany, getPetsByIds, sleep, holdAwake, setStatus, runtimeRequest, sendGameCommand, diagnosticLog,
+    storageGet, storageSet, storageGetMany, getPetsByIds, getPetFields, sleep, holdAwake, setStatus, runtimeRequest, sendGameCommand, diagnosticLog,
     waitForGameReady, waitForStableValue, getPageLoadDelayMs: () => pageLoadDelayMs,
     requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone, isWorkerOwner, workerClient,
     routes: OWEH.dom.routes,
@@ -393,11 +388,10 @@
       RECENT_FULL_FOOD_MS, PET_FEED_DELAY_MS, DEFAULT_REQUEST_DELAY
     },
     catalogService: {
-      waitForOverviewShell, collectAllOverviewPets, updateRetentionRanking,
+      updateRetentionRanking,
       setOwnUserId: id => { if (id) ownUserId = id; },
       getOwnUserId: () => ownUserId
     },
-    petIndexActions: { openTab, renamePet, updateRetentionRanking },
     ninjaService: { performNinjaChatScan },
     sweepService: { readSweep, finishFriendSweepStep, stopFriendSweep },
     friendDirectory: {
@@ -460,7 +454,6 @@
   friendEggsModule = modules["friend-eggs"]?.api || null;
   friendSweepModule = modules["feature-friend-sweep"]?.api || null;
   ownEggsModule = modules["feature-own-eggs"]?.api || null;
-  petIndexModule = modules["feature-pet-index"]?.api || null;
   hatchlingModule = modules["feature-hatchlings"]?.api || null;
   breedingModule = modules["feature-breeding"]?.api || null;
   dashboardModule = modules["ui-dashboard"]?.api || null;

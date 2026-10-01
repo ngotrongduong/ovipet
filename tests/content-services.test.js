@@ -146,7 +146,6 @@ function load(file, extra = {}) {
         stops: {
           stopFriendSweep: async () => calls.push("sweep"),
           stopBreedCampaign: async () => calls.push("breed"),
-          stopPetIndex: async () => calls.push("petIndex"),
           stopHatchlings: async () => calls.push("hatchlings"),
           stopOwnEggs: async () => calls.push("ownEggs")
         },
@@ -173,7 +172,7 @@ function load(file, extra = {}) {
     {
       const { service, calls, requests, statuses, logs } = make();
       await service.stopAllAutomation();
-      assert.deepEqual(calls, ["sweep", "breed", "petIndex", "hatchlings", "ownEggs", "releaseWorker"]);
+      assert.deepEqual(calls, ["sweep", "breed", "hatchlings", "ownEggs", "releaseWorker"]);
       assert.deepEqual(plain(requests), [{ type: "eggBatchStop" }]);
       assert.equal(logs[0][2], "automation.stop-all");
       assert.match(statuses.at(-1), /^Stop All:/);

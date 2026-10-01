@@ -25,7 +25,7 @@ class FakeElement {
   append(...children) { this.children.push(...children); }
 }
 
-function setup({ pets = {}, withPlanView = false } = {}) {
+function setup({ pets = {}, withPlanView = false, getPetFields = null } = {}) {
   const clock = { now: 1_000_000 };
   const state = {
     owehEggRun: { active: false, count: 0 },
@@ -77,6 +77,7 @@ function setup({ pets = {}, withPlanView = false } = {}) {
   const timers = [];
   const helpers = {
     storageGet: async (key, fallback) => key === "owehPets" ? JSON.parse(JSON.stringify(pets)) : fallback,
+    ...(getPetFields ? { getPetFields } : {}),
     domain: {
       breedingPlan: {
         breedingReadiness: all => {
@@ -146,13 +147,6 @@ function setup({ pets = {}, withPlanView = false } = {}) {
     assert.equal(env.api.getJobCount(), 1);
     assert.ok(!env.jobs.children[0].textContent.includes("planning"));
 
-    const indexing = setup();
-    indexing.state.owehWorker = { owner: "breed", phase: "indexing 0/1", leaseUntil: indexing.clock.now + 30_000 };
-    indexing.state.owehPetIndex = { active: true, breedPlanning: true, index: 0 };
-    indexing.state.owehPetScanQueue = [{}];
-    await indexing.api.update();
-    assert.equal(indexing.api.getJobCount(), 1);
-    assert.ok(indexing.jobs.children[0].textContent.includes("Pet index"));
   }
 
   // An expired lease must not keep the UI stuck in a false busy state.
@@ -220,6 +214,23 @@ function setup({ pets = {}, withPlanView = false } = {}) {
     await env.api.update();
     assert.equal(env.confirm.disabled, true, "an expired plan cannot be confirmed");
     assert.ok(env.preview.textContent.includes("expired"));
+  }
+
+  // A failed readiness read does not start the 30 s cache window; the next refresh retries.
+  {
+    let calls = 0;
+    const env = setup({
+      getPetFields: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("pet-db-get-fields-failed");
+        return { 1: { gender: "Female" } };
+      }
+    });
+    await assert.rejects(env.api.refreshBreedReadiness(), /pet-db-get-fields-failed/);
+    const summary = await env.api.refreshBreedReadiness();
+    assert.equal(calls, 2, "the refresh right after a failure queries again");
+    assert.equal(summary.total, 1);
+    assert.equal(env.ready.textContent, "Females ready: 1/1 · 0 on cooldown · 0 pedigree unverified");
   }
 
   // The side window lists every planned pair, opens once per plan, stays closed after the user

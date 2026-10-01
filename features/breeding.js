@@ -62,14 +62,7 @@ OWEH.register("feature-breeding", helpers => {
     planning = true;
     try {
       const target = { ...colors.STRICT_PURE_TARGET };
-      const [indexState, hatchlingRun] = await Promise.all([
-        storageGet("owehPetIndex", { active: false }), breedingActions.readHatchlingRun()
-      ]);
-      if (indexState.active) {
-        setStatus("Wait for the full pet index to finish first");
-        reportWorkerDone();
-        return;
-      }
+      const hatchlingRun = await breedingActions.readHatchlingRun();
       if (hatchlingRun.active) {
         setStatus("Stop Hatchery processing before starting the breeding campaign");
         reportWorkerDone();

@@ -5,12 +5,11 @@ const path = require("node:path");
 
 const content = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
 const ownEggs = fs.readFileSync(path.join(__dirname, "..", "features", "own-eggs.js"), "utf8");
-const petIndex = fs.readFileSync(path.join(__dirname, "..", "features", "pet-index.js"), "utf8");
 const friendSweep = fs.readFileSync(path.join(__dirname, "..", "features", "friend-sweep.js"), "utf8");
 const hatchlings = fs.readFileSync(path.join(__dirname, "..", "features", "hatchlings.js"), "utf8");
 const petEdit = fs.readFileSync(path.join(__dirname, "..", "services", "pet-edit.js"), "utf8");
 const workerControl = fs.readFileSync(path.join(__dirname, "..", "services", "worker-control.js"), "utf8");
-const runtime = `${content}\n${petEdit}\n${workerControl}\n${ownEggs}\n${petIndex}\n${friendSweep}\n${hatchlings}`;
+const runtime = `${content}\n${petEdit}\n${workerControl}\n${ownEggs}\n${friendSweep}\n${hatchlings}`;
 const background = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
 const workerManagerBg = fs.readFileSync(path.join(__dirname, "..", "bg", "worker-manager.js"), "utf8");
 const backgroundRuntime = `${workerManagerBg}\n${background}`;

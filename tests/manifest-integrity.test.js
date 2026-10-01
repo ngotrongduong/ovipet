@@ -38,12 +38,11 @@ const score = order.indexOf("domain/breeding-score.js");
 const plan = order.indexOf("domain/breeding-plan.js");
 const gameActions = order.indexOf("core/game-actions.js");
 const ownEggs = order.indexOf("features/own-eggs.js");
-const petIndex = order.indexOf("features/pet-index.js");
 const content = order.indexOf("content.js");
 assert.ok(core >= 0 && core < storageClient && storageClient < gameBridge && gameBridge < workerClient
   && workerClient < scheduler && scheduler < routes && routes < profile && profile < hatchery && hatchery < tabs
   && tabs < overview && overview < friends && friends < chat && chat < colors && colors < petRecord && petRecord < pedigree
-  && pedigree < score && score < plan && plan < gameActions && gameActions < ownEggs && ownEggs < petIndex && petIndex < content,
+  && pedigree < score && score < plan && plan < gameActions && gameActions < ownEggs && ownEggs < content,
   "core/domain modules must load after jobs/core.js and before content.js in dependency order");
 
 // Species inspector sessions/memory (dialog HTML + thumbnails) share chrome.storage.local with

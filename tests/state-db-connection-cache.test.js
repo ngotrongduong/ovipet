@@ -73,3 +73,18 @@ test("closeStateDb closes the cached connection and the next call reopens", asyn
   await api.getAllPets();
   assert.equal(opened.length, 2);
 });
+
+test("getPetFields returns only owned present pets with whitelisted fields", async () => {
+  const { api } = loadStateDb();
+  await api.mergePets({
+    "1": { id: "1", owned: true, gender: "Female", enclosure: "FF ** **", onCooldown: true, colors: { body1: "FFFFFF" }, ancestors: ["9"] },
+    "2": { id: "2", owned: true, gender: "Male", enclosure: "Males" },
+    "3": { id: "3", owned: true, present: false, gender: "Female" },
+    "4": { id: "4", owned: false, gender: "Female" }
+  });
+  const females = await api.getPetFields({ fields: ["gender", "enclosure", "onCooldown", "colors"], gender: "Female" });
+  assert.deepEqual(Object.keys(females), ["1"]);
+  assert.deepEqual({ ...females["1"] }, { owned: true, present: true, id: "1", gender: "Female", enclosure: "FF ** **", onCooldown: true });
+  const all = await api.getPetFields({ fields: ["gender"] });
+  assert.deepEqual(Object.keys(all).sort(), ["1", "2"]);
+});
