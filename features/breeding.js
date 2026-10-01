@@ -276,6 +276,9 @@ OWEH.register("feature-breeding", helpers => {
     return result;
   }
 
+  const isTransportError = error => /message channel closed|receiving end does not exist|message port closed/i
+    .test(String(error || ""));
+
   async function requestStart(strategy = BREEDING_STRATEGIES.PURE_LINE) {
     strategy = normalizeBreedingStrategy(strategy);
     if ((await read()).active) {
@@ -284,7 +287,15 @@ OWEH.register("feature-breeding", helpers => {
     }
     await storageSet({ owehBreedStrategy: strategy });
     setStatus(`Claiming the shared background tab for the ${strategyLabel(strategy)} breeding campaign...`);
-    const response = await requestClaimWorker("breed", OVERVIEW_URL);
+    let response = await requestClaimWorker("breed", OVERVIEW_URL);
+    if (!response.ok && isTransportError(response.error)) {
+      // v5.10.1: the background service worker restarted while it was opening the worker tab
+      // (seen live right after an idle period). Its half-made "starting" claim would block the
+      // next press until the lease expired, so release it and claim once more.
+      setStatus(`The background service restarted — retrying the ${strategyLabel(strategy)} breeding plan...`);
+      await requestReleaseWorker("breed");
+      response = await requestClaimWorker("breed", OVERVIEW_URL);
+    }
     if (!response.ok) {
       if (response.reason === "busy") {
         setStatus(`Shared background tab is busy running "${response.owner}" (${response.phase || "working"}) — stop it first, then try again`);

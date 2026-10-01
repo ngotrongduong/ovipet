@@ -48,6 +48,14 @@ const newbornFemale = pet("nf1", "Female", {
 const endpointFemale = pet("nfEnd", "Female", {
   colors: { ...newbornFemale.colors, body1: "#FF8877" }
 });
+// v5.10.1: endpoints only in Extra 1 / Extra 2 (not shown in the name) keep a female in the plan;
+// a 00 in Scales does not.
+const extrasFemale = pet("nfExtras", "Female", {
+  colors: { ...newbornFemale.colors, extra1: "#FF1111", extra2: "#000000" }
+});
+const scalesFemale = pet("nfScales", "Female", {
+  colors: { ...newbornFemale.colors, scales: "#330011" }
+});
 const lonelyFemale = pet("nfRaptor", "Female", { species: "Raptor", enclosure: "Breeding Stock", colors: { ...newbornFemale.colors } });
 
 // One target endpoint pair only (Body 1 R = FF) — excluded even though Scales is 3 off.
@@ -76,14 +84,17 @@ const maleCulled = pet("mCull", "Male", { enclosure: "Males discard", colors: { 
 const maleCooling = pet("mCool", "Male", { onCooldown: true, colors: { ...target } });
 
 const pets = {
-  nf1: newbornFemale, nfEnd: endpointFemale, nfRaptor: lonelyFemale,
+  nf1: newbornFemale, nfEnd: endpointFemale, nfExtras: extrasFemale, nfScales: scalesFemale, nfRaptor: lonelyFemale,
   mOne: maleOnePair, mFar: maleFar, mNear: maleNear, mTie: maleTie, mWrong: maleWrongEndpoints,
   mOther: maleOtherSpecies, mRel: maleRelated, mCull: maleCulled, mCool: maleCooling
 };
 
 const plan = breedingPlan.buildDatabaseBreedPlan(pets, target, [], { now, strategy: OUTCROSS });
 assert.equal(plan.strategy, OUTCROSS);
-assert.equal(plan.femaleCount, 2, "only females with no FF/00 pair anywhere are planned");
+assert.equal(plan.femaleCount, 3, "only females with no FF/00 pair in Body 1 / Body 2 / Scales are planned");
+assert.ok(plan.queue.some(item => item.id === "nfExtras"), "Extra 1 / Extra 2 endpoints do not exclude a female");
+assert.ok(!plan.queue.some(item => item.id === "nfScales" || item.id === "nfEnd"));
+assert.deepEqual(breedingPlan.OUTCROSS_FEMALE_KEYS, ["body1", "body2", "scales"]);
 assert.equal(plan.maleCount, 5, "males need >= 2 target endpoint pairs, off cooldown, outside Males discard");
 const row = plan.queue.find(item => item.id === "nf1");
 assert.equal(row.strategy, OUTCROSS);
@@ -124,7 +135,7 @@ const unverifiedNoList = breedingPlan.buildDatabaseBreedPlan(
 assert.equal(unverifiedNoList.femaleCount, 0, "an unverified female without a game list stays out (fail closed)");
 
 // Partner-list reads cover exactly the outcross females and the enclosures of qualifying males.
-assert.deepEqual(breedingPlan.plannableFemales(pets, target, OUTCROSS).map(item => item.id).sort(), ["nf1", "nfRaptor"]);
+assert.deepEqual(breedingPlan.plannableFemales(pets, target, OUTCROSS).map(item => item.id).sort(), ["nf1", "nfExtras", "nfRaptor"]);
 assert.deepEqual(breedingPlan.plannableMaleEnclosures(pets, target, OUTCROSS).sort(), ["Males", "Stud", "Wolf males"]);
 // The other strategies are unchanged by the new one.
 assert.deepEqual(breedingPlan.plannableMaleEnclosures(pets, target, BREEDING_STRATEGIES.PURE_LINE), ["Males"]);

@@ -26,6 +26,10 @@
   });
   // v5.10.0: an outcross male must carry at least this many target endpoint pairs (FF/00).
   const OUTCROSS_MIN_ENDPOINT_PAIRS = 2;
+  // v5.10.1: an outcross female is judged on the three colors her name shows (Body 1, Body 2,
+  // Scales). Extra 1 / Extra 2 almost always carry a 00 somewhere, so checking all five slots
+  // left only a couple of the Newborn females in the plan.
+  const OUTCROSS_FEMALE_KEYS = Object.freeze(["body1", "body2", "scales"]);
   const PURE_ENCLOSURE_BY_MASK = Object.freeze({
     "100": "FF ** **",
     "010": "** FF **",
@@ -75,8 +79,8 @@
     return normalizeEnclosureLabel(value) === normalizeEnclosureLabel(CULL_ENCLOSURE);
   }
 
-  function hasEndpointColorPair(pet) {
-    return TARGET_KEYS.some(key => {
+  function hasEndpointColorPair(pet, keys = TARGET_KEYS) {
+    return keys.some(key => {
       const value = String(pet?.colors?.[key] || "").replace("#", "").toUpperCase();
       return value.match(/../g)?.some(pair => pair === "FF" || pair === "00");
     });
@@ -137,7 +141,7 @@
   }
 
   const isOutcrossFemale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Female"
-    && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target) && !hasEndpointColorPair(pet);
+    && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target) && !hasEndpointColorPair(pet, OUTCROSS_FEMALE_KEYS);
   const isOutcrossMale = (pet, target) => pet?.present !== false && pet?.owned && pet.gender === "Male"
     && !pet.onCooldown && !isCullEnclosure(pet.enclosure) && completeForTarget(pet, target)
     && targetEndpointPairCount(pet, target) >= OUTCROSS_MIN_ENDPOINT_PAIRS;
@@ -322,8 +326,8 @@
   }
 
   function buildNewbornOutcrossPlan(pets, target, history, options, now) {
-    // Outcross strategy for females with no FF/00 pair in any target slot (usually still in
-    // Newborn). Each one is paired with a same-species male that carries at least
+    // Outcross strategy for females with no FF/00 pair in Body 1, Body 2 or Scales (usually
+    // still in Newborn). Each one is paired with a same-species male that carries at least
     // OUTCROSS_MIN_ENDPOINT_PAIRS target endpoint pairs, so the egg can inherit exact target
     // channels the mother lacks. Among qualifying males the one whose Body 2 / Scales /
     // Extra 1 / Extra 2 has the slot closest to target wins; more endpoint pairs, recent use,
@@ -561,6 +565,7 @@
     BREED_HISTORY_WINDOW_MS,
     BREEDING_STRATEGIES,
     OUTCROSS_MIN_ENDPOINT_PAIRS,
+    OUTCROSS_FEMALE_KEYS,
     PURE_ENCLOSURE_BY_MASK,
     NEWBORN_ENCLOSURES,
     normalizeEnclosureLabel,

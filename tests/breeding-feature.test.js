@@ -66,7 +66,11 @@ function setup({
     },
     setStatus: text => log.status.push(text),
     sleep: async () => {},
-    requestClaimWorker: async (workerOwner, url) => { log.claims.push([workerOwner, url]); return clone(claimResult); },
+    requestClaimWorker: async (workerOwner, url) => {
+      log.claims.push([workerOwner, url]);
+      // An array scripts successive claim answers (the last one repeats).
+      return clone(Array.isArray(claimResult) ? claimResult[Math.min(log.claims.length, claimResult.length) - 1] : claimResult);
+    },
     requestReleaseWorker: async workerOwner => { log.releases.push(workerOwner); return { ok: true }; },
     reportWorkerPhase: text => log.phases.push(text),
     reportWorkerDone: () => { log.done += 1; },
@@ -179,6 +183,30 @@ function setup({
     await env.api.requestStart("newborn-outcross");
     assert.equal(env.store.owehBreedStrategy, "newborn-outcross");
     assert.ok(env.log.status.some(text => text.includes("Newborn outcross")));
+  }
+
+  // v5.10.1 (seen live): the service worker restarted mid-claim, so the claim answered with a
+  // closed message channel and left a half-made "starting" lease. Release it and claim once more.
+  {
+    const closed = { ok: false, error: "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received" };
+    const env = setup({ claimResult: [closed, { ok: true }] });
+    await env.api.requestStart("newborn-outcross");
+    assert.equal(env.log.claims.length, 2, "the claim is retried once");
+    assert.deepEqual(env.log.releases, ["breed"], "the half-made claim is released before the retry");
+    assert.ok(env.log.status.at(-1).startsWith("Planning a Newborn outcross breeding campaign"));
+  }
+  {
+    const closed = { ok: false, error: "Could not establish connection. Receiving end does not exist." };
+    const env = setup({ claimResult: [closed] });
+    await env.api.requestStart("pure-line");
+    assert.equal(env.log.claims.length, 2, "only one retry");
+    assert.ok(env.log.status.at(-1).startsWith("Could not start breeding campaign"));
+  }
+  {
+    const env = setup({ claimResult: [{ ok: false, reason: "busy", owner: "sweep", phase: "eggs" }] });
+    await env.api.requestStart("pure-line");
+    assert.equal(env.log.claims.length, 1, "a busy worker is never retried or released");
+    assert.deepEqual(env.log.releases, []);
   }
   {
     const catalog = [{ id: "10", usr: "77", name: "F", modified: "m1" }];
