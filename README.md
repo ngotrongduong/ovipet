@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.10.0**
+Current release: **v5.10.1**
 
 ## Engineering objective
 
@@ -16,6 +16,11 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.10.1 Newborn outcross fixes
+
+- **Plan Newborn outcross** now judges a female only on the three colors her name shows (**Body 1, Body 2, Scales**). Extra 1 / Extra 2 almost always hold a 00 somewhere, so checking all five colors left just 2 of the ~76 clean Newborn females in the plan.
+- If the background service restarts while a Plan button is opening the worker tab ("message channel closed"), the half-made claim is released and the plan is claimed once more automatically, instead of failing and blocking the next press for ~45 seconds.
 
 ## v5.10.0 Newborn outcross breeding plan
 
