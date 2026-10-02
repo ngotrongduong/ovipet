@@ -165,7 +165,6 @@
   });
 
   const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
-  const DISCARD_RESTORE_EVENT = "oweh:discard-signature-restore";
 
   document.addEventListener(DISCARD_TRACE_EVENT, event => {
     try {
@@ -175,11 +174,6 @@
       setStatus("Discard UI command verified from OviPets — batch poor-egg discard is now available");
     } catch {}
   });
-
-  storageGet("owehDiscardCommandSignature", null).then(signature => {
-    if (!signature?.command || signature?.evidence !== "discard-ui") return;
-    document.dispatchEvent(new CustomEvent(DISCARD_RESTORE_EVENT, { detail: JSON.stringify(signature) }));
-  }).catch(() => {});
 
   async function discardPoorEggCandidates() {
     if (!isOwnHatchery()) {
@@ -197,13 +191,6 @@
       setStatus("No visible Hatchery eggs qualify for early discard");
       return { ok: true, discarded: 0 };
     }
-
-    const signature = await storageGet("owehDiscardCommandSignature", null);
-    if (!signature?.command || signature?.evidence !== "discard-ui") {
-      setStatus("Discard is not verified yet — manually discard one test egg through Edit → Send To → Discard once, then run this again");
-      return { ok: false, reason: "discard-signature-missing" };
-    }
-    document.dispatchEvent(new CustomEvent(DISCARD_RESTORE_EVENT, { detail: JSON.stringify(signature) }));
 
     let discarded = 0;
     let errors = 0;
