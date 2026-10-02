@@ -169,7 +169,7 @@
   document.addEventListener(DISCARD_TRACE_EVENT, event => {
     try {
       const signature = JSON.parse(String(event.detail || "{}"));
-      if (signature?.evidence !== "discard-ui" || !signature.command || !signature.sourceId) return;
+      if (!/^discard-ui(?:-click)?$/.test(String(signature?.evidence || "")) || !signature.command || !signature.sourceId) return;
       storageSet({ owehDiscardCommandSignature: signature });
       setStatus("Discard UI command verified from OviPets — batch poor-egg discard is now available");
     } catch {}
