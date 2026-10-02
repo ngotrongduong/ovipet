@@ -1,0 +1,27 @@
+name: Package OviPets Handler Fix
+
+on:
+  push:
+    branches:
+      - pack/pure-line-retention-handler-fix-2026-10-02
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build extension zip
+        run: |
+          zip -r OviPets-Pure-Line-Retention-Hotfix-2026-10-02.zip . \
+            -x ".git/*" ".github/*" "tests/*" "docs/*" "scripts/*" ".claude/*" \
+               ".gitignore" "README.md" "AGENTS.md" "CLAUDE.md" "*.zip"
+          unzip -p OviPets-Pure-Line-Retention-Hotfix-2026-10-02.zip manifest.json >/dev/null
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OviPets-Pure-Line-Retention-Hotfix-2026-10-02
+          path: OviPets-Pure-Line-Retention-Hotfix-2026-10-02.zip
+          if-no-files-found: error
