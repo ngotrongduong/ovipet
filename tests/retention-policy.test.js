@@ -113,9 +113,8 @@ assert.ok(byId.badEgg.dominatorSexes.includes("female"));
 assert.ok(plan.cullCandidateIds.includes("badEgg"));
 
 const noFemaleCoverage = retentionPolicy.buildRetentionPlan(
-  Object.fromEntries(Object.entries(pets).filter(([id]) => id !== "exactF")),
-  target,
-  { protectedIds: ["protectedBad"] }
+  { exactM1: pets.exactM1, exactM2: pets.exactM2, badEgg: pets.badEgg },
+  target
 );
 assert.notEqual(
   noFemaleCoverage.rows.find(row => row.id === "badEgg").status,
