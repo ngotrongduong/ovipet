@@ -8,6 +8,13 @@
   if (OWEH_BG.speciesStats) return;
 
   const KEY = "owehSpeciesStats";
+  const LEGACY_KEYS = Object.freeze([
+    "owehSpeciesMemory",
+    "owehSpeciesAnswerIds",
+    "owehSpeciesShapes",
+    "owehSpeciesInspectorV1",
+    "owehSpeciesSeedSeen"
+  ]);
   let chain = Promise.resolve();
 
   function serialized(task) {
@@ -34,9 +41,10 @@
       };
       // This write intentionally compacts any legacy Species stats object down to these two keys.
       await chrome.storage.local.set({ [KEY]: stats });
+      try { await chrome.storage.local.remove?.(LEGACY_KEYS); } catch {}
       return { ok: true, stats };
     });
   }
 
-  OWEH_BG.speciesStats = Object.freeze({ read, bump });
+  OWEH_BG.speciesStats = Object.freeze({ read, bump, LEGACY_KEYS });
 })();
