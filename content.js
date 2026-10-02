@@ -192,29 +192,51 @@
       return { ok: true, discarded: 0 };
     }
 
-    let discarded = 0;
+    const dispatched = [];
     let errors = 0;
     for (const id of visibleEggs) {
       const result = await OWEH.core.gameActions.discardOwnedEgg(id);
       if (!result?.ok) {
         errors += 1;
         if (/signature|target-not-visible/i.test(String(result?.reason || ""))) {
-          setStatus("Discard verification expired or the egg is no longer visible — verify one Discard action again");
+          setStatus("Discard is not verified in this OviPets session — manually discard one test egg through Edit → Send To → Discard, return to Hatchery, then run this again");
           break;
         }
         continue;
       }
-      discarded += 1;
-      await storageSet({
-        owehPets: {
-          [id]: { id, present: false, retentionDiscardedAt: Date.now(), retentionDiscardReason: "early-cull-candidate" }
-        }
-      });
+      dispatched.push(id);
       await sleep(DIRECT_COMMAND_INTERVAL_MS);
     }
+
+    if (!dispatched.length) return { ok: false, discarded: 0, errors };
+    await sleep(500);
+    let remaining;
+    try {
+      const hatchery = await petFetch.readHatchery();
+      remaining = new Set(hatchery.eggIds || []);
+    } catch {
+      setStatus("Discard commands were sent, but Hatchery verification failed — database was not changed");
+      return { ok: false, discarded: 0, errors: errors + 1 };
+    }
+
+    const confirmed = dispatched.filter(id => !remaining.has(id));
+    const failed = dispatched.filter(id => remaining.has(id));
+    const changed = {};
+    for (const id of confirmed) {
+      changed[id] = {
+        id,
+        present: false,
+        retentionDiscardedAt: Date.now(),
+        retentionDiscardReason: "early-cull-candidate"
+      };
+    }
+    if (Object.keys(changed).length) await storageSet({ owehPets: changed });
+    errors += failed.length;
     await updateRetentionRanking();
-    setStatus("Poor egg discard complete — " + discarded + " discarded" + (errors ? ", " + errors + " error(s)" : ""));
-    return { ok: errors === 0, discarded, errors };
+    setStatus("Poor egg discard complete — " + confirmed.length + " confirmed discarded"
+      + (failed.length ? ", " + failed.length + " still present" : "")
+      + (errors > failed.length ? ", " + (errors - failed.length) + " dispatch error(s)" : ""));
+    return { ok: errors === 0, discarded: confirmed.length, errors };
   }
 
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
