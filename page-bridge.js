@@ -360,7 +360,7 @@
       && verifiedDiscardSignature
       && visibleOwnHatcheryPet(targetId);
     const fireAndForget = request.fireAndForget === true
-      && (command === "pet_feed" || command === "friend_request" || ownHatchCommand);
+      && (command === "pet_feed" || command === "friend_request" || ownHatchCommand || verifiedDiscardCommand);
     if (!requestId || (!ALLOWED.has(command) && !verifiedDiscardCommand) || !/^\d+$/.test(targetId)
       || (command === "pet_turn_egg" && !ownHatchCommand)) {
       const discardProxy = command === "__verified_discard__" && purpose === "verified-discard";
