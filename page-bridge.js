@@ -4,6 +4,7 @@
   const REQUEST_EVENT = "oweh:game-command";
   const RESULT_EVENT = "oweh:game-command-result";
   const PING_EVENT = "oweh:game-ping";
+  const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
   const ALLOWED = new Set([
     // pet_name names an Unnamed newborn (its profile has a Name button, not Rename).
     "pets_enclosure", "pet_rename", "pet_name", "pet_feed",
@@ -39,6 +40,82 @@
     const ok = buttons.find(button => /^OK$/i.test(String(button?.textContent || "").trim()));
     try { ok?.click?.(); } catch {}
   }
+
+  let verifiedDiscardSignature = null;
+
+  function visibleOwnHatcheryPet(targetId) {
+    if (!isOwnHatcheryRoute()) return false;
+    for (const anchor of document.querySelectorAll?.('main a.pet[href*="pet="]') || []) {
+      const href = anchor.getAttribute?.("href") || "";
+      if (href.match(/[?&]pet=(\d+)/)?.[1] === String(targetId)) return true;
+    }
+    return false;
+  }
+
+  function formSnapshot(form) {
+    const fields = {};
+    for (const control of form?.querySelectorAll?.("input[name], select[name], textarea[name]") || []) {
+      if (control.disabled) continue;
+      const name = String(control.name || "");
+      if (!name || name === "PetID") continue;
+      if ((control.type === "checkbox" || control.type === "radio") && !control.checked) continue;
+      fields[name] = String(control.value ?? "");
+    }
+    return fields;
+  }
+
+  function looksLikeDiscard(command, params, form, fields) {
+    const haystack = [
+      command,
+      params,
+      form?.textContent || "",
+      form?.getAttribute?.("action") || "",
+      ...Object.keys(fields || {}),
+      ...Object.values(fields || {})
+    ].join(" ");
+    return /\bdiscard(?:ed|ing)?\b/i.test(haystack);
+  }
+
+  function replaceTargetId(value, sourceId, targetId) {
+    let text = String(value ?? "");
+    if (sourceId) text = text.replace(new RegExp("(PetID|EggID)=" + sourceId + "\\b", "g"), "$1=" + targetId);
+    return text.replace(/(PetID|EggID)=\d+\b/g, "$1=" + targetId);
+  }
+
+  function installDiscardObserver() {
+    const current = window.ui_action_cmdExec;
+    if (typeof current !== "function" || current.__owehDiscardObserved) return Boolean(current?.__owehDiscardObserved);
+    const wrapped = function(command, params, form, callback) {
+      try {
+        const fields = formSnapshot(form);
+        if (looksLikeDiscard(command, params, form, fields)) {
+          const sourceId = String(params || "").match(/(?:PetID|EggID)=(\d+)/)?.[1] || "";
+          verifiedDiscardSignature = {
+            command: String(command || ""),
+            params: String(params || ""),
+            fields,
+            sourceId,
+            observedAt: Date.now()
+          };
+          document.dispatchEvent(new CustomEvent(DISCARD_TRACE_EVENT, {
+            detail: JSON.stringify(verifiedDiscardSignature)
+          }));
+        }
+      } catch {}
+      return current.apply(this, arguments);
+    };
+    try { Object.defineProperty(wrapped, "__owehDiscardObserved", { value: true }); } catch {}
+    window.ui_action_cmdExec = wrapped;
+    return true;
+  }
+
+  // The bridge loads at document_start, usually before OviPets defines ui_action_cmdExec.
+  // Install a transparent observer as soon as the dispatcher appears. It never sends a command;
+  // it only records the exact command/fields when the user manually chooses Discard once.
+  const discardObserverTimer = setInterval(() => {
+    if (installDiscardObserver()) clearInterval(discardObserverTimer);
+  }, 250);
+  setTimeout(() => clearInterval(discardObserverTimer), 30000);
 
   const SPECIES_TRACE_CONTROL_EVENT = "oweh:species-trace-control";
   const SPECIES_TRACE_NETWORK_EVENT = "oweh:species-trace-network";
@@ -257,6 +334,7 @@
     } catch {
       return;
     }
+    installDiscardObserver();
     const ready = typeof window.ui_action_cmdExec === "function";
     reply(requestId, ready, ready ? "" : "dispatcher-unavailable");
   });
@@ -272,14 +350,19 @@
     const command = String(request.command || "");
     const targetId = String(request.targetId ?? request.petId ?? "");
     const purpose = String(request.purpose || "");
+    installDiscardObserver();
     const ownHatchCommand = command === "pet_turn_egg"
       && purpose === "own-hatch"
       && isVisibleOwnHatchTarget(targetId);
+    const verifiedDiscardCommand = command === "__verified_discard__"
+      && purpose === "verified-discard"
+      && verifiedDiscardSignature
+      && visibleOwnHatcheryPet(targetId);
     const fireAndForget = request.fireAndForget === true
       && (command === "pet_feed" || command === "friend_request" || ownHatchCommand);
-    if (!requestId || !ALLOWED.has(command) || !/^\d+$/.test(targetId)
+    if (!requestId || (!ALLOWED.has(command) && !verifiedDiscardCommand) || !/^\d+$/.test(targetId)
       || (command === "pet_turn_egg" && !ownHatchCommand)) {
-      return reply(requestId, false, "invalid-command");
+      return reply(requestId, false, verifiedDiscardCommand ? "discard-signature-missing" : "invalid-command");
     }
     if (typeof window.ui_action_cmdExec !== "function") {
       return reply(requestId, false, "dispatcher-unavailable");
@@ -327,7 +410,18 @@
     }
     try {
       let params;
-      if (command === "friend_request" || command === "friend_remove") {
+      let dispatchCommand = command;
+      if (verifiedDiscardCommand) {
+        const signature = verifiedDiscardSignature;
+        dispatchCommand = signature.command;
+        params = replaceTargetId(signature.params, signature.sourceId, targetId);
+        for (const [name, value] of Object.entries(signature.fields || {})) {
+          const input = document.createElement("input");
+          input.name = name;
+          input.value = replaceTargetId(value, signature.sourceId, targetId);
+          form.appendChild(input);
+        }
+      } else if (command === "friend_request" || command === "friend_remove") {
         params = `UserID=${targetId}`;
       } else if (command === "pet_breed") {
         const motherId = String(fields.MotherID || "");
@@ -345,7 +439,7 @@
         // the game's own UI dispatcher accepted the command. Keep the form alive briefly because the
         // dispatcher may serialize it asynchronously, but do not wait for its server
         // callback before releasing the 100 ms queue lane.
-        window.ui_action_cmdExec(command, params, form, () => {});
+        window.ui_action_cmdExec(dispatchCommand, params, form, () => {});
         clearTimeout(timer);
         finished = true;
         reply(requestId, true, "dispatched");
@@ -353,7 +447,7 @@
         cleanupTimer?.unref?.();
         return;
       }
-      window.ui_action_cmdExec(command, params, form, () => {
+      window.ui_action_cmdExec(dispatchCommand, params, form, () => {
         clearTimeout(timer);
         finish(true);
       });
