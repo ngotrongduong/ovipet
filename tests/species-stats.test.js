@@ -33,6 +33,6 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "bg", "species-stats.
   assert.deepEqual(JSON.parse(JSON.stringify(result.stats)), { correct: 3858, wrong: 1543 });
   assert.deepEqual(store.owehSpeciesStats, { correct: 3858, wrong: 1543 });
   for (const key of api.LEGACY_KEYS) assert.equal(key in store, false, `legacy Species key should be removed: ${key}`);
-  assert.deepEqual(await api.read(), { correct: 3858, wrong: 1543 });
+  assert.deepEqual(JSON.parse(JSON.stringify(await api.read())), { correct: 3858, wrong: 1543 });
   console.log("aggregate-only Species stats tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
