@@ -186,16 +186,18 @@
       const partner = bestPartnerFor(pet, pool, target);
       const vector = vectors.get(id);
       const dominators = [];
-      if (vector && hasSex(pet)) {
+      if (vector) {
         for (const other of pool) {
-          if (String(other.id) === id || String(other.gender || "").toLowerCase() !== String(pet.gender || "").toLowerCase()) continue;
-          if ((other.species || "Unknown") !== species) continue;
+          if (String(other.id) === id || (other.species || "Unknown") !== species || !hasSex(other)) continue;
+          if (hasSex(pet)
+            && String(other.gender || "").toLowerCase() !== String(pet.gender || "").toLowerCase()) continue;
           const otherVector = vectors.get(String(other.id));
           if (!otherVector || !dominatesOrEqual(otherVector, vector)) continue;
           dominators.push(other);
         }
       }
       const dominatorLineages = new Set(dominators.map(lineageKey)).size;
+      const dominatorSexes = new Set(dominators.map(other => String(other.gender || "").toLowerCase()));
       const generated = pet.generated === true;
       const planProtected = protectedIds.has(id);
       const unverified = hasSex(pet) && pet.pedigreeVerified !== true;
@@ -205,7 +207,10 @@
       const partnerUseful = partner?.pure?.body1PurePossible === true
         || partner?.pure?.purePossible === true
         || (partner?.pure?.body1UnionExactChannels || 0) >= 2;
-      const safelyDominated = dominatorLineages >= Math.max(1, Number(options.minDominatorLineages || DEFAULTS.minDominatorLineages));
+      const enoughLineages = dominatorLineages >= Math.max(1, Number(options.minDominatorLineages || DEFAULTS.minDominatorLineages));
+      // An egg's future sex is unknown, so require good redundant coverage from both sexes.
+      const safelyDominated = enoughLineages && (!isEggLike(pet)
+        || (dominatorSexes.has("male") && dominatorSexes.has("female")));
 
       let status;
       let reason;
@@ -260,6 +265,7 @@
         lineage,
         uniqueLineage,
         dominatorLineages,
+        dominatorSexes: [...dominatorSexes].sort(),
         bestPartnerId: partner?.other?.id || null,
         bestPairBody1PurePossible: Boolean(partner?.pure?.body1PurePossible),
         bestPairBody1LogPureProbability: Number.isFinite(partner?.pure?.body1LogPureProbability)
