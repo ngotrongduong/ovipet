@@ -9,9 +9,8 @@ const eggTab = fs.readFileSync(path.join(__dirname, "..", "jobs", "egg-turn-tab.
 const panel = fs.readFileSync(path.join(__dirname, "..", "ui", "panel.js"), "utf8");
 const runtime = `${content}\n${ownEggs}\n${eggTab}\n${panel}`;
 const species = fs.readFileSync(path.join(__dirname, "..", "jobs", "species-answer.js"), "utf8");
-const inspector = fs.readFileSync(path.join(__dirname, "..", "jobs", "species-inspector.js"), "utf8");
+const staticDb = fs.readFileSync(path.join(__dirname, "..", "data", "species-static.js"), "utf8");
 const background = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
-const eggTabs = fs.readFileSync(path.join(__dirname, "..", "bg", "egg-tabs.js"), "utf8");
 const bridge = fs.readFileSync(path.join(__dirname, "..", "page-bridge.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8"));
 
@@ -20,12 +19,22 @@ for (const required of [
   "await requestAttention(container)",
   "Name the Species — choose an answer and press OK",
   'type: "speciesVerificationRequired"',
+  'type: "speciesStatsBump"',
   "async function settleTurnResult(result)",
   "async function checkRejected()",
   "egg can no longer be turned",
-  "retrying this same egg without repeating it"
+  "retrying without repeating it",
+  "OWEH_STATIC_SPECIES",
+  "rankOptions"
 ]) {
-  if (!species.includes(required)) throw new Error(`Species module behavior missing: ${required}`);
+  if (!species.includes(required)) throw new Error(`Production Species module behavior missing: ${required}`);
+}
+
+for (const forbidden of [
+  "owehSpeciesMemory", "owehSpeciesShapes", "owehSpeciesAnswerIds",
+  "speciesMemoryLearn", "speciesShapeLearn", "species-inspector"
+]) {
+  if (species.includes(forbidden)) throw new Error(`Production Species runtime still references learning state: ${forbidden}`);
 }
 
 for (const required of [
@@ -39,7 +48,7 @@ for (const required of [
   'source: "own"',
   'OWEH.runHook("onRefresh")'
 ]) {
-  if (!runtime.includes(required)) throw new Error(`UI-tab species wiring missing: ${required}`);
+  if (!runtime.includes(required)) throw new Error(`UI-tab Species wiring missing: ${required}`);
 }
 
 if (runtime.includes('sendGameCommand("pet_turn_egg"')) {
@@ -52,22 +61,29 @@ for (const required of [
 ]) {
   if (!bridge.includes(required)) throw new Error(`Own-Hatch direct command guard missing: ${required}`);
 }
-for (const required of ["network-incorrect", "network-success", "speciesImageFetch", "getActiveQuestionIdentity", "answerId"]) {
-  if (!inspector.includes(required)) throw new Error(`Species Inspector learning contract missing: ${required}`);
+
+for (const retired of ["oweh:species-trace-control", "oweh:species-source-request", "SPECIES_TRACE_NETWORK_EVENT"]) {
+  if (bridge.includes(retired)) throw new Error(`Retired Species trace hook remains in page bridge: ${retired}`);
 }
 
-for (const removed of [
-  "openManualSpeciesTab", "owehSpeciesManualSessions", "oweh_species_manual=1",
-  "activeManualSpeciesEggIds", "manual-species-handoff"
-]) {
-  if (content.includes(removed) || background.includes(removed) || species.includes(removed)) {
-    throw new Error(`Obsolete species handoff remains: ${removed}`);
-  }
+if (!background.includes('"bg/species-stats.js"')) throw new Error("background must load aggregate Species stats service");
+for (const retired of ["speciesMemory", "speciesShapes", "openSpeciesReview", "speciesShapeLearn"]) {
+  if (background.includes(retired)) throw new Error(`background still exposes retired Species learner: ${retired}`);
 }
+
+if (!staticDb.includes("721") || !staticDb.includes("31")) throw new Error("compiled Species database metadata missing");
 
 const scripts = manifest.content_scripts.find(entry => entry.js.includes("content.js")).js;
 if (scripts[scripts.length - 1] !== "content.js") throw new Error("content.js must load after every module");
 if (scripts.indexOf("jobs/core.js") !== 0) throw new Error("jobs/core.js must load first");
-if (!scripts.includes("jobs/species-answer.js") || !scripts.includes("jobs/egg-turn-tab.js")) throw new Error("species/egg-tab modules must be loaded");
+if (!scripts.includes("data/species-static.js") || !scripts.includes("domain/species-shape.js") || !scripts.includes("jobs/species-answer.js")) {
+  throw new Error("static Species database, matcher and answerer must all be loaded");
+}
+if (scripts.includes("jobs/species-inspector.js") || scripts.includes("jobs/species-seed.js")) {
+  throw new Error("retired Species learning jobs must not be loaded");
+}
+if (scripts.indexOf("data/species-static.js") > scripts.indexOf("jobs/species-answer.js")) {
+  throw new Error("static Species database must load before the answerer");
+}
 
-console.log("UI-tab species verification contract tests passed");
+console.log("production UI-tab Species verification contract tests passed");
