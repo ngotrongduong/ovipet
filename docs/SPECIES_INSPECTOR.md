@@ -77,6 +77,10 @@ Use **Export Species DB** for a compact portable backup containing learned visua
 **Import Species DB** also accepts previous full **Export Species JSON** files. For older Inspector exports whose `learnedMemory`/`answerIds` were empty, v5.3.5 mines the stored trace/network sessions and reconstructs recoverable positive/negative outcomes and Answer-ID mappings so early data is not discarded.
 
 
-## v5.3.11 lightweight sweep tabs
+## Lightweight Full Sweep tabs
 
-Fast Sweep-owned tabs may block normal image/media/font resources to reduce memory/network load. Name-the-Species learning remains functional because the challenge source URL is still present in the DOM and the guarded background species-image service fetches the challenge asset directly for fingerprinting.
+Fast Sweep-owned tabs block ordinary image/media/font resources to reduce memory, network and decoder pressure. A higher-priority tab-scoped rule now allows only the Name-the-Species `/credit-challenge` image to load normally. The Inspector races that DOM image against the guarded background species-image fetcher and uses whichever becomes ready first, so quiz classification stays intact without restoring the rest of the page's heavy images.
+
+The Inspector keeps a rolling maximum of 120 raw question sessions. This is a debugging window, not a lifetime accuracy counter. Its summary reconciles an unresolved attempt with an authoritative `pet_turn_egg status: success` network response, and separately reports unresolved sessions and rejected attempts. The lifetime Species counters remain in `owehSpeciesStats`.
+
+In extension-owned egg tabs, repeated DOM refreshes no longer re-hash the same complete question, re-merge the same Answer IDs, or collect repeated source-code hints. Unrelated same-origin network traffic is also excluded from the Species trace. These changes reduce storage contention when 10-15 egg tabs are active together without skipping the real Name-the-Species dialog or its server-confirmed outcome.
