@@ -230,19 +230,18 @@
       } else if (nearTarget) {
         status = STATUS.NEAR_TARGET_KEEP;
         reason = metrics.endpointPairs ? "near-target" : "near-target-rescue-no-endpoints";
-      } else if (uniqueLineage && (usefulEndpoint || partnerUseful)) {
-        status = STATUS.LINEAGE_RESERVE;
-        reason = "unique-useful-lineage";
       } else if (isEggLike(pet) && safelyDominated) {
         // Unknown-sex eggs are only culled when redundant coverage exists from BOTH sexes.
         status = STATUS.EARLY_CULL_CANDIDATE;
         reason = "poor-egg-color-dominated";
       } else if (safelyDominated) {
-        // Ordinary endpoint contribution is not permanent protection: if two distinct
-        // same-sex lineages are at least as good on every target channel, that contribution
-        // is already covered and this pet is redundant.
+        // Two distinct alternative lineages already cover every target channel at least as
+        // well, so this lineage is not critical even if its own parent pair is unique.
         status = STATUS.REVIEW_CULL_CANDIDATE;
         reason = "redundant-pareto-dominated";
+      } else if (uniqueLineage && (usefulEndpoint || partnerUseful)) {
+        status = STATUS.LINEAGE_RESERVE;
+        reason = "unique-useful-lineage";
       } else if (usefulEndpoint || partnerUseful) {
         status = STATUS.BREEDING_CANDIDATE;
         reason = usefulEndpoint ? "target-endpoint-contribution" : "partner-potential";
