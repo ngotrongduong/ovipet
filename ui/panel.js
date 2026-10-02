@@ -424,7 +424,7 @@ OWEH.register("ui-panel", helpers => {
           <summary><i class="oweh-ico">✦</i>Species <span>Name the Species memory</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
-            <div class="oweh-inline-meta oweh-note">Production classifier: 31 species · 721 built-in silhouettes · no quiz images, traces or learning history are stored.</div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · 451 built-in silhouettes · no quiz images, traces or learning history are stored.</div>
           </div>
         </details>
 
