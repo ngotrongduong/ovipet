@@ -498,7 +498,7 @@
       startOwnEggs: () => ownEggsModule?.start(),
       stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped"),
       scanFriends, requestFriendSweepWorker, requestGoToNextFriend, stopFriendSweep, copyBlacklistCsv,
-      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv,
+      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv, discardPoorEggCandidates,
       confirmBreedPreview, discardBreedPreview, setBreedPairLimit,
       requestStartHatchlingProcessing, stopHatchlingProcessing,
       exportSpeciesInspector: () => OWEH.get("species-inspector")?.api?.exportData?.(),
