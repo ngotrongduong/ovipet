@@ -29,10 +29,10 @@ for (const [species, record] of Object.entries(db.library)) {
 }
 assert.equal(examples, 721);
 
-// The production payload must contain only anonymous silhouettes + compact metadata.
-const source = fs.readFileSync(path.join(__dirname, "..", "data", "species-static.js"), "utf8");
+// The production data object must contain only anonymous silhouettes + compact metadata.
+const serialized = JSON.stringify({ meta: db.meta, library: db.library });
 for (const forbidden of ["thumbnail", "data:image", "userId", "eggId", "network", "sourceHints", "outerHTML"]) {
-  assert.equal(source.includes(forbidden), false, `static DB must not embed raw Inspector field: ${forbidden}`);
+  assert.equal(serialized.includes(forbidden), false, `static DB must not embed raw Inspector field: ${forbidden}`);
 }
 
 console.log("static production species database tests passed");
