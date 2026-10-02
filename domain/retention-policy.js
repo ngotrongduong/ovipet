@@ -201,8 +201,12 @@
       const generated = pet.generated === true;
       const planProtected = protectedIds.has(id);
       const unverified = hasSex(pet) && pet.pedigreeVerified !== true;
-      const elite = metrics.body1EndpointPairs >= 2 || metrics.endpointPairs >= 5
-        || partner?.pure?.purePossible === true;
+      // "Reachable with a perfect partner" is not enough to make a poor pet elite: almost any
+      // endpoint-target channel becomes technically reachable against an exact partner, but a
+      // huge parental range still makes it weak breeding stock. Elite is reserved for pets that
+      // already carry substantial target endpoint structure themselves. Near-target and partner
+      // potential are handled separately below.
+      const elite = metrics.body1EndpointPairs >= 2 || metrics.endpointPairs >= 5;
       const usefulEndpoint = metrics.endpointPairs > 0;
       const partnerUseful = partner?.pure?.body1PurePossible === true
         || partner?.pure?.purePossible === true
@@ -222,7 +226,7 @@
         reason = !metrics.complete ? "incomplete-colors" : "pedigree-unverified";
       } else if (elite) {
         status = STATUS.ELITE_KEEP;
-        reason = partner?.pure?.purePossible ? "full-pure-pair-potential" : "strong-target-endpoints";
+        reason = metrics.body1EndpointPairs >= 2 ? "strong-body1-endpoints" : "strong-target-endpoints";
       } else if (nearTarget) {
         status = STATUS.NEAR_TARGET_KEEP;
         reason = metrics.endpointPairs ? "near-target" : "near-target-rescue-no-endpoints";
