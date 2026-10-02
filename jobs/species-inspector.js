@@ -24,6 +24,8 @@ OWEH.register("species-inspector", helpers => {
   let activeEggId = null;
   let activeQuestionKey = null;
   let lastSeenAt = 0;
+  let activeQuestionComplete = false;
+  let ownedEggTab = null;
   let sequence = 0;
   let writeChain = Promise.resolve();
   const artifactCache = new Map();
@@ -246,7 +248,7 @@ OWEH.register("species-inspector", helpers => {
     return [...new Set(keys)];
   }
 
-  async function questionSnapshot(container) {
+  async function questionSnapshot(container, { compact = false } = {}) {
     const image = imageElement(container);
     const sources = sourceCandidates(image).map(canonicalUrl).filter(Boolean);
     const options = optionSnapshot(container);
@@ -266,7 +268,7 @@ OWEH.register("species-inspector", helpers => {
       options,
       dialog: {
         attrs: safeAttributes(container),
-        html: sanitizeHtml(container?.outerHTML)
+        html: compact ? null : sanitizeHtml(container?.outerHTML)
       }
     };
   }
@@ -344,16 +346,42 @@ OWEH.register("species-inspector", helpers => {
     await storageSet({ [ANSWER_ID_KEY]: map });
   }
 
+  async function isOwnedAutomationEggTab() {
+    if (ownedEggTab != null) return ownedEggTab;
+    if (typeof runtimeRequest !== "function") return (ownedEggTab = false);
+    try {
+      const response = await runtimeRequest({ type: "eggTabAssignment" });
+      ownedEggTab = Boolean(response?.ok);
+    } catch {
+      ownedEggTab = false;
+    }
+    return ownedEggTab;
+  }
+
   async function ensureQuestionSession(container) {
-    const snapshot = await questionSnapshot(container);
     const eggId = currentEggId();
     const userId = currentUserId();
+
+    // Full Sweep refreshes the same open jQuery dialog many times. Once its image identity is
+    // complete, do not re-fetch/re-hash the challenge or rewrite Answer-ID counts on every DOM
+    // mutation. A different egg always gets a new session; retries on the same egg intentionally
+    // stay in the same session because OviPets repeats the same question/options.
+    if (activeSessionId && activeEggId === eggId && activeQuestionComplete
+      && now() - lastSeenAt < SESSION_IDLE_MS) {
+      lastSeenAt = now();
+      signalTrace(true);
+      return activeSessionId;
+    }
+
+    const compact = await isOwnedAutomationEggTab();
+    const snapshot = await questionSnapshot(container, { compact });
     const sameQuestion = activeSessionId && activeEggId === eggId && activeQuestionKey === snapshot.key
       && now() - lastSeenAt < SESSION_IDLE_MS;
     if (!sameQuestion) {
       activeSessionId = newSessionId(eggId);
       activeEggId = eggId;
       activeQuestionKey = snapshot.key;
+      activeQuestionComplete = Boolean(snapshot.image?.fingerprint && snapshot.image?.shape);
       await queueWrite(store => {
         store.sessions.push({
           id: activeSessionId,
@@ -370,18 +398,19 @@ OWEH.register("species-inspector", helpers => {
           events: [{ at: now(), type: "question-visible" }]
         });
       });
+      // Options/Answer IDs are stable for this question. Merge them once, not on every refresh.
       await updateAnswerIdMap(snapshot.options);
-      requestSourceHints(activeSessionId);
+      // Source-code hints are useful for manual reverse engineering, but are pure overhead in
+      // 10-15 short-lived Full Sweep tabs. Keep them for normal/manual sessions only.
+      if (!compact) requestSourceHints(activeSessionId);
     } else {
+      activeQuestionComplete = Boolean(activeQuestionComplete
+        || (snapshot.image?.fingerprint && snapshot.image?.shape));
       await queueWrite(store => {
         const session = store.sessions.find(item => item.id === activeSessionId);
-        if (session) {
-          session.lastSeenAt = now();
-          if ((!session.question?.image?.fingerprint && snapshot.image?.fingerprint)
-            || (!session.question?.image?.shape && snapshot.image?.shape)) session.question = snapshot;
-        }
+        if (session && ((!session.question?.image?.fingerprint && snapshot.image?.fingerprint)
+          || (!session.question?.image?.shape && snapshot.image?.shape))) session.question = snapshot;
       });
-      await updateAnswerIdMap(snapshot.options);
     }
     lastSeenAt = now();
     signalTrace(true);
@@ -549,6 +578,7 @@ OWEH.register("species-inspector", helpers => {
       activeSessionId = null;
       activeEggId = null;
       activeQuestionKey = null;
+      activeQuestionComplete = false;
     }
   }
 
@@ -663,17 +693,32 @@ OWEH.register("species-inspector", helpers => {
     };
   }
 
+  function networkConfirmedSuccess(session) {
+    for (const entry of session?.network || []) {
+      const request = entry?.request && typeof entry.request === "object" ? entry.request : {};
+      if (String(request.cmd || "") !== "pet_turn_egg" || request.Answer == null) continue;
+      const result = parseCommandResponse(entry.response);
+      if (result && String(result.cmd || "") === "pet_turn_egg" && String(result.status || "") === "success") return true;
+    }
+    return false;
+  }
+
   async function getSummary() {
     await writeChain;
     const store = await readStore();
     return store.sessions.reduce((summary, session) => {
+      const attempts = session.attempts || [];
+      const explicitCorrect = attempts.some(item => item.result === "correct");
+      const recoveredCorrect = !explicitCorrect && networkConfirmedSuccess(session);
       summary.questions += 1;
-      summary.attempts += (session.attempts || []).length;
+      summary.attempts += attempts.length;
       summary.network += (session.network || []).length;
-      summary.wrong += (session.attempts || []).filter(item => item.result === "wrong").length;
-      summary.correct += (session.attempts || []).filter(item => item.result === "correct").length;
+      summary.wrong += attempts.filter(item => item.result === "wrong").length;
+      if (explicitCorrect || recoveredCorrect) summary.correct += 1;
+      else summary.unresolved += 1;
+      if (recoveredCorrect) summary.recovered += 1;
       return summary;
-    }, { questions: 0, attempts: 0, correct: 0, wrong: 0, network: 0 });
+    }, { questions: 0, attempts: 0, correct: 0, wrong: 0, unresolved: 0, recovered: 0, network: 0 });
   }
 
   function mergeCountMap(current = {}, incoming = {}) {
@@ -940,7 +985,7 @@ OWEH.register("species-inspector", helpers => {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     const summary = await getSummary();
-    setStatus(`Exported Species Inspector JSON — ${summary.questions} question(s), ${summary.correct} correct, ${summary.wrong} wrong`);
+    setStatus(`Exported Species Inspector JSON — ${summary.questions} recent question(s), ${summary.correct} confirmed, ${summary.unresolved} unresolved, ${summary.wrong} rejected attempt(s)`);
     return payload;
   }
 
@@ -948,6 +993,8 @@ OWEH.register("species-inspector", helpers => {
     activeSessionId = null;
     activeEggId = null;
     activeQuestionKey = null;
+    activeQuestionComplete = false;
+    ownedEggTab = null;
     artifactCache.clear();
     signalTrace(false);
     await storageSet({ [STORE_KEY]: blankStore() });
