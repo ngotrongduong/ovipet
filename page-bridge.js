@@ -296,11 +296,16 @@
             if (!this.responseType || this.responseType === "text") responseText = String(this.responseText || "");
           } catch {}
           try {
+            const request = safeBody(body);
+            const response = relevantResponseSnippet(responseText);
+            const turnEgg = request && typeof request === "object" && String(request.cmd || "") === "pet_turn_egg";
+            // Full Sweep pages make unrelated same-origin XHRs while the quiz is open. Recording
+            // every one bloats the shared Inspector store and creates needless cross-tab writes.
+            if (!turnEgg && response === "[non-species response omitted]") return;
             document.dispatchEvent(new CustomEvent(SPECIES_TRACE_NETWORK_EVENT, {
               detail: JSON.stringify({
                 sessionId, eggId, at: Date.now(), kind: "xhr", method: info.method, url,
-                request: safeBody(body), status: Number(this.status || 0),
-                response: relevantResponseSnippet(responseText)
+                request, status: Number(this.status || 0), response
               })
             }));
           } catch {}
@@ -325,11 +330,14 @@
         promise.then(response => {
           response.clone().text().then(text => {
             try {
+              const request = safeBody(body);
+              const responseText = relevantResponseSnippet(text);
+              const turnEgg = request && typeof request === "object" && String(request.cmd || "") === "pet_turn_egg";
+              if (!turnEgg && responseText === "[non-species response omitted]") return;
               document.dispatchEvent(new CustomEvent(SPECIES_TRACE_NETWORK_EVENT, {
                 detail: JSON.stringify({
                   sessionId, eggId, at: Date.now(), kind: "fetch", method, url,
-                  request: safeBody(body), status: Number(response.status || 0),
-                  response: relevantResponseSnippet(text)
+                  request, status: Number(response.status || 0), response: responseText
                 })
               }));
             } catch {}
