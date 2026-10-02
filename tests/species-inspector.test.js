@@ -117,6 +117,7 @@ const helpers = {
     backgroundTypes.push(message.type);
     if (message.type === "speciesMemoryLearn") return speciesMemory.learn(message);
     if (message.type === "speciesAnswerIdsMerge") return speciesMemory.mergeAnswerIds(message);
+    if (message.type === "eggTabAssignment") return { ok: false, reason: "not-owned" };
     assert.equal(message.type, "speciesImageFetch");
     return { ok: true, dataUrl: "data:image/png;base64,AA==" };
   }
@@ -195,9 +196,19 @@ async function settle() { await new Promise(resolve => setTimeout(resolve, 10));
   await settle();
   assert.equal(store.owehSpeciesInspectorV1.sessions.at(-1).terminal.reason, "egg-can-no-longer-be-turned");
 
+  // Summary must reconcile authoritative network success even if a concurrent raw-trace write
+  // lost the attempt.result marker. This is what the live 120-session export exposed.
+  store.owehSpeciesInspectorV1.sessions.push({
+    id: "species:recovered:1", eggId: "9999", attempts: [{ index: 1, species: "Feline", answerId: "2", result: null }],
+    question: { options: [{ text: "Feline", answerId: "2" }] },
+    network: [{ request: { cmd: "pet_turn_egg", PetID: "9999", Answer: "2" },
+      response: 'cb({"type":"cmd","cmd":"pet_turn_egg","status":"success"})' }]
+  });
   const summary = await api.getSummary();
-  assert.equal(summary.correct, 1);
+  assert.equal(summary.correct, 2);
+  assert.equal(summary.recovered, 1);
   assert.equal(summary.wrong, 1);
+  assert.equal(summary.unresolved, 1);
   const identity = await api.getActiveQuestionIdentity();
   assert.ok(identity.keys.includes(visualKey));
 
