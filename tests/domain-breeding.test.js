@@ -149,7 +149,7 @@ const diversifiedPlan = breedingPlan.buildDatabaseBreedPlan(
 );
 assert.equal(diversifiedPlan.queue[0].maleId, "mFC", "Pure-line keeps the stronger complete pair instead of letting one best secondary slot override it");
 assert.equal(diversifiedPlan.queue[0].maleSecondaryBestDistance, 14);
-assert.equal(diversifiedPlan.queue[0].maleSecondaryBestKey, "scales");
+assert.equal(diversifiedPlan.queue[0].maleSecondaryBestKey, "body2");
 assert.equal(diversifiedPlan.queue[0].maleBody1EquivalentPoolSize, 2);
 
 const outsideTolerance = {
