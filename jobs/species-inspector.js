@@ -214,6 +214,7 @@ OWEH.register("species-inspector", helpers => {
 
     const rawSource = sourceCandidates(image)[0];
     const cacheKey = canonicalUrl(rawSource) || String(rawSource || "");
+    let fetchedPromise = null;
     if (cacheKey && typeof runtimeRequest === "function") {
       if (!artifactCache.has(cacheKey)) {
         artifactCache.set(cacheKey, (async () => {
@@ -228,16 +229,30 @@ OWEH.register("species-inspector", helpers => {
           }
         })());
       }
-      const fetched = await artifactCache.get(cacheKey);
-      if (fetched) return fetched;
+      fetchedPromise = artifactCache.get(cacheKey);
     }
 
-    // Non-sweep/manual fallback if the guarded fetch is unavailable: give the DOM image a short
-    // chance to finish, then use it directly. This keeps old browser/test behavior intact.
-    await waitForImageReady(image, 600);
-    const directLater = artifactFromRenderableImage(image);
-    return directLater ? { ...directLater, method: "dom-canvas" }
-      : { fingerprint: null, thumbnail: null, method: "unavailable" };
+    // Lightweight Sweep now allows ONLY the credit-challenge image through its image blocker.
+    // Race that real DOM image against the guarded background fetch: whichever becomes usable
+    // first wins. This preserves the fallback while removing the old background-fetch latency
+    // from fast tabs where the challenge image arrives normally.
+    const domPromise = waitForImageReady(image, 600).then(() => {
+      const artifact = artifactFromRenderableImage(image);
+      return artifact ? { ...artifact, method: "dom-canvas" } : null;
+    });
+    if (fetchedPromise) {
+      const first = await Promise.race([
+        fetchedPromise.then(value => ({ source: "background", value })),
+        domPromise.then(value => ({ source: "dom", value }))
+      ]);
+      if (first.value) return first.value;
+      const second = first.source === "background" ? await domPromise : await fetchedPromise;
+      if (second) return second;
+    } else {
+      const directLater = await domPromise;
+      if (directLater) return directLater;
+    }
+    return { fingerprint: null, thumbnail: null, method: "unavailable" };
   }
 
   function memoryKeysForQuestion(question) {
