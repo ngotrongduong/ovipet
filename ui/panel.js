@@ -429,7 +429,7 @@ OWEH.register("ui-panel", helpers => {
           <summary><i class="oweh-ico">✦</i>Species <span>Name the Species memory</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
-            <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
+            <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: recent trace not counted yet</div>
             <div class="oweh-actions">
               <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from the pets listed in the Adoption Center (read-only, no clicks; needs ovipets.com). Images you label in Species review are learned too. More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
               <button id="oweh-species-seed-stop" class="oweh-danger" type="button" data-tip="Stop Learn species shapes after the current pet.">Stop</button>
@@ -630,12 +630,18 @@ OWEH.register("ui-panel", helpers => {
   async function updateSpeciesInspectorStats(force = false) {
     const label = document.querySelector("#oweh-species-inspector-stats");
     if (!label || typeof getSpeciesInspectorSummary !== "function") return;
+    // The Inspector trace can be several MB. In 10-15 short-lived egg tabs, reading it every
+    // five seconds just to refresh a collapsed panel wastes storage I/O and renderer time.
+    const section = label.closest?.("details");
+    if (!force && section && !section.open) return;
     if (!force && (speciesStatsPending || Date.now() - speciesStatsAt < 5000)) return;
     speciesStatsPending = true;
     try {
       const summary = await getSpeciesInspectorSummary();
       speciesStatsAt = Date.now();
-      const text = `Species Inspector: ${summary?.questions || 0} question(s) · ${summary?.correct || 0} correct · ${summary?.wrong || 0} wrong · ${summary?.network || 0} trace event(s)`;
+      const recovered = Number(summary?.recovered || 0);
+      const recoveredText = recovered ? ` · ${recovered} recovered from network` : "";
+      const text = `Species Inspector (last ${summary?.questions || 0}): ${summary?.correct || 0} confirmed · ${summary?.unresolved || 0} unresolved · ${summary?.wrong || 0} rejected attempt(s) · ${summary?.network || 0} network event(s)${recoveredText}`;
       if (label.textContent !== text) label.textContent = text;
     } catch {} finally {
       speciesStatsPending = false;
