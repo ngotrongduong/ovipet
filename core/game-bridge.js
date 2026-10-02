@@ -95,6 +95,14 @@
     return dispatchGameCommand("pet_turn_egg", petId, {}, timeout, true, null, "own-hatch");
   }
 
+  async function sendVerifiedDiscardCommand(petId, timeout = 10000) {
+    if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
+    if (!isOwnHatcheryPage()) return { ok: false, reason: "own-hatchery-required" };
+    // The MAIN-world bridge refuses this proxy unless it observed the user's real
+    // Edit -> Send To -> Discard UI action earlier in this same page session.
+    return dispatchGameCommand("__verified_discard__", petId, {}, timeout, false, null, "verified-discard");
+  }
+
   // Asks the page-side bridge whether the game's dispatcher exists yet. Never sends a game command.
   function pingGameBridge(timeout = 1500) {
     return new Promise(resolve => {
@@ -127,6 +135,7 @@
     GAME_PING_EVENT,
     sendGameCommand,
     sendOwnHatchCommand,
+    sendVerifiedDiscardCommand,
     pingGameBridge
   });
 })();
