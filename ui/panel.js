@@ -62,6 +62,11 @@ OWEH.register("ui-panel", helpers => {
       missingControls.push(selector);
       return;
     }
+    if (typeof handler !== "function") {
+      control.disabled = true;
+      missingControls.push(`${selector} (missing handler)`);
+      return;
+    }
     control.addEventListener("click", event => {
       event.preventDefault();
       setStatus(`${label}...`);
