@@ -95,8 +95,26 @@ OWEH.register("feature-hatchlings", helpers => {
     const { profile, record } = result;
     const gender = String(profile.gender || "").trim();
     if (!/^(?:Female|Male)$/i.test(gender)) {
+      // Some OviPets egg profiles already expose colour rows before hatching. Preserve that
+      // read-only information so the retention engine can flag a poor egg early. No discard is
+      // sent here; destructive egg handling is separately gated by a live-verified UI command.
+      const now = Date.now();
+      const egg = {
+        ...record,
+        gender: "",
+        owned: true,
+        present: true,
+        enclosure: profile.enclosureLabel || "Hatchery",
+        enclosureId: profile.enclosureId ?? null,
+        stage: "egg",
+        lastProfileScanAt: now,
+        lastSeenAt: now,
+        profileStale: false
+      };
+      await saveRecord(egg);
+      state.scannedEggs = (state.scannedEggs || 0) + 1;
       state.skippedEggs = (state.skippedEggs || 0) + 1;
-      return recordCheck(item.id, "not-hatched");
+      return recordCheck(item.id, "egg-indexed");
     }
     const now = Date.now();
     const pet = {
@@ -149,7 +167,7 @@ OWEH.register("feature-hatchlings", helpers => {
     await storageSet({ owehHatchlingRun: state });
     // Ranking needs the whole pet DB, so compute it once per run rather than per hatchling.
     await hatchlingActions.updateRetentionRanking();
-    setStatus(message || `Hatchery complete — renamed ${state.renamed || 0}, females moved ${state.movedFemales || 0}, males moved to ${breedingPlan.MALES_ENCLOSURE} ${state.movedMales || 0}, not hatched ${state.skippedEggs || 0}, unroutable ${state.unroutable || 0}, errors ${state.errors || 0}`);
+    setStatus(message || `Hatchery complete — renamed ${state.renamed || 0}, females moved ${state.movedFemales || 0}, males moved to ${breedingPlan.MALES_ENCLOSURE} ${state.movedMales || 0}, egg profiles ${state.scannedEggs || 0}, not hatched ${state.skippedEggs || 0}, unroutable ${state.unroutable || 0}, errors ${state.errors || 0}`);
     reportWorkerDone();
   }
 
