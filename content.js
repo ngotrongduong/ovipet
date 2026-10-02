@@ -164,6 +164,72 @@
     retentionPolicy: OWEH.domain.retentionPolicy
   });
 
+  const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
+  const DISCARD_RESTORE_EVENT = "oweh:discard-signature-restore";
+
+  document.addEventListener(DISCARD_TRACE_EVENT, event => {
+    try {
+      const signature = JSON.parse(String(event.detail || "{}"));
+      if (signature?.evidence !== "discard-ui" || !signature.command || !signature.sourceId) return;
+      storageSet({ owehDiscardCommandSignature: signature });
+      setStatus("Discard UI command verified from OviPets — batch poor-egg discard is now available");
+    } catch {}
+  });
+
+  storageGet("owehDiscardCommandSignature", null).then(signature => {
+    if (!signature?.command || signature?.evidence !== "discard-ui") return;
+    document.dispatchEvent(new CustomEvent(DISCARD_RESTORE_EVENT, { detail: JSON.stringify(signature) }));
+  }).catch(() => {});
+
+  async function discardPoorEggCandidates() {
+    if (!isOwnHatchery()) {
+      setStatus("Open your own Hatchery before discarding poor eggs");
+      return { ok: false, reason: "own-hatchery-required" };
+    }
+    const { ranking } = await updateRetentionRanking();
+    const poor = new Set((ranking || [])
+      .filter(row => row.status === OWEH.domain.retentionPolicy.STATUS.EARLY_CULL_CANDIDATE)
+      .map(row => String(row.id)));
+    const visibleEggs = getHatcheryPetCards()
+      .filter(card => !card.likelyHatched && poor.has(String(card.id)))
+      .map(card => String(card.id));
+    if (!visibleEggs.length) {
+      setStatus("No visible Hatchery eggs qualify for early discard");
+      return { ok: true, discarded: 0 };
+    }
+
+    const signature = await storageGet("owehDiscardCommandSignature", null);
+    if (!signature?.command || signature?.evidence !== "discard-ui") {
+      setStatus("Discard is not verified yet — manually discard one test egg through Edit → Send To → Discard once, then run this again");
+      return { ok: false, reason: "discard-signature-missing" };
+    }
+    document.dispatchEvent(new CustomEvent(DISCARD_RESTORE_EVENT, { detail: JSON.stringify(signature) }));
+
+    let discarded = 0;
+    let errors = 0;
+    for (const id of visibleEggs) {
+      const result = await OWEH.core.gameActions.discardOwnedEgg(id);
+      if (!result?.ok) {
+        errors += 1;
+        if (/signature|target-not-visible/i.test(String(result?.reason || ""))) {
+          setStatus("Discard verification expired or the egg is no longer visible — verify one Discard action again");
+          break;
+        }
+        continue;
+      }
+      discarded += 1;
+      await storageSet({
+        owehPets: {
+          [id]: { id, present: false, retentionDiscardedAt: Date.now(), retentionDiscardReason: "early-cull-candidate" }
+        }
+      });
+      await sleep(DIRECT_COMMAND_INTERVAL_MS);
+    }
+    await updateRetentionRanking();
+    setStatus("Poor egg discard complete — " + discarded + " discarded" + (errors ? ", " + errors + " error(s)" : ""));
+    return { ok: errors === 0, discarded, errors };
+  }
+
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
     storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
     comparePairPureMetrics, formatPureProbability, STRICT_PURE_TARGET
