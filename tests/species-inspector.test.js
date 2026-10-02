@@ -137,6 +137,11 @@ async function settle() { await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(session.question.image.thumbnail, "data:image/jpeg;base64,thumb");
   assert.deepEqual(session.question.options.map(item => [item.text, item.answerId]), [["Canis", "10"], ["Raptor", "15"], ["Feline", "2"]]);
   assert.equal(store.owehSpeciesAnswerIds.Raptor.preferred, "15");
+  const answerIdCount = store.owehSpeciesAnswerIds.Raptor.ids["15"];
+  await api.monitor();
+  await settle();
+  assert.equal(store.owehSpeciesAnswerIds.Raptor.ids["15"], answerIdCount,
+    "repeated refreshes of the same question must not inflate Answer-ID counts");
 
   // Real click capture + authoritative failed network response should resolve the attempt and
   // update both stats and learned memory without waiting for the DOM Error observer.
