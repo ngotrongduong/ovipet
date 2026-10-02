@@ -100,7 +100,7 @@
     if (!isOwnHatcheryPage()) return { ok: false, reason: "own-hatchery-required" };
     // The MAIN-world bridge refuses this proxy unless it observed the user's real
     // Edit -> Send To -> Discard UI action earlier in this same page session.
-    return dispatchGameCommand("__verified_discard__", petId, {}, timeout, false, null, "verified-discard");
+    return dispatchGameCommand("__verified_discard__", petId, {}, timeout, true, null, "verified-discard");
   }
 
   // Asks the page-side bridge whether the game's dispatcher exists yet. Never sends a game command.
