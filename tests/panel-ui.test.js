@@ -113,7 +113,7 @@ function setup() {
   assert.equal(env.api.isVisible(1), true);
 
   const panelSource = fs.readFileSync(path.join(__dirname, "../ui/panel.js"), "utf8");
-  assert.ok(panelSource.includes("31 species · 721 built-in silhouettes"));
+  assert.ok(panelSource.includes("10 quiz species · 451 built-in silhouettes"));
   for (const retired of ["oweh-species-inspector-stats", "oweh-species-review", "oweh-export-species", "oweh-import-species-db", "oweh-species-seed-start"]) {
     assert.equal(panelSource.includes(retired), false, `retired Species control remains: ${retired}`);
   }
