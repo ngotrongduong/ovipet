@@ -5,6 +5,7 @@
   const RESULT_EVENT = "oweh:game-command-result";
   const PING_EVENT = "oweh:game-ping";
   const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
+  const DISCARD_RESTORE_EVENT = "oweh:discard-signature-restore";
   const ALLOWED = new Set([
     // pet_name names an Unnamed newborn (its profile has a Name button, not Rename).
     "pets_enclosure", "pet_rename", "pet_name", "pet_feed",
@@ -95,6 +96,7 @@
             params: String(params || ""),
             fields,
             sourceId,
+            evidence: "discard-ui",
             observedAt: Date.now()
           };
           document.dispatchEvent(new CustomEvent(DISCARD_TRACE_EVENT, {
@@ -116,6 +118,18 @@
     if (installDiscardObserver()) clearInterval(discardObserverTimer);
   }, 250);
   setTimeout(() => clearInterval(discardObserverTimer), 30000);
+
+  document.addEventListener(DISCARD_RESTORE_EVENT, event => {
+    let detail;
+    try { detail = JSON.parse(String(event.detail || "{}")); } catch { return; }
+    const command = String(detail.command || "");
+    const params = String(detail.params || "");
+    const sourceId = String(detail.sourceId || "");
+    const fields = detail.fields && typeof detail.fields === "object" ? detail.fields : {};
+    if (detail.evidence !== "discard-ui" || !command || command.length > 80
+      || !/^\d+$/.test(sourceId) || !/(?:PetID|EggID)=\d+/.test(params)) return;
+    verifiedDiscardSignature = { command, params, sourceId, fields, evidence: "discard-ui", observedAt: Number(detail.observedAt || 0) };
+  });
 
   const SPECIES_TRACE_CONTROL_EVENT = "oweh:species-trace-control";
   const SPECIES_TRACE_NETWORK_EVENT = "oweh:species-trace-network";
@@ -362,7 +376,8 @@
       && (command === "pet_feed" || command === "friend_request" || ownHatchCommand);
     if (!requestId || (!ALLOWED.has(command) && !verifiedDiscardCommand) || !/^\d+$/.test(targetId)
       || (command === "pet_turn_egg" && !ownHatchCommand)) {
-      return reply(requestId, false, verifiedDiscardCommand ? "discard-signature-missing" : "invalid-command");
+      const discardProxy = command === "__verified_discard__" && purpose === "verified-discard";
+      return reply(requestId, false, discardProxy ? "discard-signature-missing-or-target-not-visible" : "invalid-command");
     }
     if (typeof window.ui_action_cmdExec !== "function") {
       return reply(requestId, false, "dispatcher-unavailable");
