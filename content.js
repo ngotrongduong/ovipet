@@ -63,7 +63,7 @@
     return;
   }
   const { friendLinks } = OWEH.dom.friends;
-  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan) {
+  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.retentionPolicy) {
     console.error("[OviPets Helper] domain modules did not load before content.js — check manifest.json script order");
     return;
   }
@@ -158,8 +158,10 @@
     getOwnUserId: () => ownUserId, getBlacklist: () => friendBlacklist(), writeClipboard,
     friendLinks, chatDom: OWEH.dom.chat
   });
-  const { updateRetentionRanking, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
-    storageGet, storageSet, setStatus, writeClipboard, petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure
+  const { updateRetentionRanking, maybeDailyRetentionScan, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
+    storageGet, storageSet, setStatus, writeClipboard,
+    petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure,
+    retentionPolicy: OWEH.domain.retentionPolicy
   });
 
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
@@ -379,6 +381,7 @@
       pedigree: OWEH.domain.pedigree,
       breedingScore: OWEH.domain.breedingScore,
       breedingPlan: OWEH.domain.breedingPlan,
+      retentionPolicy: OWEH.domain.retentionPolicy,
       maleCull: OWEH.domain.maleCull
     },
     gameActions: OWEH.core.gameActions,
@@ -464,6 +467,9 @@
   storageGet("owehOwnUserId", null).then(value => {
     if (value) ownUserId = value;
   });
+  // Local database-only daily retention scan. This never discards anything; it refreshes the
+  // keep/cull review opportunistically once per 24h whenever OviPets is open.
+  maybeDailyRetentionScan().catch(() => {});
 
   runtimeRequest({ type: "stateGetTabIdentity" }).then(async result => {
     if (result.ok) currentTabId = result.tabId;
