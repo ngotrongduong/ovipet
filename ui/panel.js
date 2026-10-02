@@ -27,6 +27,7 @@ OWEH.register("ui-panel", helpers => {
     requestStartBreedOutcrossCampaign,
     stopBreedCampaign,
     copyRetentionReviewCsv,
+    discardPoorEggCandidates,
     confirmBreedPreview,
     discardBreedPreview,
     setBreedPairLimit,
@@ -59,6 +60,11 @@ OWEH.register("ui-panel", helpers => {
     const control = panel.querySelector(selector);
     if (!control) {
       missingControls.push(selector);
+      return;
+    }
+    if (typeof handler !== "function") {
+      control.disabled = true;
+      missingControls.push(`${selector} (missing handler)`);
       return;
     }
     control.addEventListener("click", event => {
@@ -386,8 +392,9 @@ OWEH.register("ui-panel", helpers => {
             <button id="oweh-view-cull" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every male the cull would move, the better males that cover it, and move progress.">View cull list</button>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
-              <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the lowest-ranked retention review as CSV. This never removes pets automatically.">Copy retention CSV</button>
+              <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the retention review with Generated, endpoint, near-target, lineage and partner-potential reasons.">Copy retention CSV</button>
             </div>
+            <button id="oweh-discard-poor-eggs" class="oweh-danger oweh-primary-wide" type="button" data-tip="In your own Hatchery, discard only eggs classified as EARLY_CULL_CANDIDATE. The first use is locked until OviPets' real Edit → Send To → Discard command has been observed once.">Discard poor eggs</button>
           </div>
         </details>
 
@@ -525,6 +532,7 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-copy-retention", "Copying retention review", copyRetentionReviewCsv, missingControls);
+    bindPanelAction(panel, "#oweh-discard-poor-eggs", "Discarding poor eggs", discardPoorEggCandidates, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-export-species", "Exporting Species Inspector data", async () => {

@@ -35,9 +35,11 @@ documentTarget.body = new TestElement("body");
 documentTarget.location = { href: "https://ovipets.com/#!/?src=pets&sub=profile&pet=9001", hash: "#!/?src=pets&sub=profile&pet=9001" };
 documentTarget.scripts = [{ src: "https://ovipets.com/js/app.js" }];
 let hatchIcons = [];
+let hatchAnchors = [];
 let breedDialogs = [];
 documentTarget.querySelectorAll = selector => {
   if (selector === 'img[title="Hatch Egg"]') return hatchIcons;
+  if (selector === 'main a.pet[href*="pet="]') return hatchAnchors;
   if (selector === '[role="dialog"], .ui-dialog') return breedDialogs;
   return [];
 };
@@ -242,6 +244,43 @@ function request(payload) {
   assert.equal(calls[7].params, "PetID=530491258");
   assert.equal(calls[7].form.children[0].name, "Name");
   assert.equal(calls[7].form.children[0].value, "A-B-C");
+
+  // v5.11: destructive discard is not hard-coded. Simulate one real UI dispatcher call
+  // whose command identifies Discard; the bridge learns that exact signature, then permits
+  // replay only for a pet visibly present in the user's own Hatchery.
+  documentTarget.location.hash = "#!/?src=pets&sub=profile&pet=9001";
+  const discardForm = {
+    textContent: "Discard",
+    querySelectorAll: () => [],
+    getAttribute: () => ""
+  };
+  window.ui_action_cmdExec("pet_discard_test_signature", "PetID=9001", discardForm, () => {});
+  const visibleEggAnchor = {
+    getAttribute: name => name === "href" ? "#!/?src=pets&sub=profile&pet=8" : null
+  };
+  hatchAnchors = [visibleEggAnchor];
+  documentTarget.location.hash = "#!/?src=pets&sub=hatchery";
+  result = await request({
+    requestId: "verified-discard",
+    command: "__verified_discard__",
+    targetId: "8",
+    purpose: "verified-discard",
+    fireAndForget: true
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls.at(-1).command, "pet_discard_test_signature");
+  assert.equal(calls.at(-1).params, "PetID=8");
+
+  hatchAnchors = [];
+  result = await request({
+    requestId: "discard-hidden-blocked",
+    command: "__verified_discard__",
+    targetId: "9",
+    purpose: "verified-discard",
+    fireAndForget: true
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "discard-signature-missing-or-target-not-visible");
 
   console.log("page bridge tests passed");
 })().catch(error => {

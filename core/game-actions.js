@@ -13,7 +13,7 @@
   }
 
   const { storageGet } = OWEH.core.storage;
-  const { sendGameCommand, sendOwnHatchCommand } = OWEH.core.gameBridge;
+  const { sendGameCommand, sendOwnHatchCommand, sendVerifiedDiscardCommand } = OWEH.core.gameBridge;
   const { overviewEnclosureForPet } = OWEH.dom.overview;
   const { normalizeEnclosureLabel } = OWEH.domain.breedingPlan;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,6 +76,11 @@
     return sendOwnHatchCommand(petId, 3000);
   }
 
+  async function discardOwnedEgg(petId) {
+    if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
+    return sendVerifiedDiscardCommand(petId, 10000);
+  }
+
   async function requestFriend(userId) {
     if (!/^\d+$/.test(String(userId))) return { ok: false, reason: "invalid-user" };
     return sendGameCommand("friend_request", userId, {}, 3000, true);
@@ -102,6 +107,7 @@
     namePet,
     feedPet,
     hatchOwnEgg,
+    discardOwnedEgg,
     requestFriend,
     removeFriendDirect,
     breedPairDirect

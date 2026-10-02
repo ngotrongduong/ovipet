@@ -147,8 +147,8 @@ const diversifiedPlan = breedingPlan.buildDatabaseBreedPlan(
   [],
   { now, shortlistSize: 40 }
 );
-assert.equal(diversifiedPlan.queue[0].maleId, "mFA", "best secondary distance 12 should beat 14 inside the near-equivalent Body-1 pool");
-assert.equal(diversifiedPlan.queue[0].maleSecondaryBestDistance, 12);
+assert.equal(diversifiedPlan.queue[0].maleId, "mFC", "Pure-line keeps the stronger complete pair instead of letting one best secondary slot override it");
+assert.equal(diversifiedPlan.queue[0].maleSecondaryBestDistance, 14);
 assert.equal(diversifiedPlan.queue[0].maleSecondaryBestKey, "body2");
 assert.equal(diversifiedPlan.queue[0].maleBody1EquivalentPoolSize, 2);
 
@@ -163,6 +163,35 @@ const strictBody1Plan = breedingPlan.buildDatabaseBreedPlan(
   { now, shortlistSize: 40 }
 );
 assert.equal(strictBody1Plan.queue[0].maleId, "mFC", "outside the 15-point Body-1 tolerance, normal Body-1 ranking must still win");
+
+// v5.11.0: egg-slot limits operate on the globally ranked finished pairs, not on
+// the female-only order. A female with fewer exact channels can therefore move ahead when
+// her only safe male makes Body 1 pure-reachable this generation.
+const prettyFemale = {
+  ...female, id: "fPretty", enclosure: "FF FF **", ancestors: ["block-complement"], parentIds: ["block-complement"],
+  colors: { ...exactColors, body1: "#FFFFF0" }
+};
+const reachableFemale = {
+  ...female, id: "fReach", enclosure: "FF ** **", ancestors: ["block-pretty"], parentIds: ["block-pretty"],
+  colors: { ...exactColors, body1: "#FF8000" }
+};
+const prettyMale = {
+  ...complement, id: "mPretty", ancestors: ["block-pretty"], parentIds: ["block-pretty"],
+  colors: { ...exactColors, body1: "#FFFFF8" }
+};
+const complementMale = {
+  ...complement, id: "mReach", ancestors: ["block-complement"], parentIds: ["block-complement"],
+  colors: { ...exactColors, body1: "#80FFFF" }
+};
+const globalPairPlan = breedingPlan.buildDatabaseBreedPlan(
+  { fPretty: prettyFemale, fReach: reachableFemale, mPretty: prettyMale, mReach: complementMale },
+  target, [], { now, shortlistSize: 40 }
+);
+assert.deepEqual(globalPairPlan.queue.map(row => row.id), ["fReach", "fPretty"],
+  "pair with Body-1 pure reachability must rank ahead even when its female alone looks less pure");
+assert.equal(globalPairPlan.queue[0].pure.body1PurePossible, true);
+assert.equal(globalPairPlan.queue[1].pure.body1PurePossible, false);
+assert.deepEqual(globalPairPlan.queue.map(row => row.globalPairRank), [1, 2]);
 
 // Strategy 2 — Same-FF target improvement. This strategy scans the complete
 // enclosure snapshot rather than only breeding-program enclosures. For each

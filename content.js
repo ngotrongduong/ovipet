@@ -63,7 +63,7 @@
     return;
   }
   const { friendLinks } = OWEH.dom.friends;
-  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan) {
+  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.retentionPolicy) {
     console.error("[OviPets Helper] domain modules did not load before content.js — check manifest.json script order");
     return;
   }
@@ -158,9 +158,86 @@
     getOwnUserId: () => ownUserId, getBlacklist: () => friendBlacklist(), writeClipboard,
     friendLinks, chatDom: OWEH.dom.chat
   });
-  const { updateRetentionRanking, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
-    storageGet, storageSet, setStatus, writeClipboard, petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure
+  const { updateRetentionRanking, maybeDailyRetentionScan, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
+    storageGet, storageSet, setStatus, writeClipboard,
+    petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure,
+    retentionPolicy: OWEH.domain.retentionPolicy
   });
+
+  const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
+
+  document.addEventListener(DISCARD_TRACE_EVENT, event => {
+    try {
+      const signature = JSON.parse(String(event.detail || "{}"));
+      if (!/^discard-ui(?:-click)?$/.test(String(signature?.evidence || "")) || !signature.command || !signature.sourceId) return;
+      storageSet({ owehDiscardCommandSignature: signature });
+      setStatus("Discard UI command verified from OviPets — batch poor-egg discard is now available");
+    } catch {}
+  });
+
+  async function discardPoorEggCandidates() {
+    if (!isOwnHatchery()) {
+      setStatus("Open your own Hatchery before discarding poor eggs");
+      return { ok: false, reason: "own-hatchery-required" };
+    }
+    const { ranking } = await updateRetentionRanking();
+    const poor = new Set((ranking || [])
+      .filter(row => row.status === OWEH.domain.retentionPolicy.STATUS.EARLY_CULL_CANDIDATE)
+      .map(row => String(row.id)));
+    const visibleEggs = getHatcheryPetCards()
+      .filter(card => !card.likelyHatched && poor.has(String(card.id)))
+      .map(card => String(card.id));
+    if (!visibleEggs.length) {
+      setStatus("No visible Hatchery eggs qualify for early discard");
+      return { ok: true, discarded: 0 };
+    }
+
+    const dispatched = [];
+    let errors = 0;
+    for (const id of visibleEggs) {
+      const result = await OWEH.core.gameActions.discardOwnedEgg(id);
+      if (!result?.ok) {
+        errors += 1;
+        if (/signature|target-not-visible/i.test(String(result?.reason || ""))) {
+          setStatus("Discard is not verified in this OviPets session — manually discard one test egg through Edit → Send To → Discard, return to Hatchery, then run this again");
+          break;
+        }
+        continue;
+      }
+      dispatched.push(id);
+      await sleep(DIRECT_COMMAND_INTERVAL_MS);
+    }
+
+    if (!dispatched.length) return { ok: false, discarded: 0, errors };
+    await sleep(500);
+    let remaining;
+    try {
+      const hatchery = await petFetch.readHatchery();
+      remaining = new Set(hatchery.eggIds || []);
+    } catch {
+      setStatus("Discard commands were sent, but Hatchery verification failed — database was not changed");
+      return { ok: false, discarded: 0, errors: errors + 1 };
+    }
+
+    const confirmed = dispatched.filter(id => !remaining.has(id));
+    const failed = dispatched.filter(id => remaining.has(id));
+    const changed = {};
+    for (const id of confirmed) {
+      changed[id] = {
+        id,
+        present: false,
+        retentionDiscardedAt: Date.now(),
+        retentionDiscardReason: "early-cull-candidate"
+      };
+    }
+    if (Object.keys(changed).length) await storageSet({ owehPets: changed });
+    errors += failed.length;
+    await updateRetentionRanking();
+    setStatus("Poor egg discard complete — " + confirmed.length + " confirmed discarded"
+      + (failed.length ? ", " + failed.length + " still present" : "")
+      + (errors > failed.length ? ", " + (errors - failed.length) + " dispatch error(s)" : ""));
+    return { ok: errors === 0, discarded: confirmed.length, errors };
+  }
 
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
     storageGet, setStatus, readPet, rgb, petPureMetrics, petOffTarget, pairPureMetrics,
@@ -379,6 +456,7 @@
       pedigree: OWEH.domain.pedigree,
       breedingScore: OWEH.domain.breedingScore,
       breedingPlan: OWEH.domain.breedingPlan,
+      retentionPolicy: OWEH.domain.retentionPolicy,
       maleCull: OWEH.domain.maleCull
     },
     gameActions: OWEH.core.gameActions,
@@ -420,7 +498,7 @@
       startOwnEggs: () => ownEggsModule?.start(),
       stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped"),
       scanFriends, requestFriendSweepWorker, requestGoToNextFriend, stopFriendSweep, copyBlacklistCsv,
-      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv,
+      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv, discardPoorEggCandidates,
       confirmBreedPreview, discardBreedPreview, setBreedPairLimit,
       requestStartHatchlingProcessing, stopHatchlingProcessing,
       exportSpeciesInspector: () => OWEH.get("species-inspector")?.api?.exportData?.(),
@@ -464,6 +542,9 @@
   storageGet("owehOwnUserId", null).then(value => {
     if (value) ownUserId = value;
   });
+  // Local database-only daily retention scan. This never discards anything; it refreshes the
+  // keep/cull review opportunistically once per 24h whenever OviPets is open.
+  maybeDailyRetentionScan().catch(() => {});
 
   runtimeRequest({ type: "stateGetTabIdentity" }).then(async result => {
     if (result.ok) currentTabId = result.tabId;
