@@ -1,86 +1,80 @@
-# Name the Species — Inspector / Learning Dataset
+# Name the Species — Production Static Classifier
 
-Current release compatibility: v5.4.4
+The old Inspector/learning pipeline is retired in the production runtime.
 
-## Purpose
+## Production model
 
-The inspector exists to discover whether OviPets exposes useful answer identity on the browser side and to build a progressively better image/species memory without collecting unrelated account data.
+The extension ships a compiled silhouette database in `data/species-static.js`.
 
-It can observe only information delivered to the browser. It cannot read private server-side source code.
+Source:
+- learning export: `2026-10-02T22:54:10.362Z`
+- source extension: v5.10.2
+- 31 species
+- 721 retained silhouettes
+- maximum 64 silhouettes per species
 
-## What is recorded while Turn Egg / Name the Species is active
+The source learning export contained 1,581 silhouette examples. The production build reduces each species to at most 64 diverse representatives with deterministic farthest-point selection. On the 110 recent retained quiz sessions with an authoritative confirmed answer, the reduced library scored 110/110 in the offline leave-one-out check used for this migration.
 
-- egg/user IDs already present in the OviPets route;
-- verification dialog HTML/attributes;
-- image source URL(s), selected safe attributes, a perceptual fingerprint and small thumbnail;
-- answer option text/attributes;
-- selected answer and correct/wrong outcome;
-- terminal wrong-answer Error dialog snapshot;
-- OviPets script source URLs;
-- matching MAIN-world global function/value hints whose names contain species/egg/turn/verify/captcha/quiz/dialog;
-- narrowly filtered same-origin XHR/fetch metadata during the trace window, with unrelated parameters redacted and unrelated response bodies omitted.
+This validation describes that retained dataset; it is not a guarantee that OviPets can never introduce a new species, pose or rendering change.
 
-## Explicitly not recorded
+## Runtime flow
 
-- cookies or authorization headers;
-- passwords;
-- chat messages;
-- general browsing history;
-- unrelated response bodies;
-- cross-origin traffic.
+For each real Name the Species dialog:
 
-## Live wrong-answer rule
+1. Open the real egg profile and click the real Turn Egg button.
+2. Keep the real Name the Species dialog visible in the egg tab.
+3. Read the challenge image silhouette.
+4. Compare only the answer options currently offered by OviPets against the built-in static library.
+5. Click the selected real option and real OK button.
+6. Wait for the real OviPets result.
+7. Persist only an aggregate `correct` or `wrong` counter.
 
-Edge QA and Inspector network data confirmed two distinct outcomes:
+A rejected choice is remembered only in RAM for that current egg so the immediate retry does not repeat the same answer. It is not written to storage.
 
-1. `The answer is incorrect, please try again.` is **retryable**. Record that species as wrong for the current visual identity, dismiss the Error, click Turn Egg again on the same egg, and exclude the rejected species from subsequent guesses.
-2. `The egg can no longer be turned.` is **terminal**. Report the egg as `exhausted`, close only the extension-owned tab, and continue the batch.
+## Persistent Species data
 
-Do not infer a wrong answer from timeout, silence, navigation, or simply selecting another option. Only the explicit incorrect Error/network response is authoritative negative evidence.
+The production runtime stores only:
 
-## Learning identity
+```json
+{
+  "owehSpeciesStats": {
+    "correct": 0,
+    "wrong": 0
+  }
+}
+```
 
-The solver/Inspector uses the strongest available identity in this order:
+On the first production stats update, legacy learning keys are removed:
 
-- perceptual visual fingerprint of the challenge image;
-- canonical challenge image source URL;
-- question key fallback.
+- `owehSpeciesMemory`
+- `owehSpeciesAnswerIds`
+- `owehSpeciesShapes`
+- `owehSpeciesInspectorV1`
+- `owehSpeciesSeedSeen`
 
-Because the challenge image is served from `app.ovipets.com`, v5.3.5 uses a strict background fetcher limited to `/img/pet/<id>/credit-challenge` so the isolated content script can safely compute a thumbnail/fingerprint without weakening the page bridge.
+Existing lifetime `correct` and `wrong` totals are preserved during this compaction.
 
-### Silhouette matching (v5.4.0)
+## Data intentionally not stored anymore
 
-The challenge image shows a random species with random colors and genes, so the exact identities above rarely repeat. Each species keeps a fixed pose, so the Inspector also records a 32x32 alpha-mask silhouette (`shape`, 256 hex chars). When no confirmed exact memory exists, the solver ranks the offered options with `domain/species-shape.js`: a learned silhouette within 150 of 1,024 pixels is answered (`shape-match`, v5.4.1; measured same-species median 114, other-species median 175); otherwise it prefers an option never learned (`shape-unknown`), then the nearest (`shape-nearest`). Confirmed answers are added to `owehSpeciesShapes` (max 150 distinct silhouettes per species since v5.4.2; when full, the older of the closest pair is dropped) through the serialized background writer, older confirmed URLs are back-filled once, and exports/imports carry `shapes`.
+The production runtime does not store or collect:
 
-**Learn Species Shapes** (v5.4.1, `jobs/species-seed.js`) seeds the library before any challenge is answered: normal pet images (`/img/pet/<id>`) share the challenge's 500x500 frame, so own saved pets and Adoption Center pets (species read from their public profile) are masked and learned. The more species are covered, the better the exclusion step works.
+- challenge thumbnails;
+- exact-image fingerprints/history;
+- question HTML;
+- Answer-ID history;
+- raw correct/wrong mappings by image;
+- egg/user IDs for Species learning;
+- network traces;
+- source-code hints;
+- mutable silhouette examples;
+- unresolved-question review data.
 
-The real `pet_turn_egg` response is the authoritative outcome. `status: success` adds a positive vote; `status: failed` with the explicit incorrect message adds negative evidence. Answer IDs are also learned from the question/network request.
+The old Inspector, Species Review, seed learner, mutable shape writer and MAIN-world Species network tracing are removed from the production package/runtime.
 
-## Export
+## Full Sweep performance
 
-Open the extension panel → Hatchery & Eggs → **Export Species JSON**.
+Lightweight Full Sweep tabs still block ordinary page images, media and fonts. A higher-priority tab-scoped allow rule permits only the `/credit-challenge` image needed by Name the Species.
 
-The exported JSON includes both the raw inspector sessions and the learned answer memory. Upload that JSON for offline analysis of:
+The answerer uses the normal challenge image when available and falls back to the guarded Species image fetch only if the direct image cannot be read. No fetched challenge image is saved.
 
-- stable asset IDs/URLs;
-- recurring fingerprints;
-- client-side function names or script bundles;
-- network fields that may identify species;
-- correct/wrong mappings and confidence.
-
-Use **Clear Inspector** to remove the trace dataset. Learned answer memory is intentionally retained so the solver does not lose past correct/wrong knowledge.
-
-## Backup / restore
-
-Use **Export Species DB** for a compact portable backup containing learned visual mappings, wrong-answer exclusions, Answer IDs and statistics. Use **Import Species DB** on the same or another computer to merge that backup into the current database. Import is idempotent: importing the same file again does not multiply votes.
-
-**Import Species DB** also accepts previous full **Export Species JSON** files. For older Inspector exports whose `learnedMemory`/`answerIds` were empty, v5.3.5 mines the stored trace/network sessions and reconstructs recoverable positive/negative outcomes and Answer-ID mappings so early data is not discarded.
-
-
-## Lightweight Full Sweep tabs
-
-Fast Sweep-owned tabs block ordinary image/media/font resources to reduce memory, network and decoder pressure. A higher-priority tab-scoped rule now allows only the Name-the-Species `/credit-challenge` image to load normally. The Inspector races that DOM image against the guarded background species-image fetcher and uses whichever becomes ready first, so quiz classification stays intact without restoring the rest of the page's heavy images.
-
-The Inspector keeps a rolling maximum of 120 raw question sessions. This is a debugging window, not a lifetime accuracy counter. Its summary reconciles an unresolved attempt with an authoritative `pet_turn_egg status: success` network response, and separately reports unresolved sessions and rejected attempts. The lifetime Species counters remain in `owehSpeciesStats`.
-
-In extension-owned egg tabs, repeated DOM refreshes no longer re-hash the same complete question, re-merge the same Answer IDs, or collect repeated source-code hints. Unrelated same-origin network traffic is also excluded from the Species trace. These changes reduce storage contention when 10-15 egg tabs are active together without skipping the real Name-the-Species dialog or its server-confirmed outcome.
+This keeps the real Name the Species step while removing the previous multi-tab storage writes, trace serialization, source inspection and repeated learning work.
