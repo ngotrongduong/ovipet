@@ -9,11 +9,12 @@ The extension ships a compiled silhouette database in `data/species-static.js`.
 Source:
 - learning export: `2026-10-02T22:54:10.362Z`
 - source extension: v5.10.2
-- 31 species
-- 721 retained silhouettes
-- maximum 64 silhouettes per species
+- 10 real Name-the-Species quiz species: Canis, Draconis, Equus, Feline, Gekko, Lupus, Mantis, Raptor, Slime, Vulpes
+- 451 retained silhouettes
+- target 45 silhouettes per species; Slime keeps one additional coverage silhouette
+- the other 21 species learned elsewhere are intentionally excluded because they have not appeared in the Name-the-Species option pool
 
-The source learning export contained 1,581 silhouette examples. The production build reduces each species to at most 64 diverse representatives with deterministic farthest-point selection. On the 110 recent retained quiz sessions with an authoritative confirmed answer, the reduced library scored 110/110 in the offline leave-one-out check used for this migration.
+The source learning export contained 1,581 silhouette examples across 31 species, but the 10 species that actually appeared in the retained Name-the-Species question pool accounted for 1,500 of those examples. The production build discards the 21 non-quiz species and reduces the quiz species to 451 diverse representatives. On the 110 recent retained quiz sessions with an authoritative confirmed answer, this trimmed library scored 110/110 in the offline leave-one-out check used for this migration.
 
 This validation describes that retained dataset; it is not a guarantee that OviPets can never introduce a new species, pose or rendering change.
 
