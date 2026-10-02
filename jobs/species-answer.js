@@ -161,22 +161,32 @@ OWEH.register("species-answer", helpers => {
   async function challengeShape(container) {
     const image = challengeImage(container);
     if (!image) return null;
+    const source = image.currentSrc || image.src || image.getAttribute?.("src");
 
-    // Lightweight sweep tabs allow the challenge image itself while blocking all ordinary pet
-    // images/media/fonts. The normal DOM path is therefore usually fastest.
-    await waitForImage(image, 350);
-    let shape = shapeFromImage(image);
-    if (shape) return shape;
-
-    // Guarded fallback only; it does not save the image or any identity/history.
-    try {
-      const response = await runtimeRequest({ type: "speciesImageFetch", url: image.currentSrc || image.src || image.getAttribute?.("src") });
-      if (response?.ok && response.dataUrl) {
-        const fetched = await decodedImage(response.dataUrl);
-        shape = shapeFromImage(fetched);
+    // On app.ovipets.com the DOM image can be canvas-readable; on ovipets.com it is commonly
+    // cross-origin/tainted. Race the DOM path against the guarded fetch so a tainted image never
+    // adds a fixed wait before classification. Neither path stores the image.
+    const direct = (async () => {
+      await waitForImage(image, 350);
+      return shapeFromImage(image);
+    })();
+    const fetched = (async () => {
+      if (!source) return null;
+      try {
+        const response = await runtimeRequest({ type: "speciesImageFetch", url: source });
+        if (!response?.ok || !response.dataUrl) return null;
+        return shapeFromImage(await decodedImage(response.dataUrl));
+      } catch {
+        return null;
       }
-    } catch {}
-    return shape || null;
+    })();
+
+    const first = await Promise.race([
+      direct.then(shape => ({ source: "direct", shape })),
+      fetched.then(shape => ({ source: "fetch", shape }))
+    ]);
+    if (first.shape) return first.shape;
+    return first.source === "direct" ? await fetched : await direct;
   }
 
   async function requestAttention(container) {
