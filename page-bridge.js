@@ -42,6 +42,25 @@
   }
 
   let verifiedDiscardSignature = null;
+  let discardArm = null;
+
+  function currentProfilePetId() {
+    const hash = String(window.location?.hash || document.location?.hash || "");
+    return hash.match(/[?&]pet=(\d+)/)?.[1] || null;
+  }
+
+  function armDiscardFromClick(event) {
+    const target = event?.target?.closest?.("button, a, input, label, [role=button]");
+    if (!target) return;
+    const text = String(target.textContent || target.value || target.title || "")
+      .replace(/\s+/g, " ").trim();
+    if (!/^Discard$/i.test(text)) return;
+    const sourceId = currentProfilePetId();
+    if (!/^\d+$/.test(String(sourceId || ""))) return;
+    discardArm = { sourceId: String(sourceId), until: Date.now() + 15000 };
+  }
+
+  document.addEventListener("click", armDiscardFromClick, true);
 
   function visibleOwnHatcheryPet(targetId) {
     if (!isOwnHatcheryRoute()) return false;
@@ -88,16 +107,19 @@
     const wrapped = function(command, params, form, callback) {
       try {
         const fields = formSnapshot(form);
-        if (looksLikeDiscard(command, params, form, fields)) {
-          const sourceId = String(params || "").match(/(?:PetID|EggID)=(\d+)/)?.[1] || "";
+        const commandSourceId = String(params || "").match(/(?:PetID|EggID)=(\d+)/)?.[1] || "";
+        const armed = discardArm && Date.now() <= discardArm.until
+          && commandSourceId === discardArm.sourceId;
+        if ((armed || looksLikeDiscard(command, params, form, fields)) && /^\d+$/.test(commandSourceId)) {
           verifiedDiscardSignature = {
             command: String(command || ""),
             params: String(params || ""),
             fields,
-            sourceId,
-            evidence: "discard-ui",
+            sourceId: commandSourceId,
+            evidence: armed ? "discard-ui-click" : "discard-ui",
             observedAt: Date.now()
           };
+          discardArm = null;
           document.dispatchEvent(new CustomEvent(DISCARD_TRACE_EVENT, {
             detail: JSON.stringify(verifiedDiscardSignature)
           }));
