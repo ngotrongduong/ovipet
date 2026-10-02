@@ -71,7 +71,7 @@ for (const retired of ["speciesMemory", "speciesShapes", "openSpeciesReview", "s
   if (background.includes(retired)) throw new Error(`background still exposes retired Species learner: ${retired}`);
 }
 
-if (!staticDb.includes("721") || !staticDb.includes("31")) throw new Error("compiled Species database metadata missing");
+if (!staticDb.includes("451") || !staticDb.includes("10")) throw new Error("compiled Species database metadata missing");
 
 const scripts = manifest.content_scripts.find(entry => entry.js.includes("content.js")).js;
 if (scripts[scripts.length - 1] !== "content.js") throw new Error("content.js must load after every module");
