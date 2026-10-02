@@ -13,21 +13,23 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "domain", "species-sh
 const db = sandbox.OWEH_STATIC_SPECIES;
 const shapeApi = sandbox.OWEH_SPECIES_SHAPE;
 assert.ok(db && db.library && db.meta);
-assert.equal(db.meta.species, 31);
-assert.equal(db.meta.examples, 721);
-assert.equal(db.meta.maxExamplesPerSpecies, 64);
-assert.equal(Object.keys(db.library).length, 31);
+assert.equal(db.meta.species, 10);
+assert.equal(db.meta.examples, 451);
+assert.equal(db.meta.targetExamplesPerSpecies, 45);
+assert.equal(db.meta.maxExamplesInSpecies, 46);
+assert.equal(Object.keys(db.library).length, 10);
+assert.deepEqual(Object.keys(db.library).sort(), ["Canis","Draconis","Equus","Feline","Gekko","Lupus","Mantis","Raptor","Slime","Vulpes"]);
 
 let examples = 0;
 for (const [species, record] of Object.entries(db.library)) {
   assert.ok(species && Array.isArray(record.examples));
-  assert.ok(record.examples.length <= 64);
+  assert.ok(record.examples.length >= 45 && record.examples.length <= 46);
   for (const shape of record.examples) {
     assert.ok(shapeApi.validShape(shape), `invalid built-in silhouette for ${species}`);
     examples += 1;
   }
 }
-assert.equal(examples, 721);
+assert.equal(examples, 451);
 
 // The production data object must contain only anonymous silhouettes + compact metadata.
 const serialized = JSON.stringify({ meta: db.meta, library: db.library });
