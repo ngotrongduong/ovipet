@@ -122,7 +122,7 @@ function setup() {
   await env.api.updateSpeciesInspectorStats();
   await env.api.updateSpeciesInspectorStats();
   assert.equal(env.inspectorReads.count, 1);
-  assert.ok(env.inspector.textContent.startsWith("Species Inspector: 1 question(s)"));
+  assert.ok(env.inspector.textContent.startsWith("Species Inspector (last 1):"));
   await env.api.updateSpeciesInspectorStats(true);
   assert.equal(env.inspectorReads.count, 2);
 
