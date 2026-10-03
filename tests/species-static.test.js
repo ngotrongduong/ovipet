@@ -15,15 +15,19 @@ const shapeApi = sandbox.OWEH_SPECIES_SHAPE;
 assert.ok(db && db.library && db.meta);
 assert.equal(db.meta.species, 10);
 assert.equal(db.meta.examples, 451);
-assert.equal(db.meta.targetExamplesPerSpecies, 45);
-assert.equal(db.meta.maxExamplesInSpecies, 46);
+assert.equal(db.meta.confirmedAllocationTotal, 450);
+assert.equal(db.meta.validationCoverageExtras, 1);
 assert.equal(Object.keys(db.library).length, 10);
 assert.deepEqual(Object.keys(db.library).sort(), ["Canis","Draconis","Equus","Feline","Gekko","Lupus","Mantis","Raptor","Slime","Vulpes"]);
 
 let examples = 0;
+const expectedCounts = {
+  Canis: 46, Draconis: 30, Equus: 49, Feline: 45, Gekko: 38,
+  Lupus: 40, Mantis: 58, Raptor: 55, Slime: 46, Vulpes: 44
+};
 for (const [species, record] of Object.entries(db.library)) {
   assert.ok(species && Array.isArray(record.examples));
-  assert.ok(record.examples.length >= 45 && record.examples.length <= 46);
+  assert.equal(record.examples.length, expectedCounts[species], `unexpected silhouette count for ${species}`);
   for (const shape of record.examples) {
     assert.ok(shapeApi.validShape(shape), `invalid built-in silhouette for ${species}`);
     examples += 1;
