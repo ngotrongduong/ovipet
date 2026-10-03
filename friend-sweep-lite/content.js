@@ -72,20 +72,25 @@
 
   async function openCompleteFriendsList() {
     let links = friendLinks();
-    if (links.length) return links;
+    const hasOpenFriendsDialog = () => {
+      const visibleClose = [...document.querySelectorAll("button")]
+        .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
+      return visibleClose && document.querySelectorAll("fieldset.friends a[href]").length > 0;
+    };
+    if (links.length && hasOpenFriendsDialog()) return links;
 
     const button = [...document.querySelectorAll("main button")]
       .find(candidate => /^Friends(?:\s*\(\d+\))?$/i.test(candidate.textContent.trim()));
-    if (!button) return [];
+    if (!button) return links;
 
     button.click();
-    const end = Date.now() + 10000;
+    const deadline = Date.now() + 10000;
     let lastCount = -1;
     let stableSince = 0;
-    while (Date.now() < end) {
+    while (Date.now() < deadline) {
       links = friendLinks();
       const count = links.length;
-      if (count > 0 && count === lastCount) {
+      if (count > 0 && hasOpenFriendsDialog() && count === lastCount) {
         if (!stableSince) stableSince = Date.now();
         if (Date.now() - stableSince >= 600) return links;
       } else {
@@ -94,7 +99,7 @@
       }
       await sleep(150);
     }
-    return friendLinks();
+    return hasOpenFriendsDialog() ? friendLinks() : [];
   }
 
   async function startFromPanel() {
@@ -196,6 +201,7 @@
       const snapshot = await request({ type: "liteGetState" });
       if (!snapshot?.ok) return;
       const { state, batch, speed, stats } = snapshot;
+      if (state?.active && !snapshot.isWorker) return;
       if (!state?.active || Number(state.workerTabId) <= 0) {
         setProgress(`Name Species: ${stats?.correct || 0} correct · ${stats?.wrong || 0} wrong`);
         return;
@@ -531,9 +537,7 @@
     if (snapshot?.ok) {
       const stats = snapshot.stats || {};
       setProgress(`Name Species: ${stats.correct || 0} correct · ${stats.wrong || 0} wrong`);
-      if (snapshot.state?.active && Number(snapshot.state.workerTabId) > 0) {
-        scheduleWorker(150);
-      }
+      if (snapshot.isWorker) scheduleWorker(150);
     }
   })().catch(error => console.error("[Friend Sweep Lite] startup failed", error));
 })();
