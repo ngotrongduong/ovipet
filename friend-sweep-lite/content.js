@@ -3,7 +3,6 @@
 (() => {
   const PANEL_ID = "oweh-lite-panel";
   const TURN_SELECTOR = 'button[onclick*="pet_turn_egg"]';
-  const CYCLE_WAIT_MS = 10 * 60 * 1000;
   const VERIFY_ATTEMPTS = 2;
   let workerBusy = false;
   let workerTimer = null;
