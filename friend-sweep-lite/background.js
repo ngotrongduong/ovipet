@@ -222,6 +222,7 @@ async function openMore(batch) {
     let tab;
     try {
       tab = await chrome.tabs.create({ url, active: false });
+      try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch {}
     } catch {
       batch.failed += 1;
       batch.resolved += 1;
@@ -362,6 +363,7 @@ async function stopBatch() {
 async function startSweep(message, sender) {
   const workerTabId = Number(sender.tab?.id);
   if (!Number.isInteger(workerTabId)) return { ok: false, reason: "tab-required" };
+  try { await chrome.tabs.update(workerTabId, { autoDiscardable: false }); } catch {}
   const queue = (Array.isArray(message.queue) ? message.queue : [])
     .map(friend => ({
       id: String(friend?.id || ""),
@@ -390,6 +392,7 @@ async function startSweep(message, sender) {
 
 async function stopSweep() {
   const state = await getState();
+  const workerTabId = Number(state.workerTabId);
   state.active = false;
   state.phase = "idle";
   state.waitingUntil = 0;
@@ -397,6 +400,9 @@ async function stopSweep() {
   await chrome.alarms.clear(RESUME_ALARM);
   await stopBatch();
   await updateNetworkRules();
+  if (Number.isInteger(workerTabId)) {
+    try { await chrome.tabs.update(workerTabId, { autoDiscardable: true }); } catch {}
+  }
   return { ok: true };
 }
 
@@ -467,6 +473,11 @@ async function watchdog() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = message?.type;
+  if (type === "liteDelay") {
+    const ms = Math.max(0, Math.min(5000, Math.floor(Number(message.ms) || 0)));
+    setTimeout(() => sendResponse({ ok: true, ms }), ms);
+    return true;
+  }
   if (type === "liteGetState") {
     Promise.all([getState(), getBatch(), readSpeed(), localGet(STATS_KEY, { correct: 0, wrong: 0 })])
       .then(([state,batch,speed,stats]) => sendResponse({
