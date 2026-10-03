@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "OviPets Friend Sweep Lite",
+  "version": "0.1.0",
+  "description": "Minimal low-resource OviPets friend egg sweep with static Name the Species recognition.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "alarms",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://ovipets.com/*",
+    "https://app.ovipets.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ovipets.com/*",
+        "https://app.ovipets.com/*"
+      ],
+      "js": [
+        "species-static.js",
+        "species-shape.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
