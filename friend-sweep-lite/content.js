@@ -79,13 +79,8 @@
   async function openCompleteFriendsList() {
     let links = friendLinks();
     const friendsFieldset = () => document.querySelector("fieldset.friends");
-    const hasOpenFriendsDialog = () => {
-      const fieldset = friendsFieldset();
-      const dialog = fieldset?.closest?.(".ui-dialog") || fieldset?.parentElement;
-      const visibleClose = dialog ? [...dialog.querySelectorAll("button")]
-        .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null) : false;
-      return Boolean(fieldset && visibleClose);
-    };
+    const hasOpenFriendsDialog = () => Boolean(friendsFieldset()) && [...document.querySelectorAll("button")]
+      .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
     if (links.length && hasOpenFriendsDialog()) return links;
 
     const button = [...document.querySelectorAll("main button")]
@@ -115,9 +110,11 @@
   function closeFriendsDialog() {
     const fieldset = document.querySelector("fieldset.friends");
     const dialog = fieldset?.closest?.(".ui-dialog") || fieldset?.parentElement;
-    const close = dialog ? [...dialog.querySelectorAll("button")]
+    const scoped = dialog ? [...dialog.querySelectorAll("button")]
       .find(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null) : null;
-    close?.click();
+    const fallback = [...document.querySelectorAll("button")]
+      .find(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
+    (scoped || fallback)?.click();
   }
 
   async function startFromPanel() {
@@ -134,7 +131,8 @@
     closeFriendsDialog();
     const result = await request({ type: "liteStartSweep", queue });
     if (!result?.ok) {
-      setStatus(`Could not start: ${result?.reason || result?.error || "unknown"}`);
+      if (result?.reason === "already-running") setStatus("Friend Sweep Lite is already running in another OviPets tab");
+      else setStatus(`Could not start: ${result?.reason || result?.error || "unknown"}`);
       return;
     }
     setStatus(`Started · ${queue.length} friends`);
