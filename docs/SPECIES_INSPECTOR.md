@@ -10,11 +10,22 @@ Source:
 - learning export: `2026-10-02T22:54:10.362Z`
 - source extension: v5.10.2
 - 10 real Name-the-Species quiz species: Canis, Draconis, Equus, Feline, Gekko, Lupus, Mantis, Raptor, Slime, Vulpes
-- 451 retained silhouettes
-- target 45 silhouettes per species; Slime keeps one additional coverage silhouette
+- 450 confirmed quiz silhouettes allocated by the observed per-species sample counts:
+  - Canis 46
+  - Draconis 30
+  - Equus 49
+  - Feline 45
+  - Gekko 38
+  - Lupus 40
+  - Mantis 58
+  - Raptor 55
+  - Slime 45
+  - Vulpes 44
+- plus 1 additional Slime coverage silhouette selected because the 45-sample Slime set missed one retained leave-one-out case
+- total production library: 451 silhouettes
 - the other 21 species learned elsewhere are intentionally excluded because they have not appeared in the Name-the-Species option pool
 
-The source learning export contained 1,581 silhouette examples across 31 species, but the 10 species that actually appeared in the retained Name-the-Species question pool accounted for 1,500 of those examples. The production build discards the 21 non-quiz species and reduces the quiz species to 451 diverse representatives. On the 110 recent retained quiz sessions with an authoritative confirmed answer, this trimmed library scored 110/110 in the offline leave-one-out check used for this migration.
+The source learning export contained 1,581 silhouette examples across 31 species. The production build discards the 21 non-quiz species and does not divide the remaining capacity evenly: it follows the actual confirmed quiz sample distribution shown by the Species pool. This preserves more representatives for species with more confirmed variation, especially Mantis and Raptor. The resulting 451-silhouette library scored 110/110 on the 110 retained quiz sessions with an authoritative confirmed answer in the offline leave-one-out check used for this migration.
 
 This validation describes that retained dataset; it is not a guarantee that OviPets can never introduce a new species, pose or rendering change.
 
