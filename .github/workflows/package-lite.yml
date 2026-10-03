@@ -1,0 +1,27 @@
+name: Package Friend Sweep Lite
+
+on:
+  push:
+    branches:
+      - feat/friend-sweep-lite
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone Lite zip
+        run: |
+          cd friend-sweep-lite
+          zip -r ../OviPets-Friend-Sweep-Lite.zip .
+          cd ..
+          unzip -p OviPets-Friend-Sweep-Lite.zip manifest.json >/dev/null
+      - name: Upload Lite extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: OviPets-Friend-Sweep-Lite
+          path: OviPets-Friend-Sweep-Lite.zip
+          if-no-files-found: error
