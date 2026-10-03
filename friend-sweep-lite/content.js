@@ -8,8 +8,6 @@
   let workerBusy = false;
   let workerTimer = null;
 
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
   function request(message) {
     return new Promise(resolve => {
       try {
@@ -21,6 +19,15 @@
         resolve({ ok: false, error: error?.message || String(error) });
       }
     });
+  }
+
+  async function sleep(ms) {
+    const delay = Math.max(0, Number(ms) || 0);
+    if (document.hidden && delay >= 75) {
+      const result = await request({ type: "liteDelay", ms: delay });
+      if (result?.ok) return;
+    }
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
 
   function ensurePanel() {
@@ -86,7 +93,6 @@
       .find(candidate => /^Friends(?:\s*\(\d+\))?$/i.test(candidate.textContent.trim()));
     if (!button) return hasOpenFriendsDialog() ? links : [];
 
-    const expected = Number(button.textContent.match(/\((\d+)\)/)?.[1] || 0);
     button.click();
     const deadline = Date.now() + 15000;
     let lastCount = -1;
@@ -94,10 +100,9 @@
     while (Date.now() < deadline) {
       links = friendLinks();
       const count = links.length;
-      if (expected > 0 && count >= expected && hasOpenFriendsDialog()) return links;
       if (count > 0 && hasOpenFriendsDialog() && count === lastCount) {
         if (!stableSince) stableSince = Date.now();
-        if (!expected && Date.now() - stableSince >= 800) return links;
+        if (Date.now() - stableSince >= 1500) return links;
       } else {
         lastCount = count;
         stableSince = 0;
@@ -105,7 +110,6 @@
       await sleep(150);
     }
     links = friendLinks();
-    if (expected > 0 && links.length < expected) return [];
     return hasOpenFriendsDialog() ? links : [];
   }
 
