@@ -219,23 +219,10 @@ function request(payload) {
   window.ui_action_cmdExec = dispatcher;
   assert.equal(calls.length, 7);
 
-  // Species Inspector may ask the MAIN-world bridge for passive client-side source hints.
-  // This exposes only script URLs + matching global function source, never cookies/headers.
-  const sourceHints = new Promise(resolve => {
-    const listener = event => {
-      document.removeEventListener("oweh:species-source-result", listener);
-      resolve(JSON.parse(event.detail));
-    };
-    document.addEventListener("oweh:species-source-result", listener);
-    document.dispatchEvent(new CustomEvent("oweh:species-source-request", {
-      detail: JSON.stringify({ sessionId: "species-test" })
-    }));
-  });
-  const hints = await sourceHints;
-  assert.equal(hints.sessionId, "species-test");
-  assert.ok(hints.hints.some(item => item.name === "ui_action_cmdExec" && /function/.test(item.type)));
-  assert.deepEqual(hints.scriptSources, ["https://ovipets.com/js/app.js"]);
-  assert.equal(hints.pageRuntime.dispatcherPresent, true);
+  // Production Species handling no longer installs network/source tracing in MAIN world.
+  for (const retired of ["oweh:species-source-request", "oweh:species-trace-control", "SPECIES_TRACE_NETWORK_EVENT"]) {
+    assert.equal(source.includes(retired), false, `retired Species trace hook remains: ${retired}`);
+  }
 
   // v5.5.0: naming an Unnamed newborn is the confirmed pet_name command with a Name field.
   result = await request({ requestId: "name", command: "pet_name", targetId: "530491258", fields: { Name: "A-B-C" } });

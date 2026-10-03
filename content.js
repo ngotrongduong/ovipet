@@ -501,11 +501,6 @@
       applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv, discardPoorEggCandidates,
       confirmBreedPreview, discardBreedPreview, setBreedPairLimit,
       requestStartHatchlingProcessing, stopHatchlingProcessing,
-      exportSpeciesInspector: () => OWEH.get("species-inspector")?.api?.exportData?.(),
-      exportSpeciesDatabase: () => OWEH.get("species-inspector")?.api?.exportDatabase?.(),
-      importSpeciesDatabase: payload => OWEH.get("species-inspector")?.api?.importDatabase?.(payload),
-      clearSpeciesInspector: () => OWEH.get("species-inspector")?.api?.clearData?.(),
-      getSpeciesInspectorSummary: () => OWEH.get("species-inspector")?.api?.getSummary?.() || Promise.resolve({ questions: 0, attempts: 0, correct: 0, wrong: 0, network: 0 }),
       exportDiagnosticLog, clearDiagnosticLog, getDiagnosticSummary,
       getPetNameSuggestion: () => {
         const pet = currentPetId() ? readPet() : null;
@@ -528,8 +523,8 @@
     },
     claimTask, releaseTask
   });
-  // If the species module failed to start, egg turning must still work — fall back to inert
-  // stubs (the module's own error is already logged by OWEH.boot).
+  // Name-the-Species is now a static production classifier; if it fails to start, egg turning
+  // still has an inert stats stub rather than any fallback learner/trace collector.
   friendEggsModule = modules["friend-eggs"]?.api || null;
   friendSweepModule = modules["feature-friend-sweep"]?.api || null;
   ownEggsModule = modules["feature-own-eggs"]?.api || null;

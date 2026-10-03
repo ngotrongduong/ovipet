@@ -33,11 +33,6 @@ OWEH.register("ui-panel", helpers => {
     setBreedPairLimit,
     requestStartHatchlingProcessing,
     stopHatchlingProcessing,
-    exportSpeciesInspector,
-    exportSpeciesDatabase,
-    importSpeciesDatabase,
-    clearSpeciesInspector,
-    getSpeciesInspectorSummary,
     exportDiagnosticLog,
     clearDiagnosticLog,
     getDiagnosticSummary,
@@ -426,22 +421,10 @@ OWEH.register("ui-panel", helpers => {
         </details>
 
         <details class="oweh-module" name="oweh-modules" data-accent="species">
-          <summary><i class="oweh-ico">✦</i>Species <span>Name the Species memory</span></summary>
+          <summary><i class="oweh-ico">✦</i>Species <span>production classifier</span></summary>
           <div class="oweh-module-body">
-            <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
-            <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
-            <div class="oweh-actions">
-              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from the pets listed in the Adoption Center (read-only, no clicks; needs ovipets.com). Images you label in Species review are learned too. More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
-              <button id="oweh-species-seed-stop" class="oweh-danger" type="button" data-tip="Stop Learn species shapes after the current pet.">Stop</button>
-            </div>
-            <button id="oweh-species-review" class="oweh-primary-wide" type="button" data-tip="Open a separate tab with every saved Name the Species image (correct and wrong). Label the unresolved ones yourself; each label is saved to the species database and teaches the silhouette matcher.">Review species images</button>
-            <div class="oweh-actions oweh-tools-row">
-              <button id="oweh-export-species-db" class="oweh-link-button" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Backup DB</button>
-              <button id="oweh-import-species-db" class="oweh-link-button" type="button" data-tip="Import/merge a Species database backup or a previous Species Inspector JSON export. Existing knowledge is preserved and merged.">Import DB</button>
-              <input id="oweh-import-species-file" type="file" accept="application/json,.json" hidden>
-              <button id="oweh-export-species" class="oweh-link-button" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export JSON</button>
-              <button id="oweh-clear-species" class="oweh-link-button" type="button" data-tip="Clear only the Species Inspector trace dataset. Learned answer memory is kept so future guesses stay smarter.">Clear traces</button>
-            </div>
+            <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · 451 built-in silhouettes · no quiz images, traces or learning history are stored.</div>
           </div>
         </details>
 
@@ -535,44 +518,6 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-discard-poor-eggs", "Discarding poor eggs", discardPoorEggCandidates, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
-    bindPanelAction(panel, "#oweh-export-species", "Exporting Species Inspector data", async () => {
-      await exportSpeciesInspector();
-      await updateSpeciesInspectorStats(true);
-    }, missingControls);
-    bindPanelAction(panel, "#oweh-export-species-db", "Exporting Species database", async () => {
-      await exportSpeciesDatabase();
-      await updateSpeciesInspectorStats(true);
-    }, missingControls);
-    bindPanelAction(panel, "#oweh-species-review", "Opening Species Review", async () => {
-      const result = await runtimeRequest({ type: "openSpeciesReview" });
-      if (!result?.ok) throw new Error(result?.error || "Species Review tab could not be opened");
-      setStatus("Species Review opened in a new tab");
-    }, missingControls);
-    const importSpeciesFile = panel.querySelector("#oweh-import-species-file");
-    bindPanelAction(panel, "#oweh-import-species-db", "Choosing Species database backup", async () => {
-      if (!importSpeciesFile) throw new Error("Species database file picker is missing");
-      importSpeciesFile.value = "";
-      importSpeciesFile.click();
-    }, missingControls);
-    if (!importSpeciesFile) missingControls.push("#oweh-import-species-file");
-    else importSpeciesFile.addEventListener("change", async () => {
-      const file = importSpeciesFile.files?.[0];
-      if (!file) return;
-      try {
-        const payload = JSON.parse(await file.text());
-        await importSpeciesDatabase(payload);
-        await updateSpeciesInspectorStats(true);
-      } catch (error) {
-        console.error("[OviPets Helper] Species database import failed", error);
-        setStatus(`Species database import failed: ${error?.message || error}`);
-      } finally {
-        importSpeciesFile.value = "";
-      }
-    });
-    bindPanelAction(panel, "#oweh-clear-species", "Clearing Species Inspector data", async () => {
-      await clearSpeciesInspector();
-      await updateSpeciesInspectorStats(true);
-    }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
       await updateDiagnosticStats(true);
@@ -622,26 +567,6 @@ OWEH.register("ui-panel", helpers => {
   }
 
 
-  // sync() runs on every coalesced DOM refresh (in up to 15 egg tabs at once) and the summary
-  // reads the whole Inspector store, network traces included — so passive refreshes are
-  // throttled; export/import/clear force an immediate recount.
-  let speciesStatsAt = 0;
-  let speciesStatsPending = false;
-  async function updateSpeciesInspectorStats(force = false) {
-    const label = document.querySelector("#oweh-species-inspector-stats");
-    if (!label || typeof getSpeciesInspectorSummary !== "function") return;
-    if (!force && (speciesStatsPending || Date.now() - speciesStatsAt < 5000)) return;
-    speciesStatsPending = true;
-    try {
-      const summary = await getSpeciesInspectorSummary();
-      speciesStatsAt = Date.now();
-      const text = `Species Inspector: ${summary?.questions || 0} question(s) · ${summary?.correct || 0} correct · ${summary?.wrong || 0} wrong · ${summary?.network || 0} trace event(s)`;
-      if (label.textContent !== text) label.textContent = text;
-    } catch {} finally {
-      speciesStatsPending = false;
-    }
-  }
-
   let diagnosticStatsAt = 0;
   let diagnosticStatsPending = false;
   async function updateDiagnosticStats(force = false) {
@@ -674,9 +599,8 @@ OWEH.register("ui-panel", helpers => {
     const panel = ensure();
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
-    updateSpeciesInspectorStats();
     updateDiagnosticStats();
   }
 
-  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateSpeciesInspectorStats, updateDiagnosticStats, isVisible } };
+  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateDiagnosticStats, isVisible } };
 });
