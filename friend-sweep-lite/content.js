@@ -72,34 +72,49 @@
 
   async function openCompleteFriendsList() {
     let links = friendLinks();
+    const friendsFieldset = () => document.querySelector("fieldset.friends");
     const hasOpenFriendsDialog = () => {
-      const visibleClose = [...document.querySelectorAll("button")]
-        .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null);
-      return visibleClose && document.querySelectorAll("fieldset.friends a[href]").length > 0;
+      const fieldset = friendsFieldset();
+      const dialog = fieldset?.closest?.(".ui-dialog") || fieldset?.parentElement;
+      const visibleClose = dialog ? [...dialog.querySelectorAll("button")]
+        .some(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null) : false;
+      return Boolean(fieldset && visibleClose);
     };
     if (links.length && hasOpenFriendsDialog()) return links;
 
     const button = [...document.querySelectorAll("main button")]
       .find(candidate => /^Friends(?:\s*\(\d+\))?$/i.test(candidate.textContent.trim()));
-    if (!button) return links;
+    if (!button) return hasOpenFriendsDialog() ? links : [];
 
+    const expected = Number(button.textContent.match(/\((\d+)\)/)?.[1] || 0);
     button.click();
-    const deadline = Date.now() + 10000;
+    const deadline = Date.now() + 15000;
     let lastCount = -1;
     let stableSince = 0;
     while (Date.now() < deadline) {
       links = friendLinks();
       const count = links.length;
+      if (expected > 0 && count >= expected && hasOpenFriendsDialog()) return links;
       if (count > 0 && hasOpenFriendsDialog() && count === lastCount) {
         if (!stableSince) stableSince = Date.now();
-        if (Date.now() - stableSince >= 600) return links;
+        if (!expected && Date.now() - stableSince >= 800) return links;
       } else {
         lastCount = count;
         stableSince = 0;
       }
       await sleep(150);
     }
-    return hasOpenFriendsDialog() ? friendLinks() : [];
+    links = friendLinks();
+    if (expected > 0 && links.length < expected) return [];
+    return hasOpenFriendsDialog() ? links : [];
+  }
+
+  function closeFriendsDialog() {
+    const fieldset = document.querySelector("fieldset.friends");
+    const dialog = fieldset?.closest?.(".ui-dialog") || fieldset?.parentElement;
+    const close = dialog ? [...dialog.querySelectorAll("button")]
+      .find(candidate => /^Close$/i.test(candidate.textContent.trim()) && candidate.offsetParent !== null) : null;
+    close?.click();
   }
 
   async function startFromPanel() {
@@ -113,6 +128,7 @@
       setStatus("Open your own OviPets profile/Friends page, then press Start");
       return;
     }
+    closeFriendsDialog();
     const result = await request({ type: "liteStartSweep", queue });
     if (!result?.ok) {
       setStatus(`Could not start: ${result?.reason || result?.error || "unknown"}`);
