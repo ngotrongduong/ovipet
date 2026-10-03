@@ -12,7 +12,7 @@ const SPEED_LEVELS = [3, 4, 6];
 const TAB_TIMEOUT_MS = 60 * 1000;
 const CYCLE_WAIT_MS = 10 * 60 * 1000;
 const OPEN_STAGGER_MS = 120;
-const CHALLENGE_REGEX = "^https://(?:app\\.)?ovipets\\.com/img/pet/[0-9]+/credit-challenge(?:/)?(?:\\?.*)?$";
+const CHALLENGE_REGEX = "^https://(app\\.)?ovipets\\.com/img/pet/[0-9]+/credit-challenge/?(\\?.*)?$";
 const ALLOWED_IMAGE_HOSTS = new Set(["ovipets.com", "app.ovipets.com"]);
 
 const sessionStore = chrome.storage.session || chrome.storage.local;
