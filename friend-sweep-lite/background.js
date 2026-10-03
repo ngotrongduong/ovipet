@@ -363,6 +363,10 @@ async function stopBatch() {
 async function startSweep(message, sender) {
   const workerTabId = Number(sender.tab?.id);
   if (!Number.isInteger(workerTabId)) return { ok: false, reason: "tab-required" };
+  const existingState = await getState();
+  if (existingState.active && Number(existingState.workerTabId) !== workerTabId) {
+    return { ok: false, reason: "already-running" };
+  }
   try { await chrome.tabs.update(workerTabId, { autoDiscardable: false }); } catch {}
   const queue = (Array.isArray(message.queue) ? message.queue : [])
     .map(friend => ({
