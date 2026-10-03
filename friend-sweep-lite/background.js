@@ -469,7 +469,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = message?.type;
   if (type === "liteGetState") {
     Promise.all([getState(), getBatch(), readSpeed(), localGet(STATS_KEY, { correct: 0, wrong: 0 })])
-      .then(([state,batch,speed,stats]) => sendResponse({ ok: true, state, batch: batchSummary(batch), speed, stats }))
+      .then(([state,batch,speed,stats]) => sendResponse({
+        ok: true,
+        state,
+        batch: batchSummary(batch),
+        speed,
+        stats,
+        isWorker: state.active && Number(state.workerTabId) === Number(sender.tab?.id)
+      }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
     return true;
   }
