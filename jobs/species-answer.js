@@ -369,10 +369,9 @@ OWEH.register("species-answer", helpers => {
     if (result?.ok && pending) {
       const accepted = pending;
       pending = null;
-      await Promise.all([
-        updateStats({ correct: 1 }),
-        resolveWrongCase(accepted)
-      ]);
+      const tasks = [updateStats({ correct: 1 })];
+      if (rejectedChoices.size) tasks.push(resolveWrongCase(accepted));
+      await Promise.all(tasks);
       return;
     }
     if (result && !result.ok && result.reason === "species-incorrect" && pending?.submittedAt) {
