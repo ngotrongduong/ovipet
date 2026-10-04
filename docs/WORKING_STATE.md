@@ -1,6 +1,6 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-10-01
+Last updated: 2026-10-05
 Current release baseline: v5.10.2
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
@@ -21,8 +21,8 @@ Current managed release-candidate baseline:
 
 - JavaScript syntax: PASS;
 - Node test files: 72/72 PASS;
-- content.js: 464 lines (composition/wiring + a few live helpers; see "content.js service split");
-- background.js: 205 lines;
+- content.js: 485 lines (composition/wiring + a few live helpers; see "content.js service split");
+- background.js: 256 lines;
 - Phase 1 lifecycle/mutation hardening remains covered;
 - deterministic domain modules own breeding/pet-record rules;
 - named core/DOM adapters replace broad platform coupling;
@@ -191,13 +191,59 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
   - `services/overview-catalog.js`: Overview shell/cards waits, `waitForStableValue`, `collectAllOverviewPets` (partial-scan merge and empty-scan guard unchanged).
   - `services/pet-edit.js`: profile tabs, rename, suggested name, save current pet, gender wait, move to enclosure.
   - `services/friend-directory.js`: friends-list scan, blacklist CSV, Ninja please / Ads commenter scan.
-  - `services/retention.js`: review-only retention ranking and CSV.
+  - `services/retention.js`: review-only retention ranking and CSV (removed 2026-10-05, see "Retention ranking removed").
 - content.js 1,182 -> 652 lines. Dead code removed: `compareHatchMales`, `waitForBreedingCandidates`, unused DOM imports and delay clamps. Selectors, storage keys and messages unchanged.
 - New runtime wiring gate `tests/content-boot-wiring.test.js`: loads every isolated content script in manifest order in a vm, runs content.js and fails if any helper handed to `OWEH.boot` (including `uiPanelActions`) is `undefined` or any module fails to start. This is the class of bug behind v5.3.17 and the panel display breakages; source-text tests could not see it.
-- New behavior tests: `tests/overview-catalog-service.test.js` (full / stuck-tab partial / fewer-tabs partial / empty / snapshot reuse) and `tests/friend-retention-services.test.js`.
+- New behavior tests: `tests/overview-catalog-service.test.js` (full / stuck-tab partial / fewer-tabs partial / empty / snapshot reuse) and `tests/friend-retention-services.test.js` (now `tests/friend-directory-service.test.js`).
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
+
+### Highlight best eggs (2026-10-05)
+
+- `domain/egg-rank.js` `rankEggs`: per channel `1/(d+1)` (same scale as `domain/surplus.js`), slot weights Body 1 5, Body 2 4, Scales 3, Extra 1 2, Extra 2 1 (owner's priority order), max 45; ties by total distance, then id.
+- `features/best-eggs.js`: button `#oweh-best-eggs` reads the live Hatchery egg list, takes colours from the pet database, then from its own cache `owehEggColors` (pruned to the eggs still listed), and fetches only unknown eggs (`readPet` with `skipPedigree`, 5 at a time). Result in `owehBestEggs`; count in `owehBestEggCount` (default 10, max 50). Read-only: no game command, no pet-record write, no shared-worker lease.
+- Presentation is the module's `onRefresh` hook: a list in the panel (`#oweh-best-eggs-list`) and, on the own Hatchery only, `data-oweh-best-egg` on the egg card plus an extension-owned `span.oweh-egg-rank`. Writes are guarded, so a marked page is not written again; a redraw is re-marked on the next refresh.
+- Not live-verified: card styling (`li` with `position: relative`, absolute badge) was written from the audited selectors (`main a.pet[href*="pet="]`, `closest("li")`), not seen on the page.
+- Tests: `tests/best-eggs.test.js`.
+
+### Discard surplus: one flow for pets and eggs (2026-10-05)
+
+- Replaces the male cull (`domain/male-cull.js`, `features/male-cull.js`, move to Males discard) and the "Discard poor eggs" button (signature replay in `page-bridge.js`, `discardPoorEggCandidates` in `content.js`). All removed.
+- `domain/surplus.js` `planSurplus`: a channel is worth `1/(d+1)`; a pet is surplus when ≥ `minReplacements` (default 10; panel "Spares" 20/10/5/3 → `owehSurplusMinReplacements`) kept pets of its sex cover it on all 15 channels within 0.05; an egg needs that many males and females. No pedigree (owner decision). Rule and measurements: `docs/pure-breeding-guide.md`.
+- `features/surplus.js`: **Plan discard** (page, read-only) reads the live Overview (`petFetch.readOwnedPetIds`, stores nothing) and Hatchery, takes presence from them rather than from the database, and saves `owehSurplusPreview`. **Confirm & discard** stamps `confirmedPlan` on that review and starts the shared-worker job `surplus`; the job refuses a review without the stamp, so a plan rebuilt after the click is never sent.
+- The job trusts OviPets, not the database: it reads the live lists again and rebuilds the plan from them; a row is sent only if it is still surplus there (a replacement sold or discarded by hand no longer counts), still an egg / still listed, not Generated, not in a breeding plan, and has the reviewed colours. Any unreadable enclosure or a Hatchery answer without its section sends nothing.
+- `sent` is not `discarded`: a timed-out command also counts as `sent` (and toward the limit). Progress is saved after every command. Afterwards the lists are read again: `sent` becomes `discarded` (database `present: false`, `retentionDiscardReason: "surplus"`) or `error`. `sent` rows left by Stop are settled at the start of the next run and before Plan / Dismiss / expiry drop a review. Three unanswered commands in a row stop the run.
+- No `running` flag is stored: Plan / Dismiss / the panel read the live `owehWorker` lease (owner `surplus`). `owehSurplusLimit` caps one run and defaults to 5.
+- Eggs are listed only with a read pedigree that names parents (whether a generator egg shows the wand icon is unknown).
+- Command: `pet_sendto` + `SendTo=discard` (`core/game-actions.js` `discardPet`), read from the live dialog on 2026-10-05 (`docs/dom-audit-2026-09-17.md`). **Never sent yet: the first live run is unverified** — keep Limit at 5 or lower for it.
+- Eggs are identified by the live Hatchery list, not by `present`: a full catalog scan still marks egg records `present: false` because the Hatchery is not an Overview enclosure.
+- Tests: `tests/surplus.test.js` (rule + feature), bridge guard in `tests/page-bridge.test.js`.
+
+### Retention ranking removed (2026-10-05)
+
+- Removed: `domain/retention-policy.js`, `services/retention.js`, the **Copy retention CSV** button (`#oweh-copy-retention`), `tests/retention-policy.test.js`. It classified pets with the old rule (strict dominance by 2 lineages, pedigree, Body 1 endpoints), which contradicted Discard surplus, and its only reader was that CSV button.
+- No whole-database ranking runs any more: the rebuild after **Update database** (`jobs/maintain.js`), after every newborn pass (`features/hatchlings.js` `finish`) and the once-a-day scan at page load (`content.js`) are gone. Keep / discard verdicts exist only in **Plan discard** → **View discard list**, computed when the button is pressed.
+- `catalogService` is now `{ setOwnUserId, getOwnUserId }` and `hatchlingActions` is `{ getOwnUserId }`.
+- `background.js` `dropRetentionRanking` (onInstalled) deletes the leftover `owehRetentionRanking` / `owehRetentionReview` / `owehRetentionSummary` / `owehRetentionLastFullScanAt` from extension storage. Pet records are untouched; the `retentionDiscardedAt` / `retentionDiscardReason` fields written by `features/surplus.js` keep their names.
+- `tests/friend-retention-services.test.js` → `tests/friend-directory-service.test.js` (friend-directory half only).
+- Verification: syntax PASS, release consistency PASS, full suite **72/72 PASS**. Not reloaded live yet.
+
+### Newborn pass reads only what is new (2026-10-04)
+
+- Before: the pass that follows Turn / hatch (and the "Newborns only" button) ran with `force = true`, so every egg still incubating in the Hatchery had its profile and pedigree re-read on every pass. The cost grew with the number of eggs, not with the number of newborns.
+- Now (`features/hatchlings.js` `eligibleCards`): unnamed newborns always qualify; an egg without a Turn/Hatch icon is read once (its colours and parents feed the surplus review) and then skipped until it hatches and appears in the Unnamed section; only a failed read (`error:*`) is retried, after 60 s. The `force` parameter is gone.
+- `owehHatchlingRecords` no longer expires after 24 h. A record lives while its id is listed in the Hatchery panel and is dropped by `forgetDeparted` at the start of the next pass (an empty panel drops nothing).
+- Unchanged: name → save → move per newborn, and the full-collection re-sort stays in Update database. (The retention-ranking rebuild at the end of a run was removed on 2026-10-05.)
+- Not live-verified yet. `tests/hatchlings-feature.test.js` covers the three-pass sequence (index eggs once → hatch → idle).
+
+### Static Species library rebuilt from the full export (2026-10-04)
+
+- Production runtime answers Name the Species from the built-in `data/species-static.js` only (no learning writes); details in `docs/SPECIES_INSPECTOR.md`.
+- The 451-silhouette subsample produced 3 rejected answers in a day (Vulpes→Canis ×2, Slime→Mantis). Root causes: lost coverage (LOO 93.1% vs 99.2% on the full set) and 4 mislabeled learned silhouettes (3 Vulpes stored as Canis, 1 Raptor stored as Gekko).
+- `scripts/build-species-static.js` now generates the file: all 150 learned silhouettes per quiz species, label-noise filter, game-confirmed corrections appended. Current library 1,499 silhouettes (~390 KB), LOO 1,496/1,499 over 10 options. `rankOptions` and `MATCH_DISTANCE` are unchanged.
+- New wrong cases: `node scripts/build-species-static.js <Export wrongs file>`, then reload the extension.
+- `tests/species-static.test.js` pins the three rejected quizzes (also with the exact silhouette held out, with a margin).
 
 ### v5.4.4 Species Review tab
 

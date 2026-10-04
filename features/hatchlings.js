@@ -4,6 +4,8 @@
 // newborn's profile with services/pet-fetch.js, then names it, saves it to the database and moves
 // it to its enclosure with direct game commands: no navigation, so the shared worker tab stays on
 // whatever page it opened. Durable progress lives in owehHatchlingRun; Stop clears it.
+// A pass handles only what is new: unnamed newborns, plus each egg once (see eligibleCards).
+// It used to re-read every egg in the Hatchery on every pass, which grew with the Hatchery.
 OWEH.register("feature-hatchlings", helpers => {
   const {
     storageGet, storageSet, getPetsByIds, sleep, setStatus,
@@ -12,7 +14,6 @@ OWEH.register("feature-hatchlings", helpers => {
   } = helpers;
   const { colors, petRecord, breedingPlan } = domain;
   const HATCHLING_RECHECK_MS = 60 * 1000;
-  const HATCHLING_RECORD_TTL_MS = 24 * 60 * 60 * 1000;
   const PET_PAUSE_MS = 150;
   let processing = false;
   let runToken = 0;
@@ -23,17 +24,26 @@ OWEH.register("feature-hatchlings", helpers => {
 
   async function recordCheck(id, status, now = Date.now()) {
     const records = await storageGet("owehHatchlingRecords", {});
-    const cutoff = now - HATCHLING_RECORD_TTL_MS;
-    for (const [petId, record] of Object.entries(records)) {
-      if ((record.at || 0) < cutoff) delete records[petId];
-    }
     records[id] = { at: now, status };
     await storageSet({ owehHatchlingRecords: records });
   }
 
-  // Unnamed newborns always qualify; other Hatchery items without a Turn/Hatch icon are either
-  // hatched pets or eggs still incubating, and are rechecked on the per-pet cooldown.
-  async function eligibleCards(force = false, now = Date.now(), hatchery = null) {
+  // A record lasts as long as its egg or newborn is listed in the Hatchery, so nothing is read
+  // twice however long an egg incubates. An empty panel is not trusted to mean "all gone".
+  async function forgetDeparted(panel) {
+    const listed = new Set([...(panel.unnamedIds || []), ...(panel.eggIds || [])]);
+    if (!listed.size) return;
+    const records = await storageGet("owehHatchlingRecords", {});
+    const departed = Object.keys(records).filter(id => !listed.has(id));
+    if (!departed.length) return;
+    for (const id of departed) delete records[id];
+    await storageSet({ owehHatchlingRecords: records });
+  }
+
+  // Unnamed newborns always qualify. Everything else listed is an egg: one without a Turn/Hatch
+  // icon is read once (its colours and parents feed the surplus review) and then left alone until it
+  // hatches and shows up as an unnamed newborn. Only a failed read is tried again.
+  async function eligibleCards(now = Date.now(), hatchery = null) {
     const panel = hatchery || await petFetch.readHatchery();
     const records = await storageGet("owehHatchlingRecords", {});
     const blocked = new Set([...(panel.turnable || []), ...(panel.hatchable || [])]);
@@ -41,13 +51,10 @@ OWEH.register("feature-hatchlings", helpers => {
     const ids = [...new Set([...(panel.unnamedIds || []), ...(panel.eggIds || [])])];
     return ids.filter(id => {
       if (blocked.has(id)) return false;
-      if (unnamed.has(id) || force) return true;
+      if (unnamed.has(id)) return true;
       const record = records[id];
       if (!record) return true;
-      const cooldown = /^(?:moved|renamed|already)/.test(record.status || "")
-        ? HATCHLING_RECORD_TTL_MS
-        : HATCHLING_RECHECK_MS;
-      return now - (record.at || 0) >= cooldown;
+      return /^error:/.test(record.status || "") && now - (record.at || 0) >= HATCHLING_RECHECK_MS;
     }).map(id => ({ id, unnamed: unnamed.has(id) }))
       .sort((a, b) => Number(b.unnamed) - Number(a.unnamed));
   }
@@ -95,9 +102,8 @@ OWEH.register("feature-hatchlings", helpers => {
     const { profile, record } = result;
     const gender = String(profile.gender || "").trim();
     if (!/^(?:Female|Male)$/i.test(gender)) {
-      // Some OviPets egg profiles already expose colour rows before hatching. Preserve that
-      // read-only information so the retention engine can flag a poor egg early. No discard is
-      // sent here; destructive egg handling is separately gated by a live-verified UI command.
+      // An egg profile already shows its colour rows and pedigree before hatching. Save them so
+      // the surplus review (features/surplus.js) can judge the egg. Nothing is discarded here.
       const now = Date.now();
       const egg = {
         ...record,
@@ -165,8 +171,6 @@ OWEH.register("feature-hatchlings", helpers => {
     state.active = false;
     state.finishedAt = Date.now();
     await storageSet({ owehHatchlingRun: state });
-    // Ranking needs the whole pet DB, so compute it once per run rather than per hatchling.
-    await hatchlingActions.updateRetentionRanking();
     setStatus(message || `Hatchery complete — renamed ${state.renamed || 0}, females moved ${state.movedFemales || 0}, males moved to ${breedingPlan.MALES_ENCLOSURE} ${state.movedMales || 0}, egg profiles ${state.scannedEggs || 0}, not hatched ${state.skippedEggs || 0}, unroutable ${state.unroutable || 0}, errors ${state.errors || 0}`);
     reportWorkerDone();
   }
@@ -186,7 +190,7 @@ OWEH.register("feature-hatchlings", helpers => {
     if (await stillRunning(token)) await finish(state);
   }
 
-  async function startWorker(generation, force = true) {
+  async function startWorker(generation) {
     if (processing) return;
     processing = true;
     const token = ++runToken;
@@ -201,7 +205,8 @@ OWEH.register("feature-hatchlings", helpers => {
         reportWorkerDone();
         return;
       }
-      const queue = await eligibleCards(force, Date.now(), hatchery);
+      await forgetDeparted(hatchery);
+      const queue = await eligibleCards(Date.now(), hatchery);
       if (!queue.length) {
         setStatus(hatchery.turnable?.length
           ? `No newborns to process — ${hatchery.turnable.length} egg(s) still need Turn Egg`
@@ -217,7 +222,8 @@ OWEH.register("feature-hatchlings", helpers => {
       };
       await storageSet({ owehHatchlingQueue: queue, owehHatchlingRun: state });
       reportWorkerPhase(`checking 0/${queue.length}`);
-      setStatus(`Processing ${queue.length} Hatchery newborn(s): name, save, move`);
+      const newborns = queue.filter(item => item.unnamed).length;
+      setStatus(`Processing ${newborns} newborn(s): name, save, move${queue.length > newborns ? ` · ${queue.length - newborns} new egg(s) to index once` : ""}`);
       await runPass(state, queue, token);
     } catch (error) {
       console.error("[OviPets Helper] hatchling pass failed", error);

@@ -72,28 +72,43 @@ together, check whether their visible pedigrees share a tattoo color (shared vis
 ancestor → game will refuse the pairing). This is the model for the extension's ancestor-
 overlap warning.
 
-## Why dominated males are safe to cull (endpoint targets)
+## Which pets and eggs are surplus (endpoint targets)
 
 Every channel of the strict target (`FFFFFF · FF0000 · 000000 · FF0000 · 000000`) is an
-endpoint, 00 or FF. An offspring channel lands inside the parents' `[min, max]`, so it can
-only reach FF if one parent is FF there, and the chance shrinks as the other parent moves
-away from FF. Take two males of the same species, N and M. If N is at least as close to the
-target as M on all 15 channels, then for **any** female the pair (female, N) can reach every
-channel (female, M) can, with an equal or better chance. M adds nothing except its pedigree,
-because N may share an ancestor with some female and be refused. v5.6.0 **Plan cull**
-(`domain/male-cull.js`) therefore marks M only when at least two kept males from different
-lineages dominate it. Identical males count as dominating each other, so the first two copies
-stay and later copies can go. **Confirm cull** moves the marked males to **Males discard**,
-which is reversible, and it never deletes or sells a pet.
+endpoint, 00 or FF. Measured on the owner's 2,718 bred Draconis (40,770 channels, 2026-10-05):
 
-v5.6.1 adds a second rule: a male with **no aligned FF or 00 pair** in any of the five slots
-(hex read as `RR|GG|BB`, so `EFF1F0` does not count) can never give a child an endpoint
-channel, and is marked too. **Generated** males (wand icon on the profile) are never marked
-by either rule, and Confirm cull re-reads each profile before moving to make sure.
+- an offspring channel always lands inside the parents' `[min, max]` (0 exceptions);
+- when both parents are exact on a channel the offspring is exact (1,451 of 1,451);
+- when one parent is exact and the other is `d` away, the offspring is exact about 1 time in
+  `d + 1` (1,347 hits against 1,372 predicted; a little better than that for `d ≤ 15`, a
+  little worse beyond).
 
-The same review reports **channel coverage**: target channels that no present male or female
-hits exactly. Such a channel can never be bred pure from the current stock, however long the
-campaign runs, so it needs a new pet (generated or bought) that is exact there.
+So what a pet can pass on in one channel is worth `1 / (d + 1)`: 100% when exact, 50% one
+step off, 25% at 3, 10% at 9, under 5% from 19 on. `domain/surplus.js` compares pets on that
+scale over all 15 channels of the five slots — not Body 1 alone, because the other slots
+have to become pure later too.
+
+A pet is **surplus** when at least `minReplacements` (panel: Spares, default 10) kept pets of
+its own sex are worth as much in every channel, give or take 0.05. An exact channel can only
+be replaced by an exact one; anything 19 or more off counts as equally far. Pets are judged
+best first, so a replacement is always a pet that stays. Identical pets replace each other:
+the first `minReplacements` copies stay, later copies can go. An **egg** has no sex yet, so it
+needs that many replacements among the kept males and among the kept females.
+
+On the 2026-10-05 stock (1,898 pets, 975 eggs) with 10 replacements this lists 426 females,
+293 males and 316 eggs; removing them — and even the 3–9 tier — leaves the best mate of every
+kept pet unchanged. The rule it replaces (at least as close on all 15 channels by exact
+distance, two lineages) listed 1 egg.
+
+Pedigree is deliberately not part of the rule (owner decision 2026-10-05): with ten
+replacements a related pair always has an unrelated alternative. **Generated** pets (wand
+icon), pets whose Generated flag was never read, and pets in a breeding plan are never listed.
+Pets already in Males discard are reviewed but never count as a replacement.
+
+Lock groups explain the stock: the 136 Generated founders are exact on one channel in all
+five slots (R, G or B: 5 exact channels each). Progress means stacking exact channels from two
+groups in the same pet, and that is what the surplus rule protects: a pet exact where few
+others are is never replaceable, however far the rest of it is.
 
 ## Pricing / rules (context only, not implemented in the extension)
 

@@ -26,18 +26,11 @@ OWEH.register("ui-panel", helpers => {
     requestStartBreedTargetCampaign,
     requestStartBreedOutcrossCampaign,
     stopBreedCampaign,
-    copyRetentionReviewCsv,
-    discardPoorEggCandidates,
     confirmBreedPreview,
     discardBreedPreview,
     setBreedPairLimit,
     requestStartHatchlingProcessing,
     stopHatchlingProcessing,
-    exportSpeciesInspector,
-    exportSpeciesDatabase,
-    importSpeciesDatabase,
-    clearSpeciesInspector,
-    getSpeciesInspectorSummary,
     exportDiagnosticLog,
     clearDiagnosticLog,
     getDiagnosticSummary,
@@ -152,6 +145,31 @@ OWEH.register("ui-panel", helpers => {
       pairLimitInput.value = String(await setBreedPairLimit(pairLimitInput.value));
     });
 
+    // Discard surplus settings (features/surplus.js reads them when planning / confirming).
+    const surplusKeepInput = panel.querySelector("#oweh-surplus-keep");
+    storageGet("owehSurplusMinReplacements", 10).then(value => {
+      surplusKeepInput.value = String([20, 10, 5, 3].includes(Number(value)) ? Number(value) : 10);
+    });
+    surplusKeepInput.addEventListener("change", () => storageSet({ owehSurplusMinReplacements: Number(surplusKeepInput.value) || 10 }));
+    const surplusLimitInput = panel.querySelector("#oweh-surplus-limit");
+    storageGet("owehSurplusLimit", 5).then(value => { surplusLimitInput.value = String(Math.max(0, Math.floor(Number(value) || 0))); });
+    surplusLimitInput.addEventListener("change", () => {
+      const limit = Math.min(9999, Math.max(0, Math.floor(Number(surplusLimitInput.value) || 0)));
+      surplusLimitInput.value = String(limit);
+      storageSet({ owehSurplusLimit: limit });
+    });
+
+    // How many eggs "Highlight best eggs" marks (features/best-eggs.js reads it when scanning).
+    const bestEggsCountInput = panel.querySelector("#oweh-best-eggs-count");
+    storageGet("owehBestEggCount", 10).then(value => {
+      bestEggsCountInput.value = String(Math.min(50, Math.max(1, Math.floor(Number(value) || 10))));
+    });
+    bestEggsCountInput.addEventListener("change", () => {
+      const count = Math.min(50, Math.max(1, Math.floor(Number(bestEggsCountInput.value) || 10)));
+      bestEggsCountInput.value = String(count);
+      storageSet({ owehBestEggCount: count });
+    });
+
     const autoRenameInput = panel.querySelector("#oweh-auto-rename");
     storageGet("owehAutoRename", true).then(value => { autoRenameInput.checked = value !== false; });
     autoRenameInput.addEventListener("change", () => storageSet({ owehAutoRename: autoRenameInput.checked }));
@@ -240,50 +258,51 @@ OWEH.register("ui-panel", helpers => {
     panel.querySelector("#oweh-view-breed-plan")?.addEventListener("click", () => {
       view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
-      // Both side windows share one spot: opening the pair list steps the cull review aside.
-      const cullView = document.getElementById("oweh-cull-view");
-      if (cullView) {
-        cullView.dataset.open = "";
-        cullView.classList.add("oweh-hidden");
+      // Both side windows share one spot: opening the pair list steps the discard review aside.
+      const surplusView = document.getElementById("oweh-surplus-view");
+      if (surplusView) {
+        surplusView.dataset.open = "";
+        surplusView.classList.add("oweh-hidden");
       }
     });
     document.body.appendChild(view);
     return view;
   }
 
-  // v5.6.0: side window listing the males a cull would move; ui/dashboard.js fills it.
-  function ensureCullView(panel) {
-    document.getElementById("oweh-cull-view")?.remove();
+  // Side window listing the pets and eggs a discard would send away; ui/dashboard.js fills it.
+  function ensureSurplusView(panel) {
+    document.getElementById("oweh-surplus-view")?.remove();
     const view = document.createElement("aside");
-    view.id = "oweh-cull-view";
+    view.id = "oweh-surplus-view";
     view.className = "oweh-plan-view oweh-hidden";
     view.dataset.owehUi = "1";
     view.innerHTML = `
       <header class="oweh-plan-view-header">
-        <div class="oweh-plan-view-title"><strong>Male cull review</strong><span id="oweh-cull-view-meta"></span></div>
-        <button id="oweh-cull-view-close" class="oweh-icon-button" type="button" aria-label="Close male cull review" title="Close" data-tip="Close the cull review. View cull list under Breeding opens it again.">×</button>
+        <div class="oweh-plan-view-title"><strong>Discard review</strong><span id="oweh-surplus-view-meta"></span></div>
+        <button id="oweh-surplus-view-close" class="oweh-icon-button" type="button" aria-label="Close discard review" title="Close" data-tip="Close the discard review. View discard list under Breeding opens it again.">×</button>
       </header>
       <div class="oweh-plan-view-scroll">
         <table class="oweh-plan-table">
           <thead><tr>
             <th>#</th>
-            <th>Male</th>
-            <th>Species</th>
+            <th>Kind</th>
+            <th>Name</th>
             <th>Enclosure</th>
-            <th title="Target channels this male already has exactly right">Exact</th>
-            <th title="Total distance to the target over all 15 channels">Distance</th>
-            <th title="Why it can go: no aligned FF/00 pair, or the kept males that are at least as close on every channel (one per lineage shown)">Why</th>
+            <th title="Body 1 · Body 2 · Scales · Extra 1 · Extra 2">Colours</th>
+            <th title="Target channels this pet already has exactly right">Exact</th>
+            <th title="Colour score: how many of the 15 channels its young would get exactly right with a perfect mate">Score</th>
+            <th title="Kept pets of the same sex that are at least as good in every colour channel (an egg needs that many males and females)">Replaced by</th>
             <th>Status</th>
           </tr></thead>
-          <tbody id="oweh-cull-view-rows"></tbody>
+          <tbody id="oweh-surplus-view-rows"></tbody>
         </table>
       </div>
     `;
-    view.querySelector("#oweh-cull-view-close").addEventListener("click", () => {
+    view.querySelector("#oweh-surplus-view-close").addEventListener("click", () => {
       view.dataset.open = "";
       view.classList.add("oweh-hidden");
     });
-    panel.querySelector("#oweh-view-cull")?.addEventListener("click", () => {
+    panel.querySelector("#oweh-view-surplus")?.addEventListener("click", () => {
       view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
       const planView = document.getElementById("oweh-breed-plan-view");
@@ -359,6 +378,12 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-stop-hatchlings" class="oweh-danger" type="button" data-tip="Stop the newborn pass after the current pet.">Stop</button>
             </div>
             <div class="oweh-inline-meta oweh-note">Turning an egg still opens the real egg page, so Name the Species can be answered.</div>
+            <div class="oweh-row" data-tip="How many of the best eggs to mark (1–50)."><label for="oweh-best-eggs-count">Best eggs to mark</label><input id="oweh-best-eggs-count" type="number" min="1" max="50" step="1" value="10"><span>eggs</span></div>
+            <div class="oweh-actions">
+              <button id="oweh-best-eggs" class="oweh-secondary" type="button" data-tip="Read the colours of every egg in your Hatchery (saved colours first, the rest fetched a few at a time) and mark the eggs closest to the pure target. Body 1 counts ×5, Body 2 ×4, Scales ×3, Extra 1 ×2, Extra 2 ×1; an exact channel counts fully. Nothing is sent to the game.">Highlight best eggs</button>
+              <button id="oweh-best-eggs-clear" class="oweh-link-button" type="button" data-tip="Remove the best-egg marks and the list below.">Clear marks</button>
+            </div>
+            <div id="oweh-best-eggs-list" class="oweh-best-eggs-list"></div>
           </div>
         </details>
 
@@ -379,22 +404,22 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
             </div>
             <button id="oweh-view-breed-plan" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every planned pair (or the confirmed campaign and its progress) in a full-size table.">View pairs</button>
-            <div class="oweh-inline-meta" data-tip="Male cull: a male can go when (1) no colour slot has an aligned FF or 00 pair (RR|GG|BB — EFF1F0 does not count), or (2) at least 2 kept males from different lineages are as close or closer to the pure target on all 15 channels. Generated males are never culled; males in a breeding plan or campaign are never listed. Males discard itself is never fed, scanned or renamed.">Male cull → Males discard</div>
+            <div class="oweh-inline-meta" data-tip="A pet is surplus when enough kept pets of its own sex are at least as good in every one of the 15 colour channels (Body 1, Body 2, Scales, Extra 1, Extra 2), where a channel is worth 1/(distance+1) and 5 percentage points of slack are allowed. An egg has no sex yet, so it needs that many males and that many females. Generated pets and pets in a breeding plan are never listed. Pedigree is not considered.">Discard surplus pets &amp; eggs</div>
+            <div class="oweh-row" data-tip="How many kept pets must be at least as good before one counts as surplus. 10 or 20 is cautious; 3 or 5 lists more."><label for="oweh-surplus-keep">Spares needed</label><select id="oweh-surplus-keep"><option value="20">20</option><option value="10" selected>10</option><option value="5">5</option><option value="3">3</option></select><span>pets</span></div>
             <div class="oweh-actions">
-              <button id="oweh-cull-plan" type="button" data-tip="From the database only: list the redundant males. Nothing is moved until you press Confirm cull.">Plan cull</button>
-              <button id="oweh-cull-stop" class="oweh-danger" type="button" data-tip="Stop moving males. Males already moved stay in Males discard; Confirm cull resumes the rest.">Stop</button>
+              <button id="oweh-surplus-plan" type="button" data-tip="Read the Hatchery egg list and the pet database, then list every surplus pet and egg. Nothing is sent until you press Confirm &amp; discard.">Plan discard</button>
+              <button id="oweh-surplus-stop" class="oweh-danger" type="button" data-tip="Stop discarding. What was already sent is gone; Confirm &amp; discard continues with the rest.">Stop</button>
             </div>
-            <div id="oweh-cull-preview" class="oweh-inline-meta oweh-breed-preview">No cull plan yet — press Plan cull</div>
+            <div id="oweh-surplus-preview" class="oweh-inline-meta oweh-breed-preview">No discard plan yet — press Plan discard</div>
+            <div class="oweh-row" data-tip="Discard at most this many per run (0 = the whole list). The least useful go first. Starts at 5: check that a first small run really removes them before raising it."><label for="oweh-surplus-limit">Limit per run</label><input id="oweh-surplus-limit" type="number" min="0" max="9999" step="1" value="5"><span>max</span></div>
             <div class="oweh-actions">
-              <button id="oweh-cull-confirm" class="oweh-primary" type="button" disabled data-tip="Move the listed males into the Males discard enclosure in the shared background tab. Nothing is deleted or sold — do that yourself in OviPets.">Confirm cull</button>
-              <button id="oweh-cull-discard" class="oweh-secondary" type="button" disabled data-tip="Throw the cull plan away without moving anything.">Discard</button>
+              <button id="oweh-surplus-confirm" class="oweh-danger" type="button" disabled data-tip="PERMANENT: send OviPets' own Send To → Discard command for every pet and egg in the list (up to the limit), in the shared background tab. Each one is checked against the live Overview and Hatchery before and after.">Confirm &amp; discard</button>
+              <button id="oweh-surplus-dismiss" class="oweh-secondary" type="button" disabled data-tip="Throw the discard plan away without sending anything.">Dismiss plan</button>
             </div>
-            <button id="oweh-view-cull" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every male the cull would move, the better males that cover it, and move progress.">View cull list</button>
+            <button id="oweh-view-surplus" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every pet and egg the discard would send away, its colours, the kept pets that replace it, and progress.">View discard list</button>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
-              <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the retention review with Generated, endpoint, near-target, lineage and partner-potential reasons.">Copy retention CSV</button>
             </div>
-            <button id="oweh-discard-poor-eggs" class="oweh-danger oweh-primary-wide" type="button" data-tip="In your own Hatchery, discard only eggs classified as EARLY_CULL_CANDIDATE. The first use is locked until OviPets' real Edit → Send To → Discard command has been observed once.">Discard poor eggs</button>
           </div>
         </details>
 
@@ -426,22 +451,15 @@ OWEH.register("ui-panel", helpers => {
         </details>
 
         <details class="oweh-module" name="oweh-modules" data-accent="species">
-          <summary><i class="oweh-ico">✦</i>Species <span>Name the Species memory</span></summary>
+          <summary><i class="oweh-ico">✦</i>Species <span>production classifier</span></summary>
           <div class="oweh-module-body">
-            <div id="oweh-species-stats" class="oweh-inline-meta">Species checks: 0 detected · 0 correct · 0 manual prompts</div>
-            <div id="oweh-species-inspector-stats" class="oweh-inline-meta">Species Inspector: 0 question(s) recorded</div>
-            <div class="oweh-actions">
-              <button id="oweh-species-seed-start" type="button" data-tip="Learn species silhouettes from the pets listed in the Adoption Center (read-only, no clicks; needs ovipets.com). Images you label in Species review are learned too. More learned shapes make Name the Species answers more accurate.">Learn species shapes</button>
-              <button id="oweh-species-seed-stop" class="oweh-danger" type="button" data-tip="Stop Learn species shapes after the current pet.">Stop</button>
-            </div>
-            <button id="oweh-species-review" class="oweh-primary-wide" type="button" data-tip="Open a separate tab with every saved Name the Species image (correct and wrong). Label the unresolved ones yourself; each label is saved to the species database and teaches the silhouette matcher.">Review species images</button>
+            <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
+            <div id="oweh-species-wrong-count" class="oweh-inline-meta">Wrong review: loading…</div>
             <div class="oweh-actions oweh-tools-row">
-              <button id="oweh-export-species-db" class="oweh-link-button" type="button" data-tip="Download a compact backup of learned Species image memory, answer IDs and statistics. Keep this file when moving to another computer.">Backup DB</button>
-              <button id="oweh-import-species-db" class="oweh-link-button" type="button" data-tip="Import/merge a Species database backup or a previous Species Inspector JSON export. Existing knowledge is preserved and merged.">Import DB</button>
-              <input id="oweh-import-species-file" type="file" accept="application/json,.json" hidden>
-              <button id="oweh-export-species" class="oweh-link-button" type="button" data-tip="Download the full privacy-scoped Species Inspector dataset for analysis. Learned memory is included.">Export JSON</button>
-              <button id="oweh-clear-species" class="oweh-link-button" type="button" data-tip="Clear only the Species Inspector trace dataset. Learned answer memory is kept so future guesses stay smarter.">Clear traces</button>
+              <button id="oweh-export-species-wrongs" class="oweh-link-button" type="button" data-tip="Download only the compact Name the Species cases that OviPets explicitly rejected.">Export wrongs</button>
+              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals are not reset.">Clear wrongs</button>
             </div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · built-in silhouette library. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
           </div>
         </details>
 
@@ -492,7 +510,7 @@ OWEH.register("ui-panel", helpers => {
     `;
     document.body.appendChild(panel);
     ensureBreedPlanView(panel);
-    ensureCullView(panel);
+    ensureSurplusView(panel);
     attachTooltip(panel);
     loadPanelSettings(panel);
 
@@ -531,47 +549,16 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-stop-breed", "Stopping breeding campaign", stopBreedCampaign, missingControls);
     bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
-    bindPanelAction(panel, "#oweh-copy-retention", "Copying retention review", copyRetentionReviewCsv, missingControls);
-    bindPanelAction(panel, "#oweh-discard-poor-eggs", "Discarding poor eggs", discardPoorEggCandidates, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
-    bindPanelAction(panel, "#oweh-export-species", "Exporting Species Inspector data", async () => {
-      await exportSpeciesInspector();
-      await updateSpeciesInspectorStats(true);
+    bindPanelAction(panel, "#oweh-export-species-wrongs", "Exporting wrong Species cases", async () => {
+      await exportSpeciesWrongCases();
+      await updateSpeciesWrongCount(true);
     }, missingControls);
-    bindPanelAction(panel, "#oweh-export-species-db", "Exporting Species database", async () => {
-      await exportSpeciesDatabase();
-      await updateSpeciesInspectorStats(true);
-    }, missingControls);
-    bindPanelAction(panel, "#oweh-species-review", "Opening Species Review", async () => {
-      const result = await runtimeRequest({ type: "openSpeciesReview" });
-      if (!result?.ok) throw new Error(result?.error || "Species Review tab could not be opened");
-      setStatus("Species Review opened in a new tab");
-    }, missingControls);
-    const importSpeciesFile = panel.querySelector("#oweh-import-species-file");
-    bindPanelAction(panel, "#oweh-import-species-db", "Choosing Species database backup", async () => {
-      if (!importSpeciesFile) throw new Error("Species database file picker is missing");
-      importSpeciesFile.value = "";
-      importSpeciesFile.click();
-    }, missingControls);
-    if (!importSpeciesFile) missingControls.push("#oweh-import-species-file");
-    else importSpeciesFile.addEventListener("change", async () => {
-      const file = importSpeciesFile.files?.[0];
-      if (!file) return;
-      try {
-        const payload = JSON.parse(await file.text());
-        await importSpeciesDatabase(payload);
-        await updateSpeciesInspectorStats(true);
-      } catch (error) {
-        console.error("[OviPets Helper] Species database import failed", error);
-        setStatus(`Species database import failed: ${error?.message || error}`);
-      } finally {
-        importSpeciesFile.value = "";
-      }
-    });
-    bindPanelAction(panel, "#oweh-clear-species", "Clearing Species Inspector data", async () => {
-      await clearSpeciesInspector();
-      await updateSpeciesInspectorStats(true);
+    bindPanelAction(panel, "#oweh-clear-species-wrongs", "Clearing wrong Species cases", async () => {
+      await runtimeRequest({ type: "speciesWrongCasesClear" });
+      await updateSpeciesWrongCount(true);
+      setStatus("Saved wrong Species review cases cleared");
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
@@ -622,23 +609,51 @@ OWEH.register("ui-panel", helpers => {
   }
 
 
-  // sync() runs on every coalesced DOM refresh (in up to 15 egg tabs at once) and the summary
-  // reads the whole Inspector store, network traces included — so passive refreshes are
-  // throttled; export/import/clear force an immediate recount.
-  let speciesStatsAt = 0;
-  let speciesStatsPending = false;
-  async function updateSpeciesInspectorStats(force = false) {
-    const label = document.querySelector("#oweh-species-inspector-stats");
-    if (!label || typeof getSpeciesInspectorSummary !== "function") return;
-    if (!force && (speciesStatsPending || Date.now() - speciesStatsAt < 5000)) return;
-    speciesStatsPending = true;
+  let speciesWrongCountAt = 0;
+  let speciesWrongCountPending = false;
+
+  async function readSpeciesWrongCases() {
+    const response = await runtimeRequest({ type: "speciesWrongCasesGet" });
+    if (!response?.ok) throw new Error(response?.error || "wrong-case store unavailable");
+    return Array.isArray(response.cases) ? response.cases : [];
+  }
+
+  async function exportSpeciesWrongCases() {
+    const cases = await readSpeciesWrongCases();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      type: "ovipets-species-wrong-cases",
+      count: cases.length,
+      cases
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `ovipets-species-wrongs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    setStatus(`Exported ${cases.length} saved wrong Species case(s)`);
+  }
+
+  async function updateSpeciesWrongCount(force = false) {
+    const label = document.querySelector("#oweh-species-wrong-count");
+    if (!label) return;
+    const now = Date.now();
+    if (!force && (speciesWrongCountPending || now - speciesWrongCountAt < 5000)) return;
+    speciesWrongCountPending = true;
     try {
-      const summary = await getSpeciesInspectorSummary();
-      speciesStatsAt = Date.now();
-      const text = `Species Inspector: ${summary?.questions || 0} question(s) · ${summary?.correct || 0} correct · ${summary?.wrong || 0} wrong · ${summary?.network || 0} trace event(s)`;
+      const cases = await readSpeciesWrongCases();
+      speciesWrongCountAt = Date.now();
+      const unresolved = cases.filter(item => !item?.correctSpecies).length;
+      const text = `Wrong review: ${cases.length} saved · ${unresolved} unresolved`;
       if (label.textContent !== text) label.textContent = text;
-    } catch {} finally {
-      speciesStatsPending = false;
+    } catch {
+      if (label.textContent !== "Wrong review: unavailable") label.textContent = "Wrong review: unavailable";
+    } finally {
+      speciesWrongCountPending = false;
     }
   }
 
@@ -674,9 +689,9 @@ OWEH.register("ui-panel", helpers => {
     const panel = ensure();
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
-    updateSpeciesInspectorStats();
+    updateSpeciesWrongCount();
     updateDiagnosticStats();
   }
 
-  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateSpeciesInspectorStats, updateDiagnosticStats, isVisible } };
+  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateSpeciesWrongCount, updateDiagnosticStats, isVisible } };
 });

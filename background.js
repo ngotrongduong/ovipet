@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-memory.js", "domain/species-shape.js", "bg/species-shapes.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-stats.js", "bg/state-health.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -18,10 +18,9 @@ const commandJournal = globalThis.OWEH_BG?.commandJournal;
 const workerManager = globalThis.OWEH_BG?.workerManager;
 const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
-const speciesMemory = globalThis.OWEH_BG?.speciesMemory;
-const speciesShapes = globalThis.OWEH_BG?.speciesShapes;
+const speciesStats = globalThis.OWEH_BG?.speciesStats;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesMemory || !speciesShapes || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -52,15 +51,15 @@ function ensureWorkerHealthAlarm() {
   chrome.alarms.create(WORKER_HEALTH_ALARM, { periodInMinutes: WORKER_HEALTH_INTERVAL_MINUTES });
 }
 
-// v5.4.0: back-fill the silhouette library from answers confirmed before it existed (once).
-function migrateSpeciesShapes() {
-  speciesShapes.migrateFromMemory().then(result => {
-    if (result && !result.skipped) diagnostic("info", "species", "shapes.migrated", result);
-  }).catch(error => diagnostic("warning", "species", "shapes.migration-failed", { message: error?.message || String(error) }));
+function dropRetentionRanking() {
+  // The retention ranking was removed on 2026-10-05 (Discard surplus replaced it). Free the
+  // whole-database ranking it left in extension storage when upgrading.
+  chrome.storage.local.remove([
+    "owehRetentionRanking", "owehRetentionReview", "owehRetentionSummary", "owehRetentionLastFullScanAt"
+  ]).catch(() => {});
 }
 
-chrome.runtime.onInstalled.addListener(migrateSpeciesShapes);
-chrome.runtime.onStartup.addListener(migrateSpeciesShapes);
+chrome.runtime.onInstalled.addListener(dropRetentionRanking);
 chrome.runtime.onInstalled.addListener(disableLegacyDailyAlarm);
 chrome.runtime.onInstalled.addListener(ensureWorkerHealthAlarm);
 chrome.runtime.onStartup.addListener(disableLegacyDailyAlarm);
@@ -78,31 +77,6 @@ chrome.alarms.onAlarm.addListener(alarm => {
     return;
   }
 });
-
-// Species Review (review/species-review.html): a human label for an unresolved challenge image.
-// The silhouette comes from the page (inspector trace) or is re-fetched from the credit-challenge
-// URL; it is added to the shape library under the chosen species and, on a relabel, removed from
-// the previous one so a corrected mistake does not keep steering the answerer.
-async function labelSpeciesReview(message) {
-  const keys = (Array.isArray(message?.keys) ? message.keys : []).map(String);
-  const species = message?.species ? String(message.species).trim() : "";
-  const shapeApi = globalThis.OWEH_SPECIES_SHAPE;
-  let shape = shapeApi?.validShape(message?.shape) ? message.shape : null;
-  if (!shape && species) {
-    const url = keys.find(key => speciesImage.allowedSpeciesImageUrl(key));
-    if (url) shape = await speciesShapes.shapeFromUrl(url).catch(() => null);
-  }
-  const result = await speciesMemory.label({ keys, species, shape });
-  if (!result.ok) return result;
-  const previous = result.previous;
-  if (previous?.species && previous.shape && previous.species !== species) {
-    await speciesShapes.remove({ species: previous.species, shape: previous.shape }).catch(() => null);
-  }
-  let shapeLearned = false;
-  if (species && shape) shapeLearned = Boolean((await speciesShapes.learn({ species, shape }))?.ok);
-  diagnostic("info", "species", "review.label", { species: species || null, previous: previous?.species || null, shapeLearned });
-  return { ok: true, species: species || null, shapeLearned, hasShape: Boolean(shape) };
-}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "diagnosticLogAppend") {
@@ -230,23 +204,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     showSpeciesVerification(sender, message.playSound).catch(() => {});
     return;
   }
-  // Species knowledge is shared by up to 15 egg tabs; the service worker serializes its writes.
-  const speciesMemoryHandlers = {
-    speciesMemoryLearn: () => speciesMemory.learn(message),
-    speciesStatsBump: () => speciesMemory.bumpStats(message),
-    speciesAnswerIdsMerge: () => speciesMemory.mergeAnswerIds(message),
-    speciesShapeLearn: () => speciesShapes.learn(message),
-    speciesShapeMerge: () => speciesShapes.merge(message),
-    speciesShapeRescan: () => speciesShapes.rescanMemory(),
-    speciesReviewLabel: () => labelSpeciesReview(message)
-  };
-  if (message?.type === "openSpeciesReview") {
-    chrome.tabs.create({ url: chrome.runtime.getURL("review/species-review.html") });
-    sendResponse({ ok: true });
-    return;
+  if (message?.type === "speciesStatsBump") {
+    speciesStats.bump(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
   }
-  if (speciesMemoryHandlers[message?.type]) {
-    speciesMemoryHandlers[message.type]().then(sendResponse)
+  if (message?.type === "speciesWrongCaseRecord") {
+    speciesStats.recordWrong(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCaseResolve") {
+    speciesStats.resolveWrong(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCasesGet") {
+    speciesStats.readWrongCases().then(cases => sendResponse({ ok: true, cases, count: cases.length }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCasesClear") {
+    speciesStats.clearWrongCases().then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

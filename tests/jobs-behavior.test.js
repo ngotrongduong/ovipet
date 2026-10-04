@@ -23,7 +23,7 @@ const realPetRecord = (() => {
 
 function setup(initial = {}, overrides = {}) {
   const store = JSON.parse(JSON.stringify(initial));
-  const log = { statuses: [], done: 0, phases: [], navigations: [], fed: [], requested: [], moved: [], renamed: [], reads: [], sleeps: 0, ranking: 0 };
+  const log = { statuses: [], done: 0, phases: [], navigations: [], fed: [], requested: [], moved: [], renamed: [], reads: [], sleeps: 0 };
   const helpers = {
     storageGet: async (key, fallback) => (key in store ? JSON.parse(JSON.stringify(store[key])) : fallback),
     storageSet: async values => {
@@ -82,7 +82,6 @@ function setup(initial = {}, overrides = {}) {
       DEFAULT_REQUEST_DELAY: 100
     },
     catalogService: {
-      updateRetentionRanking: async () => { log.ranking += 1; },
       setOwnUserId: id => { if (id) store.__ownUserId = id; },
       getOwnUserId: () => store.__ownUserId || null
     },
@@ -222,7 +221,6 @@ const HOUR = 60 * 60 * 1000;
     assert.deepEqual(env.log.moved.map(pair => pair.join(">")), ["2>FF ** **", "3>Males"], "pets already in place and other species are left alone");
     assert.equal(env.store.owehPets["2"].enclosure, "FF ** **");
     assert.equal(env.store.owehPets["2"].enclosureId, "3");
-    assert.equal(env.log.ranking, 1, "moves change the breeding line, so ranking is refreshed once");
   }
   {
     const env = setup({ owehMaintainSteps: ONLY("sort"), owehPets: { 1: { id: "1", owned: true } } });
@@ -371,7 +369,6 @@ const HOUR = 60 * 60 * 1000;
     assert.deepEqual([...env.log.reads], ["8"]);
     assert.equal(env.store.owehPets["8"].enclosure, "FF ** **");
     assert.equal(env.log.fed.length, 0, "a fresh profile read at 100% food is not fed again");
-    assert.equal(env.log.ranking, 1);
     assert.ok(env.log.statuses.at(-1).startsWith("Update database finished"));
   }
 

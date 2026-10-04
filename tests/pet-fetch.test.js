@@ -64,6 +64,34 @@ function harness(routes, initial = {}) {
   assert.equal(full.requests[0].type, "reconcileBreedCommands");
   assert.equal(full.requests[0].catalog.length, 2);
 
+  // ---- readOwnedPetIds: the live id list for the surplus discard, read-only
+  const owned = harness({
+    "/?src=pets&sub=overview&!=cb": samples.overview,
+    [enclosureRoute(0)]: emptyEnclosure(0),
+    [enclosureRoute(1)]: emptyEnclosure(1),
+    [enclosureRoute(8)]: emptyEnclosure(8),
+    [enclosureRoute(9)]: samples.enclosure
+  });
+  const ownedIds = await owned.service.readOwnedPetIds();
+  assert.equal(ownedIds.partial, false);
+  assert.deepEqual([...ownedIds.ids].sort(), scan.catalog.map(pet => pet.id).sort());
+  assert.deepEqual(owned.store, {}, "the presence check stores nothing");
+  assert.equal(owned.requests.length, 0);
+  // An enclosure that fails, or answers without its pets section (an error or login panel),
+  // makes the list partial: a missing id then proves nothing.
+  for (const broken of [new Error("network"), `<ui:section title = "Login" id = "login"></ui:section>`]) {
+    const gap = harness({
+      "/?src=pets&sub=overview&!=cb": samples.overview,
+      [enclosureRoute(0)]: emptyEnclosure(0),
+      [enclosureRoute(1)]: broken,
+      [enclosureRoute(8)]: emptyEnclosure(8),
+      [enclosureRoute(9)]: samples.enclosure
+    });
+    assert.equal((await gap.service.readOwnedPetIds()).partial, true);
+  }
+  assert.equal((await harness({ "/?src=pets&sub=overview&!=cb": emptyEnclosure(0) }).service.readOwnedPetIds()).partial, true,
+    "an Overview without enclosure tabs is not trusted");
+
   // ---- one enclosure fails: partial, saved ids are merged, not dropped
   const partial = harness({
     "/?src=pets&sub=overview&!=cb": samples.overview,

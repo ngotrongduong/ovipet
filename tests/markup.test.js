@@ -84,6 +84,11 @@ assert.deepEqual([...hatchery.eggIds], ["530566971", "530566972", "530566973"], 
 assert.deepEqual([...hatchery.turnable], ["530566972"]);
 assert.deepEqual([...hatchery.hatchable], ["530566973"]);
 assert.deepEqual([...hatchery.unnamedIds], ["530491258"]);
+assert.equal(hatchery.hatcherySeen, true);
+// An answer without the Hatchery section (error or login panel) is not "no eggs".
+const noHatchery = markup.parseHatchery(`<ui:section title = "Login" id = "login"></ui:section>`);
+assert.equal(noHatchery.hatcherySeen, false);
+assert.deepEqual([...noHatchery.eggIds], []);
 
 // ---- record compatible with dom/profile.js readPet
 const record = markup.petRecord({ id: "157155269", profile: named, pedigree: graph, now: 1000 });

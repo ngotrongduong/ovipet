@@ -4,12 +4,21 @@
   const REQUEST_EVENT = "oweh:game-command";
   const RESULT_EVENT = "oweh:game-command-result";
   const PING_EVENT = "oweh:game-ping";
-  const DISCARD_TRACE_EVENT = "oweh:discard-action-observed";
   const ALLOWED = new Set([
     // pet_name names an Unnamed newborn (its profile has a Name button, not Rename).
     "pets_enclosure", "pet_rename", "pet_name", "pet_feed",
-    "friend_request", "friend_remove", "pet_breed", "pet_turn_egg"
+    "friend_request", "friend_remove", "pet_breed", "pet_turn_egg", "pet_sendto"
   ]);
+
+  // Confirmed live 2026-10-05 on an owned pet and an owned egg: Edit > Send To opens a confirm
+  // dialog with select[name="SendTo"] (pet: adoption_center | discard, egg: discard) and then
+  // calls ui_action_cmdExec('pet_sendto', 'PetID=<id>', form, ...). The bridge lets through
+  // only the Discard choice, and only for the surplus list the user confirmed.
+  function isConfirmedDiscard(command, purpose, fields) {
+    const names = fields && typeof fields === "object" ? Object.keys(fields) : [];
+    return command === "pet_sendto" && purpose === "confirmed-discard"
+      && names.length === 1 && names[0] === "SendTo" && String(fields.SendTo) === "discard";
+  }
 
   function isOwnHatcheryRoute() {
     const hash = String(window.location?.hash || document.location?.hash || "");
@@ -41,305 +50,6 @@
     try { ok?.click?.(); } catch {}
   }
 
-  let verifiedDiscardSignature = null;
-  let discardArm = null;
-
-  function currentProfilePetId() {
-    const hash = String(window.location?.hash || document.location?.hash || "");
-    return hash.match(/[?&]pet=(\d+)/)?.[1] || null;
-  }
-
-  function armDiscardFromClick(event) {
-    const target = event?.target?.closest?.("button, a, input, label, [role=button]");
-    if (!target) return;
-    const text = String(target.textContent || target.value || target.title || "")
-      .replace(/\s+/g, " ").trim();
-    if (!/^Discard$/i.test(text)) return;
-    const sourceId = currentProfilePetId();
-    if (!/^\d+$/.test(String(sourceId || ""))) return;
-    discardArm = { sourceId: String(sourceId), until: Date.now() + 15000 };
-  }
-
-  document.addEventListener("click", armDiscardFromClick, true);
-
-  function visibleOwnHatcheryPet(targetId) {
-    if (!isOwnHatcheryRoute()) return false;
-    for (const anchor of document.querySelectorAll?.('main a.pet[href*="pet="]') || []) {
-      const href = anchor.getAttribute?.("href") || "";
-      if (href.match(/[?&]pet=(\d+)/)?.[1] === String(targetId)) return true;
-    }
-    return false;
-  }
-
-  function formSnapshot(form) {
-    const fields = {};
-    for (const control of form?.querySelectorAll?.("input[name], select[name], textarea[name]") || []) {
-      if (control.disabled) continue;
-      const name = String(control.name || "");
-      if (!name || name === "PetID") continue;
-      if ((control.type === "checkbox" || control.type === "radio") && !control.checked) continue;
-      fields[name] = String(control.value ?? "");
-    }
-    return fields;
-  }
-
-  function looksLikeDiscard(command, params, form, fields) {
-    const haystack = [
-      command,
-      params,
-      form?.textContent || "",
-      form?.getAttribute?.("action") || "",
-      ...Object.keys(fields || {}),
-      ...Object.values(fields || {})
-    ].join(" ");
-    return /\bdiscard(?:ed|ing)?\b/i.test(haystack);
-  }
-
-  function replaceTargetId(value, sourceId, targetId) {
-    let text = String(value ?? "");
-    if (sourceId) text = text.replace(new RegExp("(PetID|EggID)=" + sourceId + "\\b", "g"), "$1=" + targetId);
-    return text.replace(/(PetID|EggID)=\d+\b/g, "$1=" + targetId);
-  }
-
-  function installDiscardObserver() {
-    const current = window.ui_action_cmdExec;
-    if (typeof current !== "function" || current.__owehDiscardObserved) return Boolean(current?.__owehDiscardObserved);
-    const wrapped = function(command, params, form, callback) {
-      try {
-        const fields = formSnapshot(form);
-        const commandSourceId = String(params || "").match(/(?:PetID|EggID)=(\d+)/)?.[1] || "";
-        const armed = discardArm && Date.now() <= discardArm.until
-          && commandSourceId === discardArm.sourceId;
-        if ((armed || looksLikeDiscard(command, params, form, fields)) && /^\d+$/.test(commandSourceId)) {
-          verifiedDiscardSignature = {
-            command: String(command || ""),
-            params: String(params || ""),
-            fields,
-            sourceId: commandSourceId,
-            evidence: armed ? "discard-ui-click" : "discard-ui",
-            observedAt: Date.now()
-          };
-          discardArm = null;
-          document.dispatchEvent(new CustomEvent(DISCARD_TRACE_EVENT, {
-            detail: JSON.stringify(verifiedDiscardSignature)
-          }));
-        }
-      } catch {}
-      return current.apply(this, arguments);
-    };
-    try { Object.defineProperty(wrapped, "__owehDiscardObserved", { value: true }); } catch {}
-    window.ui_action_cmdExec = wrapped;
-    return true;
-  }
-
-  // The bridge loads at document_start, usually before OviPets defines ui_action_cmdExec.
-  // Install a transparent observer as soon as the dispatcher appears. It never sends a command;
-  // it only records the exact command/fields when the user manually chooses Discard once.
-  const discardObserverTimer = setInterval(() => {
-    if (installDiscardObserver()) clearInterval(discardObserverTimer);
-  }, 250);
-  setTimeout(() => clearInterval(discardObserverTimer), 30000);
-
-  const SPECIES_TRACE_CONTROL_EVENT = "oweh:species-trace-control";
-  const SPECIES_TRACE_NETWORK_EVENT = "oweh:species-trace-network";
-  const SPECIES_SOURCE_REQUEST_EVENT = "oweh:species-source-request";
-  const SPECIES_SOURCE_RESULT_EVENT = "oweh:species-source-result";
-  const speciesTrace = { active: false, sessionId: "", eggId: "", until: 0 };
-  const SPECIES_WORDS = /name\s+the\s+species|species|turn\s*egg|pet_turn_egg|incorrect|verify|verification|captcha|quiz/i;
-
-  function traceEnabled() {
-    if (!speciesTrace.active) return false;
-    if (speciesTrace.until && Date.now() > speciesTrace.until) {
-      speciesTrace.active = false;
-      return false;
-    }
-    return true;
-  }
-
-  function traceReply(detail) {
-    if (!traceEnabled()) return;
-    try {
-      document.dispatchEvent(new CustomEvent(SPECIES_TRACE_NETWORK_EVENT, {
-        detail: JSON.stringify({
-          sessionId: speciesTrace.sessionId,
-          eggId: speciesTrace.eggId,
-          at: Date.now(),
-          ...detail
-        })
-      }));
-    } catch {}
-  }
-
-  function pageBaseUrl() {
-    return window.location?.href || document.location?.href || "https://ovipets.com/";
-  }
-
-  function sameOriginUrl(value) {
-    try {
-      const url = new URL(String(value || ""), pageBaseUrl());
-      const base = new URL(pageBaseUrl());
-      return url.origin === base.origin ? url : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function safeUrl(value) {
-    const url = sameOriginUrl(value);
-    if (!url) return null;
-    const params = new URLSearchParams();
-    for (const [key, val] of url.searchParams.entries()) {
-      params.set(key, /pet|egg|species|answer|option|cmd|action|id/i.test(key) ? String(val).slice(0, 200) : "[redacted]");
-    }
-    return `${url.origin}${url.pathname}${params.size ? `?${params}` : ""}`;
-  }
-
-  function safeBody(body) {
-    if (body == null) return null;
-    try {
-      if (typeof body === "string") {
-        const params = new URLSearchParams(body);
-        if ([...params.keys()].length) {
-          const output = {};
-          for (const [key, value] of params.entries()) {
-            output[key] = /pet|egg|species|answer|option|cmd|action|id/i.test(key) ? String(value).slice(0, 300) : "[redacted]";
-          }
-          return output;
-        }
-        return SPECIES_WORDS.test(body) ? body.slice(0, 2000) : "[non-species request body omitted]";
-      }
-      if (typeof FormData !== "undefined" && body instanceof FormData) {
-        const output = {};
-        for (const [key, value] of body.entries()) {
-          output[key] = /pet|egg|species|answer|option|cmd|action|id/i.test(key) ? String(value).slice(0, 300) : "[redacted]";
-        }
-        return output;
-      }
-    } catch {}
-    return `[${Object.prototype.toString.call(body)}]`;
-  }
-
-  function relevantResponseSnippet(text) {
-    const value = String(text || "");
-    const match = value.match(SPECIES_WORDS);
-    if (!match || match.index == null) return "[non-species response omitted]";
-    const start = Math.max(0, match.index - 1200);
-    return value.slice(start, start + 3500);
-  }
-
-  document.addEventListener(SPECIES_TRACE_CONTROL_EVENT, event => {
-    let detail;
-    try { detail = JSON.parse(String(event.detail || "{}")); } catch { return; }
-    speciesTrace.active = detail.active === true;
-    speciesTrace.sessionId = String(detail.sessionId || "");
-    speciesTrace.eggId = String(detail.eggId || "");
-    speciesTrace.until = speciesTrace.active ? Date.now() + 180000 : 0;
-  });
-
-  document.addEventListener(SPECIES_SOURCE_REQUEST_EVENT, event => {
-    let detail;
-    try { detail = JSON.parse(String(event.detail || "{}")); } catch { return; }
-    const sessionId = String(detail.sessionId || "");
-    if (!sessionId) return;
-    const hints = [];
-    const names = new Set(["ui_action_cmdExec"]);
-    try {
-      for (const name of Object.getOwnPropertyNames(window)) {
-        if (/species|egg|turn|verify|verification|captcha|quiz|dialog/i.test(name)) names.add(name);
-      }
-    } catch {}
-    for (const name of [...names].slice(0, 40)) {
-      try {
-        const value = window[name];
-        if (typeof value === "function") {
-          hints.push({ name, type: "function", source: Function.prototype.toString.call(value).slice(0, 5000) });
-        } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-          hints.push({ name, type: typeof value, value: String(value).slice(0, 1000) });
-        }
-      } catch {}
-      if (hints.length >= 24) break;
-    }
-    const scriptSources = [...(document.scripts || [])].map(script => String(script.src || "")).filter(Boolean).slice(0, 100);
-    const pageRuntime = {
-      jquery: window.jQuery?.fn?.jquery || null,
-      dispatcherPresent: typeof window.ui_action_cmdExec === "function"
-    };
-    try {
-      document.dispatchEvent(new CustomEvent(SPECIES_SOURCE_RESULT_EVENT, {
-        detail: JSON.stringify({ sessionId, hints, scriptSources, pageRuntime })
-      }));
-    } catch {}
-  });
-
-  // Passive same-origin network recorder. It is dormant unless the isolated-world Species
-  // Inspector explicitly opens a short trace window around Turn Egg / Name the Species.
-  if (typeof window.XMLHttpRequest === "function") {
-    const XHR = window.XMLHttpRequest;
-    const originalOpen = XHR.prototype.open;
-    const originalSend = XHR.prototype.send;
-    const meta = new WeakMap();
-    XHR.prototype.open = function(method, url, ...rest) {
-      meta.set(this, { method: String(method || "GET").toUpperCase(), url: String(url || "") });
-      return originalOpen.call(this, method, url, ...rest);
-    };
-    XHR.prototype.send = function(body) {
-      const activeAtSend = traceEnabled();
-      const info = meta.get(this) || { method: "GET", url: "" };
-      const url = activeAtSend ? safeUrl(info.url) : null;
-      const sessionId = speciesTrace.sessionId;
-      const eggId = speciesTrace.eggId;
-      if (activeAtSend && url) {
-        this.addEventListener("loadend", () => {
-          if (!sessionId) return;
-          let responseText = "";
-          try {
-            if (!this.responseType || this.responseType === "text") responseText = String(this.responseText || "");
-          } catch {}
-          try {
-            document.dispatchEvent(new CustomEvent(SPECIES_TRACE_NETWORK_EVENT, {
-              detail: JSON.stringify({
-                sessionId, eggId, at: Date.now(), kind: "xhr", method: info.method, url,
-                request: safeBody(body), status: Number(this.status || 0),
-                response: relevantResponseSnippet(responseText)
-              })
-            }));
-          } catch {}
-        }, { once: true });
-      }
-      return originalSend.call(this, body);
-    };
-  }
-
-  if (typeof window.fetch === "function") {
-    const originalFetch = window.fetch;
-    window.fetch = function(input, init) {
-      const activeAtSend = traceEnabled();
-      const rawUrl = typeof input === "string" ? input : input?.url;
-      const url = activeAtSend ? safeUrl(rawUrl) : null;
-      const method = String(init?.method || (typeof input !== "string" && input?.method) || "GET").toUpperCase();
-      const body = init?.body || null;
-      const sessionId = speciesTrace.sessionId;
-      const eggId = speciesTrace.eggId;
-      const promise = originalFetch.apply(this, arguments);
-      if (activeAtSend && url && sessionId) {
-        promise.then(response => {
-          response.clone().text().then(text => {
-            try {
-              document.dispatchEvent(new CustomEvent(SPECIES_TRACE_NETWORK_EVENT, {
-                detail: JSON.stringify({
-                  sessionId, eggId, at: Date.now(), kind: "fetch", method, url,
-                  request: safeBody(body), status: Number(response.status || 0),
-                  response: relevantResponseSnippet(text)
-                })
-              }));
-            } catch {}
-          }).catch(() => {});
-        }).catch(() => {});
-      }
-      return promise;
-    };
-  }
-
   function reply(requestId, ok, reason = "") {
     document.dispatchEvent(new CustomEvent(RESULT_EVENT, {
       detail: JSON.stringify({ requestId, ok, reason })
@@ -357,7 +67,6 @@
     } catch {
       return;
     }
-    installDiscardObserver();
     const ready = typeof window.ui_action_cmdExec === "function";
     reply(requestId, ready, ready ? "" : "dispatcher-unavailable");
   });
@@ -373,20 +82,15 @@
     const command = String(request.command || "");
     const targetId = String(request.targetId ?? request.petId ?? "");
     const purpose = String(request.purpose || "");
-    installDiscardObserver();
     const ownHatchCommand = command === "pet_turn_egg"
       && purpose === "own-hatch"
       && isVisibleOwnHatchTarget(targetId);
-    const verifiedDiscardCommand = command === "__verified_discard__"
-      && purpose === "verified-discard"
-      && verifiedDiscardSignature
-      && visibleOwnHatcheryPet(targetId);
     const fireAndForget = request.fireAndForget === true
-      && (command === "pet_feed" || command === "friend_request" || ownHatchCommand || verifiedDiscardCommand);
-    if (!requestId || (!ALLOWED.has(command) && !verifiedDiscardCommand) || !/^\d+$/.test(targetId)
-      || (command === "pet_turn_egg" && !ownHatchCommand)) {
-      const discardProxy = command === "__verified_discard__" && purpose === "verified-discard";
-      return reply(requestId, false, discardProxy ? "discard-signature-missing-or-target-not-visible" : "invalid-command");
+      && (command === "pet_feed" || command === "friend_request" || ownHatchCommand);
+    if (!requestId || !ALLOWED.has(command) || !/^\d+$/.test(targetId)
+      || (command === "pet_turn_egg" && !ownHatchCommand)
+      || (command === "pet_sendto" && !isConfirmedDiscard(command, purpose, request.fields))) {
+      return reply(requestId, false, "invalid-command");
     }
     if (typeof window.ui_action_cmdExec !== "function") {
       return reply(requestId, false, "dispatcher-unavailable");
@@ -434,18 +138,7 @@
     }
     try {
       let params;
-      let dispatchCommand = command;
-      if (verifiedDiscardCommand) {
-        const signature = verifiedDiscardSignature;
-        dispatchCommand = signature.command;
-        params = replaceTargetId(signature.params, signature.sourceId, targetId);
-        for (const [name, value] of Object.entries(signature.fields || {})) {
-          const input = document.createElement("input");
-          input.name = name;
-          input.value = replaceTargetId(value, signature.sourceId, targetId);
-          form.appendChild(input);
-        }
-      } else if (command === "friend_request" || command === "friend_remove") {
+      if (command === "friend_request" || command === "friend_remove") {
         params = `UserID=${targetId}`;
       } else if (command === "pet_breed") {
         const motherId = String(fields.MotherID || "");
@@ -463,7 +156,7 @@
         // the game's own UI dispatcher accepted the command. Keep the form alive briefly because the
         // dispatcher may serialize it asynchronously, but do not wait for its server
         // callback before releasing the 100 ms queue lane.
-        window.ui_action_cmdExec(dispatchCommand, params, form, () => {});
+        window.ui_action_cmdExec(command, params, form, () => {});
         clearTimeout(timer);
         finished = true;
         reply(requestId, true, "dispatched");
@@ -471,7 +164,7 @@
         cleanupTimer?.unref?.();
         return;
       }
-      window.ui_action_cmdExec(dispatchCommand, params, form, () => {
+      window.ui_action_cmdExec(command, params, form, () => {
         clearTimeout(timer);
         finish(true);
       });
