@@ -199,6 +199,14 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
+### Static Species library rebuilt from the full export (2026-10-04)
+
+- Production runtime answers Name the Species from the built-in `data/species-static.js` only (no learning writes); details in `docs/SPECIES_INSPECTOR.md`.
+- The 451-silhouette subsample produced 3 rejected answers in a day (Vulpes→Canis ×2, Slime→Mantis). Root causes: lost coverage (LOO 93.1% vs 99.2% on the full set) and 4 mislabeled learned silhouettes (3 Vulpes stored as Canis, 1 Raptor stored as Gekko).
+- `scripts/build-species-static.js` now generates the file: all 150 learned silhouettes per quiz species, label-noise filter, game-confirmed corrections appended. Current library 1,499 silhouettes (~390 KB), LOO 1,496/1,499 over 10 options. `rankOptions` and `MATCH_DISTANCE` are unchanged.
+- New wrong cases: `node scripts/build-species-static.js <Export wrongs file>`, then reload the extension.
+- `tests/species-static.test.js` pins the three rejected quizzes (also with the exact silhouette held out, with a margin).
+
 ### v5.4.4 Species Review tab
 
 - New extension page `review/species-review.html` (+ `.css`, `.js`; pure `buildModel` / `filterItems` exported as `OWEH_SPECIES_REVIEW`), opened by the `openSpeciesReview` message from the panel button `#oweh-species-review`.

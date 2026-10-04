@@ -429,7 +429,7 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-export-species-wrongs" class="oweh-link-button" type="button" data-tip="Download only the compact Name the Species cases that OviPets explicitly rejected.">Export wrongs</button>
               <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals are not reset.">Clear wrongs</button>
             </div>
-            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · 451 built-in silhouettes. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · built-in silhouette library. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
           </div>
         </details>
 
