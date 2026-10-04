@@ -525,14 +525,13 @@
 
       if (!document.querySelector(TURN_SELECTOR)) {
         if (submitted?.species) {
-          await Promise.all([
-            request({ type: "liteSpeciesStats", patch: { correct: 1 } }),
-            request({ type: "liteSpeciesWrongResolve", case: {
-              eggId: submitted.eggId || currentPetId(),
-              source: submitted.source || "",
-              correctSpecies: submitted.species
-            } })
-          ]);
+          const tasks = [request({ type: "liteSpeciesStats", patch: { correct: 1 } })];
+          if (rejected.size) tasks.push(request({ type: "liteSpeciesWrongResolve", case: {
+            eggId: submitted.eggId || currentPetId(),
+            source: submitted.source || "",
+            correctSpecies: submitted.species
+          } }));
+          await Promise.all(tasks);
         }
         return { ok: true, reason: "ui-confirmed" };
       }
