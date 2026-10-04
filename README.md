@@ -17,6 +17,13 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
+## Unreleased — Highlight best eggs (2026-10-05)
+
+- **Highlight best eggs** (Hatchery section) marks the eggs closest to the pure target, 10 by default (**Best eggs to mark**, 1–50). Each gets a gold frame and its rank on the Hatchery page, and the panel lists them with their colours; hover a mark for the score.
+- **Scoring:** each of the 15 colour channels is worth `1/(distance+1)` (exact = 1, one step off = 0.5), and slots are weighted **Body 1 ×5, Body 2 ×4, Scales ×3, Extra 1 ×2, Extra 2 ×1**. A perfect egg scores 45.
+- **Fast scan:** colours already saved by the newborn pass are reused, the rest are fetched 5 at a time (profile only) and remembered, so a second scan only reads new eggs. It reads only: nothing is sent to the game and no pet record is written.
+- The marks come back by themselves whenever OviPets redraws the Hatchery, until you press **Clear marks** or scan again.
+
 ## Unreleased — Discard surplus pets and eggs (2026-10-05)
 
 - **One flow replaces Male cull and Discard poor eggs.** Under Breeding: **Plan discard** lists every surplus hatched pet and egg, **View discard list** shows them with their colours and the kept pets that replace each one, and **Confirm & discard** sends OviPets' own **Send To → Discard** command for the list. **Discarding is permanent** — nothing is moved to Males discard any more.

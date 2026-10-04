@@ -199,6 +199,14 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
+### Highlight best eggs (2026-10-05)
+
+- `domain/egg-rank.js` `rankEggs`: per channel `1/(d+1)` (same scale as `domain/surplus.js`), slot weights Body 1 5, Body 2 4, Scales 3, Extra 1 2, Extra 2 1 (owner's priority order), max 45; ties by total distance, then id.
+- `features/best-eggs.js`: button `#oweh-best-eggs` reads the live Hatchery egg list, takes colours from the pet database, then from its own cache `owehEggColors` (pruned to the eggs still listed), and fetches only unknown eggs (`readPet` with `skipPedigree`, 5 at a time). Result in `owehBestEggs`; count in `owehBestEggCount` (default 10, max 50). Read-only: no game command, no pet-record write, no shared-worker lease.
+- Presentation is the module's `onRefresh` hook: a list in the panel (`#oweh-best-eggs-list`) and, on the own Hatchery only, `data-oweh-best-egg` on the egg card plus an extension-owned `span.oweh-egg-rank`. Writes are guarded, so a marked page is not written again; a redraw is re-marked on the next refresh.
+- Not live-verified: card styling (`li` with `position: relative`, absolute badge) was written from the audited selectors (`main a.pet[href*="pet="]`, `closest("li")`), not seen on the page.
+- Tests: `tests/best-eggs.test.js`.
+
 ### Discard surplus: one flow for pets and eggs (2026-10-05)
 
 - Replaces the male cull (`domain/male-cull.js`, `features/male-cull.js`, move to Males discard) and the "Discard poor eggs" button (signature replay in `page-bridge.js`, `discardPoorEggCandidates` in `content.js`). All removed.

@@ -159,6 +159,17 @@ OWEH.register("ui-panel", helpers => {
       storageSet({ owehSurplusLimit: limit });
     });
 
+    // How many eggs "Highlight best eggs" marks (features/best-eggs.js reads it when scanning).
+    const bestEggsCountInput = panel.querySelector("#oweh-best-eggs-count");
+    storageGet("owehBestEggCount", 10).then(value => {
+      bestEggsCountInput.value = String(Math.min(50, Math.max(1, Math.floor(Number(value) || 10))));
+    });
+    bestEggsCountInput.addEventListener("change", () => {
+      const count = Math.min(50, Math.max(1, Math.floor(Number(bestEggsCountInput.value) || 10)));
+      bestEggsCountInput.value = String(count);
+      storageSet({ owehBestEggCount: count });
+    });
+
     const autoRenameInput = panel.querySelector("#oweh-auto-rename");
     storageGet("owehAutoRename", true).then(value => { autoRenameInput.checked = value !== false; });
     autoRenameInput.addEventListener("change", () => storageSet({ owehAutoRename: autoRenameInput.checked }));
@@ -367,6 +378,12 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-stop-hatchlings" class="oweh-danger" type="button" data-tip="Stop the newborn pass after the current pet.">Stop</button>
             </div>
             <div class="oweh-inline-meta oweh-note">Turning an egg still opens the real egg page, so Name the Species can be answered.</div>
+            <div class="oweh-row" data-tip="How many of the best eggs to mark (1–50)."><label for="oweh-best-eggs-count">Best eggs to mark</label><input id="oweh-best-eggs-count" type="number" min="1" max="50" step="1" value="10"><span>eggs</span></div>
+            <div class="oweh-actions">
+              <button id="oweh-best-eggs" class="oweh-secondary" type="button" data-tip="Read the colours of every egg in your Hatchery (saved colours first, the rest fetched a few at a time) and mark the eggs closest to the pure target. Body 1 counts ×5, Body 2 ×4, Scales ×3, Extra 1 ×2, Extra 2 ×1; an exact channel counts fully. Nothing is sent to the game.">Highlight best eggs</button>
+              <button id="oweh-best-eggs-clear" class="oweh-link-button" type="button" data-tip="Remove the best-egg marks and the list below.">Clear marks</button>
+            </div>
+            <div id="oweh-best-eggs-list" class="oweh-best-eggs-list"></div>
           </div>
         </details>
 

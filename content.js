@@ -63,7 +63,7 @@
     return;
   }
   const { friendLinks } = OWEH.dom.friends;
-  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.surplus) {
+  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.surplus || !OWEH.domain?.eggRank) {
     console.error("[OviPets Helper] domain modules did not load before content.js — check manifest.json script order");
     return;
   }
@@ -376,7 +376,8 @@
       pedigree: OWEH.domain.pedigree,
       breedingScore: OWEH.domain.breedingScore,
       breedingPlan: OWEH.domain.breedingPlan,
-      surplus: OWEH.domain.surplus
+      surplus: OWEH.domain.surplus,
+      eggRank: OWEH.domain.eggRank
     },
     gameActions: OWEH.core.gameActions,
     petFetch,
