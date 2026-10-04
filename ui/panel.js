@@ -424,7 +424,12 @@ OWEH.register("ui-panel", helpers => {
           <summary><i class="oweh-ico">✦</i>Species <span>production classifier</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
-            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · 451 built-in silhouettes · no quiz images, traces or learning history are stored.</div>
+            <div id="oweh-species-wrong-count" class="oweh-inline-meta">Wrong review: loading…</div>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-export-species-wrongs" class="oweh-link-button" type="button" data-tip="Download only the compact Name the Species cases that OviPets explicitly rejected.">Export wrongs</button>
+              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals are not reset.">Clear wrongs</button>
+            </div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · 451 built-in silhouettes. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
           </div>
         </details>
 
@@ -518,6 +523,15 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-discard-poor-eggs", "Discarding poor eggs", discardPoorEggCandidates, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
+    bindPanelAction(panel, "#oweh-export-species-wrongs", "Exporting wrong Species cases", async () => {
+      await exportSpeciesWrongCases();
+      await updateSpeciesWrongCount(true);
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-clear-species-wrongs", "Clearing wrong Species cases", async () => {
+      await runtimeRequest({ type: "speciesWrongCasesClear" });
+      await updateSpeciesWrongCount(true);
+      setStatus("Saved wrong Species review cases cleared");
+    }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
       await updateDiagnosticStats(true);
@@ -567,6 +581,54 @@ OWEH.register("ui-panel", helpers => {
   }
 
 
+  let speciesWrongCountAt = 0;
+  let speciesWrongCountPending = false;
+
+  async function readSpeciesWrongCases() {
+    const response = await runtimeRequest({ type: "speciesWrongCasesGet" });
+    if (!response?.ok) throw new Error(response?.error || "wrong-case store unavailable");
+    return Array.isArray(response.cases) ? response.cases : [];
+  }
+
+  async function exportSpeciesWrongCases() {
+    const cases = await readSpeciesWrongCases();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      type: "ovipets-species-wrong-cases",
+      count: cases.length,
+      cases
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `ovipets-species-wrongs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    setStatus(`Exported ${cases.length} saved wrong Species case(s)`);
+  }
+
+  async function updateSpeciesWrongCount(force = false) {
+    const label = document.querySelector("#oweh-species-wrong-count");
+    if (!label) return;
+    const now = Date.now();
+    if (!force && (speciesWrongCountPending || now - speciesWrongCountAt < 5000)) return;
+    speciesWrongCountPending = true;
+    try {
+      const cases = await readSpeciesWrongCases();
+      speciesWrongCountAt = Date.now();
+      const unresolved = cases.filter(item => !item?.correctSpecies).length;
+      const text = `Wrong review: ${cases.length} saved · ${unresolved} unresolved`;
+      if (label.textContent !== text) label.textContent = text;
+    } catch {
+      if (label.textContent !== "Wrong review: unavailable") label.textContent = "Wrong review: unavailable";
+    } finally {
+      speciesWrongCountPending = false;
+    }
+  }
+
   let diagnosticStatsAt = 0;
   let diagnosticStatsPending = false;
   async function updateDiagnosticStats(force = false) {
@@ -599,8 +661,9 @@ OWEH.register("ui-panel", helpers => {
     const panel = ensure();
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
+    updateSpeciesWrongCount();
     updateDiagnosticStats();
   }
 
-  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateDiagnosticStats, isVisible } };
+  return { api: { ensure, sync, setEggRunning, updatePetNameSuggestion, updateBlacklistCount, updateSpeciesWrongCount, updateDiagnosticStats, isVisible } };
 });
