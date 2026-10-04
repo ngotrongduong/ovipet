@@ -114,9 +114,11 @@ function setup() {
 
   const panelSource = fs.readFileSync(path.join(__dirname, "../ui/panel.js"), "utf8");
   assert.ok(panelSource.includes("10 quiz species · 451 built-in silhouettes"));
-  for (const retired of ["oweh-species-inspector-stats", "oweh-species-review", "oweh-export-species", "oweh-import-species-db", "oweh-species-seed-start"]) {
+  for (const retired of ["oweh-species-inspector-stats", "oweh-species-review", "oweh-import-species-db", "oweh-species-seed-start"]) {
     assert.equal(panelSource.includes(retired), false, `retired Species control remains: ${retired}`);
   }
+  assert.equal(panelSource.includes('id="oweh-export-species"'), false, "retired full Species export must stay removed");
+  assert.ok(panelSource.includes('id="oweh-export-species-wrongs"'), "wrong-only Species export should be available");
 
   // Regression guard: refresh must call the extracted panel API, not a deleted bare helper.
   const content = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
