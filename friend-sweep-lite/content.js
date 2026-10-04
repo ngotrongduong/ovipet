@@ -42,11 +42,36 @@
         <button id="oweh-lite-start" class="primary" type="button">Start</button>
         <button id="oweh-lite-stop" class="stop" type="button">Stop</button>
       </div>
+      <div class="row">
+        <button id="oweh-lite-export-wrongs" type="button">Export wrongs</button>
+      </div>
     `;
     document.body.appendChild(panel);
     panel.querySelector("#oweh-lite-start").addEventListener("click", () => startFromPanel());
     panel.querySelector("#oweh-lite-stop").addEventListener("click", () => stopFromPanel());
+    panel.querySelector("#oweh-lite-export-wrongs").addEventListener("click", () => exportWrongCases());
     return panel;
+  }
+
+  async function exportWrongCases() {
+    const response = await request({ type: "liteSpeciesWrongGet" });
+    const cases = Array.isArray(response?.cases) ? response.cases : [];
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      type: "ovipets-lite-species-wrong-cases",
+      count: cases.length,
+      cases
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `ovipets-lite-species-wrongs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    setStatus(`Exported ${cases.length} saved wrong Species case(s)`);
   }
 
   function setStatus(text) {
@@ -335,6 +360,23 @@
     return container?.querySelector('img[title="Name the Species"]') || null;
   }
 
+  function currentPetId() {
+    return String(location.hash || "").match(/[?&]pet=(\d+)/)?.[1] || "";
+  }
+
+  function canonicalSource(image) {
+    const raw = image?.currentSrc || image?.src || image?.getAttribute?.("src") || "";
+    if (!raw) return "";
+    try {
+      const url = new URL(raw, location.href);
+      url.search = "";
+      url.hash = "";
+      return url.href;
+    } catch {
+      return String(raw).split("?")[0].split("#")[0];
+    }
+  }
+
   async function waitImage(image, timeout = 350) {
     const end = Date.now() + timeout;
     while (Date.now() < end && image && (!image.complete || !image.naturalWidth)) await sleep(25);
@@ -391,7 +433,8 @@
   }
 
   async function answerSpecies(container, rejected) {
-    const options = optionElements(container).filter(item => !rejected.has(item.text));
+    const allOptions = optionElements(container);
+    const options = allOptions.filter(item => !rejected.has(item.text));
     if (!options.length) return { ok: false, reason: "no-eligible-species" };
 
     let shape = null;
@@ -406,16 +449,26 @@
     if (!choice) return { ok: false, reason: "species-no-match" };
 
     choice.element.click();
-    const end = Date.now() + 700;
+    const deadline = Date.now() + 700;
     let ok = okButton(container);
-    while ((!ok || ok.disabled) && Date.now() < end) {
+    while ((!ok || ok.disabled) && Date.now() < deadline) {
       await sleep(25);
       ok = okButton(container);
     }
     if (!ok || ok.disabled) return { ok: false, reason: "species-ok-unavailable" };
     await sleep(40);
     ok.click();
-    return { ok: true, species: choice.text, method: ranked.method, distance: ranked.distance };
+
+    return {
+      ok: true,
+      species: choice.text,
+      method: ranked.method,
+      distance: Number.isFinite(Number(ranked.distance)) ? Number(ranked.distance) : null,
+      shape,
+      options: allOptions.map(item => item.text),
+      source: canonicalSource(challengeImage(container)),
+      eggId: currentPetId()
+    };
   }
 
   async function dismissIncorrect(container) {
@@ -442,7 +495,18 @@
       if (error) {
         if (submitted?.species) {
           rejected.add(submitted.species);
-          await request({ type: "liteSpeciesStats", patch: { wrong: 1 } });
+          await Promise.all([
+            request({ type: "liteSpeciesStats", patch: { wrong: 1 } }),
+            request({ type: "liteSpeciesWrongRecord", case: {
+              eggId: submitted.eggId || currentPetId(),
+              source: submitted.source || "",
+              shape: submitted.shape || "",
+              options: submitted.options || [],
+              wrongSpecies: submitted.species,
+              method: submitted.method || "",
+              distance: submitted.distance ?? null
+            } })
+          ]);
         }
         await dismissIncorrect(error);
         return { ok: false, reason: "species-incorrect" };
@@ -460,7 +524,16 @@
       }
 
       if (!document.querySelector(TURN_SELECTOR)) {
-        if (submitted?.species) await request({ type: "liteSpeciesStats", patch: { correct: 1 } });
+        if (submitted?.species) {
+          await Promise.all([
+            request({ type: "liteSpeciesStats", patch: { correct: 1 } }),
+            request({ type: "liteSpeciesWrongResolve", case: {
+              eggId: submitted.eggId || currentPetId(),
+              source: submitted.source || "",
+              correctSpecies: submitted.species
+            } })
+          ]);
+        }
         return { ok: true, reason: "ui-confirmed" };
       }
       await sleep(80);
