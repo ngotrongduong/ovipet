@@ -7,6 +7,8 @@ const vm = require("node:vm");
 
 const clickListeners = [];
 const statuses = [];
+const wrongCases = [];
+const resolvedCases = [];
 const store = {};
 
 class FakeElement {
@@ -141,6 +143,14 @@ const helpers = {
       };
       return { ok: true, stats: store.owehSpeciesStats };
     }
+    if (message.type === "speciesWrongCaseRecord") {
+      wrongCases.push(JSON.parse(JSON.stringify(message.case)));
+      return { ok: true, count: wrongCases.length };
+    }
+    if (message.type === "speciesWrongCaseResolve") {
+      resolvedCases.push(JSON.parse(JSON.stringify(message.case)));
+      return { ok: true, updated: 1 };
+    }
     if (message.type === "speciesImageFetch") return { ok: false };
     if (message.type === "speciesVerificationRequired") return { ok: true };
     return { ok: false };
@@ -187,16 +197,28 @@ async function openAndAnswer() {
   assert.equal(retryable.reason, "species-incorrect");
   assert.deepEqual(store.owehSpeciesStats, { correct: 1, wrong: 1 });
   assert.equal("owehSpeciesMemory" in store, false);
+  assert.equal(wrongCases.length, 1);
+  assert.equal(wrongCases[0].eggId, "9002");
+  assert.equal(wrongCases[0].wrongSpecies, "Feline");
+  assert.deepEqual(wrongCases[0].options, ["Feline", "Lupus", "Raptor"]);
+  assert.equal(wrongCases[0].shape, TEST_SHAPE);
+  assert.equal(wrongCases[0].method, "shape-match");
 
   dialog.okHides = true;
   await api.monitor();
   await openAndAnswer();
-  assert.notEqual(chosenOption(), firstWrong, "same egg must not repeat a rejected answer");
+  const accepted = chosenOption();
+  assert.notEqual(accepted, firstWrong, "same egg must not repeat a rejected answer");
+  await api.settleTurnResult({ ok: true, reason: "ui-confirmed" });
+  assert.equal(resolvedCases.length, 1);
+  assert.equal(resolvedCases[0].eggId, "9002");
+  assert.equal(resolvedCases[0].correctSpecies, accepted);
 
   // Generic timeout is not evidence of a wrong answer.
   const beforeTimeout = { ...store.owehSpeciesStats };
   await api.settleTurnResult({ ok: false, reason: "ui-turn-timeout" });
   assert.deepEqual(store.owehSpeciesStats, beforeTimeout);
+  assert.equal(wrongCases.length, 1);
 
   terminalDialog.visible = true;
   const terminal = await api.checkRejected();
