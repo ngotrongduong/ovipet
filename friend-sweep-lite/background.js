@@ -2,6 +2,8 @@
 
 const STATE_KEY = "owehLiteSweep";
 const STATS_KEY = "owehLiteSpeciesStats";
+const WRONG_KEY = "owehLiteSpeciesWrongCases";
+const MAX_WRONG_CASES = 250;
 const SPEED_KEY = "owehLiteSpeed";
 const BATCH_KEY = "owehLiteBatch";
 const WATCHDOG_ALARM = "oweh-lite-watchdog";
@@ -440,6 +442,98 @@ async function bumpSpeciesStats(patch) {
   return run;
 }
 
+function cleanWrongText(value, max = 300) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function cleanWrongShape(value) {
+  const shape = String(value || "").trim().toLowerCase();
+  return /^[0-9a-f]{256}$/.test(shape) ? shape : "";
+}
+
+function cleanWrongOptions(value) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map(item => cleanWrongText(item, 60)).filter(Boolean))].slice(0, 20);
+}
+
+function wrongIdentity(item = {}) {
+  return [
+    cleanWrongText(item.eggId, 40),
+    cleanWrongText(item.source, 320),
+    cleanWrongText(item.wrongSpecies, 80),
+    cleanWrongShape(item.shape)
+  ].join("|");
+}
+
+async function readWrongCases() {
+  const value = await localGet(WRONG_KEY, []);
+  return Array.isArray(value) ? value : [];
+}
+
+function recordWrongCase(input = {}) {
+  const run = statsChain.then(async () => {
+    const wrongSpecies = cleanWrongText(input.wrongSpecies, 80);
+    if (!wrongSpecies) return { ok: false, reason: "missing-wrong-species" };
+    const now = Math.max(0, Number(input.at || Date.now()));
+    const candidate = {
+      id: wrongIdentity(input),
+      firstAt: now,
+      lastAt: now,
+      count: 1,
+      eggId: cleanWrongText(input.eggId, 40),
+      source: cleanWrongText(input.source, 320),
+      shape: cleanWrongShape(input.shape),
+      options: cleanWrongOptions(input.options),
+      wrongSpecies,
+      method: cleanWrongText(input.method, 60),
+      distance: Number.isFinite(Number(input.distance)) ? Number(input.distance) : null,
+      correctSpecies: "",
+      resolvedAt: 0
+    };
+    let cases = await readWrongCases();
+    const index = cases.findIndex(item => String(item?.id || "") === candidate.id);
+    if (index >= 0) {
+      const previous = cases[index] || {};
+      candidate.firstAt = Number(previous.firstAt || now);
+      candidate.count = Math.max(1, Number(previous.count || 1)) + 1;
+      candidate.correctSpecies = cleanWrongText(previous.correctSpecies, 80);
+      candidate.resolvedAt = Number(previous.resolvedAt || 0);
+      cases.splice(index, 1);
+    }
+    cases.unshift(candidate);
+    cases = cases.slice(0, MAX_WRONG_CASES);
+    await localSet(WRONG_KEY, cases);
+    return { ok: true, count: cases.length, record: candidate };
+  });
+  statsChain = run.catch(() => {});
+  return run;
+}
+
+function resolveWrongCase(input = {}) {
+  const run = statsChain.then(async () => {
+    const eggId = cleanWrongText(input.eggId, 40);
+    const source = cleanWrongText(input.source, 320);
+    const correctSpecies = cleanWrongText(input.correctSpecies, 80);
+    if (!correctSpecies || (!eggId && !source)) return { ok: false, reason: "missing-resolution-key" };
+    const now = Math.max(0, Number(input.at || Date.now()));
+    const cases = await readWrongCases();
+    let updated = 0;
+    for (const item of cases) {
+      const sameEgg = eggId && String(item?.eggId || "") === eggId;
+      const sameSource = source && String(item?.source || "") === source;
+      if (!(sameEgg || sameSource) || item.correctSpecies) continue;
+      item.correctSpecies = correctSpecies;
+      item.resolvedAt = now;
+      item.lastAt = Math.max(Number(item.lastAt || 0), now);
+      updated += 1;
+    }
+    if (updated) await localSet(WRONG_KEY, cases);
+    return { ok: true, updated, count: cases.length };
+  });
+  statsChain = run.catch(() => {});
+  return run;
+}
+
 async function watchdog() {
   const state = await getState();
   if (!state.active) return;
@@ -524,6 +618,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (type === "liteSpeciesStats") {
     bumpSpeciesStats(message.patch || {}).then(stats => sendResponse({ ok: true, stats }))
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (type === "liteSpeciesWrongRecord") {
+    recordWrongCase(message.case || {}).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (type === "liteSpeciesWrongResolve") {
+    resolveWrongCase(message.case || {}).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (type === "liteSpeciesWrongGet") {
+    readWrongCases().then(cases => sendResponse({ ok: true, cases, count: cases.length }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
     return true;
   }
