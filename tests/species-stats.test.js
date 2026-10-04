@@ -34,5 +34,37 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "bg", "species-stats.
   assert.deepEqual(store.owehSpeciesStats, { correct: 3858, wrong: 1543 });
   for (const key of api.LEGACY_KEYS) assert.equal(key in store, false, `legacy Species key should be removed: ${key}`);
   assert.deepEqual(JSON.parse(JSON.stringify(await api.read())), { correct: 3858, wrong: 1543 });
-  console.log("aggregate-only Species stats tests passed");
+
+  const wrong = {
+    eggId: "9002",
+    source: "https://app.ovipets.com/img/pet/9002/credit-challenge",
+    shape: "f".repeat(256),
+    options: ["Feline", "Lupus", "Raptor"],
+    wrongSpecies: "Feline",
+    method: "shape-match",
+    distance: 17
+  };
+  const firstWrong = await api.recordWrong({ case: wrong });
+  assert.equal(firstWrong.ok, true);
+  assert.equal(firstWrong.count, 1);
+  assert.equal(store.owehSpeciesWrongCases.length, 1);
+  assert.equal(store.owehSpeciesWrongCases[0].wrongSpecies, "Feline");
+  assert.equal(store.owehSpeciesWrongCases[0].shape.length, 256);
+
+  await api.recordWrong({ case: wrong });
+  assert.equal(store.owehSpeciesWrongCases.length, 1, "same wrong case should be deduplicated");
+  assert.equal(store.owehSpeciesWrongCases[0].count, 2);
+
+  const resolved = await api.resolveWrong({ case: {
+    eggId: "9002",
+    source: wrong.source,
+    correctSpecies: "Lupus"
+  } });
+  assert.equal(resolved.updated, 1);
+  assert.equal(store.owehSpeciesWrongCases[0].correctSpecies, "Lupus");
+  assert.ok(store.owehSpeciesWrongCases[0].resolvedAt > 0);
+
+  await api.clearWrongCases();
+  assert.deepEqual(store.owehSpeciesWrongCases, []);
+  console.log("aggregate Species stats + wrong-only review tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
