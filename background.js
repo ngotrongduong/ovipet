@@ -200,6 +200,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
+  if (message?.type === "speciesWrongCaseRecord") {
+    speciesStats.recordWrong(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCaseResolve") {
+    speciesStats.resolveWrong(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCasesGet") {
+    speciesStats.readWrongCases().then(cases => sendResponse({ ok: true, cases, count: cases.length }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongCasesClear") {
+    speciesStats.clearWrongCases().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
   if (message?.type === "speciesImageFetch") {
     fetchSpeciesImage(message.url).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
