@@ -232,42 +232,42 @@ function request(payload) {
   assert.equal(calls[7].form.children[0].name, "Name");
   assert.equal(calls[7].form.children[0].value, "A-B-C");
 
-  // v5.11: destructive discard is not hard-coded. Simulate one real UI dispatcher call
-  // whose command identifies Discard; the bridge learns that exact signature, then permits
-  // replay only for a pet visibly present in the user's own Hatchery.
-  documentTarget.location.hash = "#!/?src=pets&sub=profile&pet=9001";
-  const discardForm = {
-    textContent: "Discard",
-    querySelectorAll: () => [],
-    getAttribute: () => ""
-  };
-  window.ui_action_cmdExec("pet_discard_test_signature", "PetID=9001", discardForm, () => {});
-  const visibleEggAnchor = {
-    getAttribute: name => name === "href" ? "#!/?src=pets&sub=profile&pet=8" : null
-  };
-  hatchAnchors = [visibleEggAnchor];
-  documentTarget.location.hash = "#!/?src=pets&sub=hatchery";
+  // Discard is OviPets' own Edit > Send To command (read live 2026-10-05): pet_sendto with
+  // PetID and the SendTo=discard field. The bridge sends it only for the confirmed surplus list.
+  const before = calls.length;
   result = await request({
-    requestId: "verified-discard",
-    command: "__verified_discard__",
-    targetId: "8",
-    purpose: "verified-discard",
-    fireAndForget: true
+    requestId: "discard", command: "pet_sendto", targetId: "8",
+    purpose: "confirmed-discard", fields: { SendTo: "discard" }
   });
   assert.equal(result.ok, true);
-  assert.equal(calls.at(-1).command, "pet_discard_test_signature");
+  assert.equal(calls.length, before + 1);
+  assert.equal(calls.at(-1).command, "pet_sendto");
   assert.equal(calls.at(-1).params, "PetID=8");
+  assert.deepEqual(calls.at(-1).form.children.map(input => [input.name, input.value]), [["SendTo", "discard"]]);
 
-  hatchAnchors = [];
+  // Nothing else may send a pet away: no purpose, another destination, extra fields, or a
+  // fire-and-forget request that would skip the dispatcher callback.
+  for (const blocked of [
+    { requestId: "sendto-no-purpose", command: "pet_sendto", targetId: "9", fields: { SendTo: "discard" } },
+    { requestId: "sendto-adoption", command: "pet_sendto", targetId: "9", purpose: "confirmed-discard", fields: { SendTo: "adoption_center" } },
+    { requestId: "sendto-extra", command: "pet_sendto", targetId: "9", purpose: "confirmed-discard", fields: { SendTo: "discard", UserID: "1" } },
+    { requestId: "sendto-empty", command: "pet_sendto", targetId: "9", purpose: "confirmed-discard" },
+    { requestId: "sendto-bad-id", command: "pet_sendto", targetId: "9x", purpose: "confirmed-discard", fields: { SendTo: "discard" } }
+  ]) {
+    result = await request(blocked);
+    assert.equal(result.ok, false, blocked.requestId);
+    assert.equal(result.reason, "invalid-command", blocked.requestId);
+  }
+  assert.equal(calls.length, before + 1, "a refused discard never reaches the dispatcher");
   result = await request({
-    requestId: "discard-hidden-blocked",
-    command: "__verified_discard__",
-    targetId: "9",
-    purpose: "verified-discard",
-    fireAndForget: true
+    requestId: "discard-waits", command: "pet_sendto", targetId: "10",
+    purpose: "confirmed-discard", fields: { SendTo: "discard" }, fireAndForget: true
   });
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, "discard-signature-missing-or-target-not-visible");
+  assert.equal(result.ok, true);
+  assert.notEqual(result.reason, "dispatched", "a discard always waits for the dispatcher callback");
+  for (const retired of ["__verified_discard__", "oweh:discard-action-observed", "verifiedDiscardSignature"]) {
+    assert.equal(source.includes(retired), false, `retired discard signature replay remains: ${retired}`);
+  }
 
   console.log("page bridge tests passed");
 })().catch(error => {

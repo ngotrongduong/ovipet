@@ -20,7 +20,7 @@ OWEH.register("job-maintain", helpers => {
   // window rather than trusting it for the full confirmed-full window.
   const FEED_DISPATCH_RETRY_MS = 10 * 60 * 1000;
   // v5.6.1: pets in Males discard are left completely alone — no profile read, rename, sort
-  // or feed. Only their enclosure tab id is kept so the cull job can still move pets in.
+  // or feed. Only their enclosure tab id is kept, so pets there are not reported as gone.
   const isOwnedPresent = pet => pet?.owned && pet.present !== false && /^\d+$/.test(String(pet.id))
     && !breedingPlan.isCullEnclosure(pet.enclosure);
   // Males read before v5.6.1 have no Generated flag; one profile read records it, because a

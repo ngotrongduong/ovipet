@@ -11,7 +11,7 @@ OWEH.register("ui-dashboard", helpers => {
   const STRATEGY_NAMES = { "same-ff-target": "Same-FF target", "newborn-outcross": "Newborn outcross" };
   const strategyDisplayName = (value, fallback = "Pure-line") => STRATEGY_NAMES[value] || fallback;
   const STRAIGHT_JOB_LABELS = {
-    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", cull: "Male cull"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", surplus: "Discard surplus"
   };
   let updating = false;
   let timer = null;
@@ -210,102 +210,113 @@ OWEH.register("ui-dashboard", helpers => {
     }));
   }
 
-  // v5.6.0 male cull review: the meta line under Breeding and a second side window listing the
-  // males a cull would move. Presentation only — Plan/Confirm live in features/male-cull.js.
-  let cullViewKey = "";
-  let cullViewSignature = "";
+  // Discard review: the meta line under Breeding and a second side window listing the pets and
+  // eggs a discard would send away. Presentation only — Plan/Confirm live in features/surplus.js.
+  let surplusViewSignature = "";
+  const SURPLUS_KIND_LABELS = Object.freeze({ egg: "Egg", female: "Female", male: "Male" });
 
-  function cullPreviewState(preview) {
+  // A run is alive exactly while the shared-worker lease says so; the review stores no flag.
+  function surplusPreviewState(preview, worker) {
     const age = preview ? Date.now() - Number(preview.createdAt || 0) : Infinity;
     const rows = Array.isArray(preview?.rows) ? preview.rows : [];
-    const queued = rows.filter(row => row?.status === "queued").length;
-    const running = Boolean(preview?.running) && Date.now() - Number(preview.updatedAt || 0) < 60 * 1000;
-    return { age, rows, queued, running, fresh: Boolean(preview) && (running || age <= BREED_PREVIEW_MAX_AGE_MS) };
+    const tally = status => rows.filter(row => row?.status === status).length;
+    const running = Boolean(preview) && worker?.owner === "surplus" && Date.now() < Number(worker.leaseUntil || 0);
+    return {
+      age, rows, running,
+      queued: tally("queued"), sent: tally("sent"), discarded: tally("discarded"),
+      fresh: Boolean(preview) && (running || age <= BREED_PREVIEW_MAX_AGE_MS)
+    };
   }
 
-  function cullCoverageText(summary) {
-    const missing = Object.entries(summary?.coverage || {})
-      .filter(([, row]) => row?.missing?.length)
-      .map(([name, row]) => `${name}: ${row.missing.join(", ")}`);
-    return missing.length ? `no exact pet yet for ${missing.join(" | ")}` : "every target channel has an exact pet";
+  function surplusKindText(counts) {
+    return `${Number(counts?.egg || 0)} egg(s), ${Number(counts?.female || 0)} female(s), ${Number(counts?.male || 0)} male(s)`;
   }
 
-  function cullBreakdownText(summary) {
-    return [
-      `${Number(summary?.noPair || 0)} no FF/00 pair`,
-      `${Number(summary?.dominated || 0)} covered by ≥${Number(summary?.minDominators || 2)} better`,
-      summary?.generated ? `${summary.generated} Generated kept` : "",
-      summary?.unchecked ? `${summary.unchecked} unchecked — run Update database` : ""
+  function surplusHeading(preview, state) {
+    const summary = preview.summary || {};
+    const held = [
+      summary.generated ? `${summary.generated} Generated kept` : "",
+      summary.unchecked ? `${summary.unchecked} unchecked — run Update database` : "",
+      summary.eggsNotIndexed ? `${summary.eggsNotIndexed} egg(s) not indexed — run Newborns only` : ""
     ].filter(Boolean).join(", ");
+    return `${state.rows.length} can go: ${surplusKindText(summary.surplus)} · each replaced by ≥${Number(preview.minReplacements || summary.minReplacements || 0)} kept`
+      + ` · ${state.discarded} discarded · ${state.queued} queued${state.sent ? ` · ${state.sent} sent, not verified` : ""}${held ? ` · ${held}` : ""}`;
   }
 
-  function renderCullPreview(panel, preview) {
-    const box = panel.querySelector("#oweh-cull-preview");
+  function renderSurplusPreview(panel, preview, worker) {
+    const box = panel.querySelector("#oweh-surplus-preview");
     if (!box) return;
-    const { age, rows, queued, running, fresh } = cullPreviewState(preview);
-    let text = "No cull plan yet — press Plan cull";
-    if (preview && !fresh) text = "The last cull plan expired (older than 15 minutes) — plan again";
-    if (preview && fresh) {
-      const summary = preview.summary || {};
-      const moved = rows.filter(row => row?.status === "moved").length;
-      text = `${rows.length} of ${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${queued} queued${running ? " · moving now" : ` · built ${Math.max(0, Math.round(age / 60000))}m ago`} · ${cullCoverageText(summary)}${preview.enclosureMissing ? " · run Update database so the Males discard enclosure is known" : ""}`;
+    const state = surplusPreviewState(preview, worker);
+    let text = "No discard plan yet — press Plan discard";
+    if (preview && !state.fresh) text = "The last discard plan expired (older than 15 minutes) — plan again";
+    if (preview && state.fresh) {
+      text = `${surplusHeading(preview, state)}${state.running ? " · discarding now" : ` · built ${Math.max(0, Math.round(state.age / 60000))}m ago`}`;
     }
     if (box.textContent !== text) box.textContent = text;
-    const confirm = panel.querySelector("#oweh-cull-confirm");
-    const discard = panel.querySelector("#oweh-cull-discard");
-    const opener = panel.querySelector("#oweh-view-cull");
-    if (confirm) confirm.disabled = !fresh || !queued || running;
-    if (discard) discard.disabled = !preview || running;
-    if (opener) opener.disabled = !preview || !rows.length;
+    const confirm = panel.querySelector("#oweh-surplus-confirm");
+    const dismiss = panel.querySelector("#oweh-surplus-dismiss");
+    const opener = panel.querySelector("#oweh-view-surplus");
+    if (confirm) confirm.disabled = !state.fresh || !(state.queued || state.sent) || state.running;
+    if (dismiss) dismiss.disabled = !preview || state.running;
+    if (opener) opener.disabled = !preview || !state.rows.length;
   }
 
-  function renderCullView(state, panelHidden) {
-    const view = document.getElementById("oweh-cull-view");
+  function surplusColourCell(colors) {
+    const cell = document.createElement("td");
+    for (const hex of String(colors || "").split("-").filter(Boolean)) {
+      const swatch = document.createElement("span");
+      swatch.className = "oweh-swatch";
+      swatch.style.background = `#${hex}`;
+      swatch.title = hex;
+      cell.append(swatch);
+    }
+    cell.title = String(colors || "");
+    return cell;
+  }
+
+  function renderSurplusView(state, panelHidden) {
+    const view = document.getElementById("oweh-surplus-view");
     if (!view) return false;
-    const preview = state.owehCullPreview;
-    const { rows } = cullPreviewState(preview);
+    const preview = state.owehSurplusPreview;
+    const previewState = surplusPreviewState(preview, state.owehWorker);
+    const { rows } = previewState;
     if (!preview || !rows.length) {
       view.classList.add("oweh-hidden");
       view.dataset.open = "";
-      cullViewKey = "";
-      cullViewSignature = "";
+      surplusViewSignature = "";
       return false;
     }
-    cullViewKey = String(preview.createdAt || 0);
-    // Like the pair list, the cull review only opens from its View button.
+    // Like the pair list, the discard review only opens from its View button.
     const hidden = panelHidden || view.dataset.open !== "1";
     view.classList.toggle("oweh-hidden", hidden);
-    const summary = preview.summary || {};
-    const moved = rows.filter(row => row?.status === "moved").length;
-    const heading = `${rows.length}/${Number(summary.considered || 0)} male(s) can go (${cullBreakdownText(summary)}) · ${moved} moved · ${cullCoverageText(summary)}`;
-    const signature = JSON.stringify([heading, rows.map(row => [row.id, row.status])]);
-    if (signature !== cullViewSignature) {
-      cullViewSignature = signature;
-      const meta = view.querySelector("#oweh-cull-view-meta");
+    const heading = surplusHeading(preview, previewState);
+    const signature = JSON.stringify([preview.createdAt, heading, rows.map(row => [row.id, row.status])]);
+    if (signature !== surplusViewSignature) {
+      surplusViewSignature = signature;
+      const meta = view.querySelector("#oweh-surplus-view-meta");
       if (meta) meta.textContent = heading;
-      const body = view.querySelector("#oweh-cull-view-rows");
+      const body = view.querySelector("#oweh-surplus-view-rows");
       if (body) {
         body.replaceChildren(...rows.map((row, index) => {
           const tr = document.createElement("tr");
-          tr.className = `oweh-plan-row oweh-cull-${String(row.status || "queued")}`;
-          const male = planViewCell("td", row.name || row.id);
-          male.title = `Male ID ${row.id}`;
-          const dominators = (row.dominators || []).map(item => item.name || item.id).join(", ");
-          const noPair = row.reason === "no-endpoint-pair";
-          const better = planViewCell("td", noPair
-            ? "no FF/00 pair in any slot"
-            : `${dominators}${Number(row.dominatorCount || 0) > (row.dominators || []).length ? ` +${Number(row.dominatorCount) - (row.dominators || []).length}` : ""}`);
-          better.title = noPair
-            ? "No aligned FF or 00 pair (RR|GG|BB) in Body, Scales or Extra"
-            : (row.dominators || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
+          tr.className = `oweh-plan-row oweh-surplus-${String(row.status || "queued")}`;
+          const name = planViewCell("td", row.name || row.id);
+          name.title = `ID ${row.id}`;
+          const examples = (row.examples || []).map(item => item.name || item.id).join(", ");
+          const count = row.kind === "egg"
+            ? `${Number(row.replacementMales || 0)} males / ${Number(row.replacementFemales || 0)} females`
+            : String(Number(row.replacements || 0));
+          const replaced = planViewCell("td", examples ? `${count} · e.g. ${examples}` : count);
+          replaced.title = (row.examples || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
           tr.append(
             planViewCell("td", String(index + 1), "oweh-plan-num"),
-            male,
-            planViewCell("td", row.species || ""),
+            planViewCell("td", SURPLUS_KIND_LABELS[row.kind] || String(row.kind || "")),
+            name,
             planViewCell("td", row.enclosure || ""),
+            surplusColourCell(row.colors),
             planViewCell("td", `${Number(row.exactChannels || 0)}/15`),
-            planViewCell("td", String(Number(row.distance || 0))),
-            better,
+            planViewCell("td", Number(row.score || 0).toFixed(2)),
+            replaced,
             planViewCell("td", row.status === "error" ? `error: ${row.error || "?"}`
               : (row.status === "skipped" && row.error ? `skipped: ${row.error}` : String(row.status || "queued")), "oweh-plan-status")
           );
@@ -339,7 +350,7 @@ OWEH.register("ui-dashboard", helpers => {
         owehSweepNotice: null,
         owehBreedPreview: null,
         owehBreedPairLimit: 0,
-        owehCullPreview: null
+        owehSurplusPreview: null
       });
       const notice = state.owehSweepNotice;
       if (notice?.text && notice.at > lastShownSweepNotice && Date.now() - notice.at < 15000) {
@@ -353,7 +364,7 @@ OWEH.register("ui-dashboard", helpers => {
       }
       refreshHealth(false);
       renderBreedPreview(panel, state.owehBreedPreview, state.owehBreedCampaign);
-      renderCullPreview(panel, state.owehCullPreview);
+      renderSurplusPreview(panel, state.owehSurplusPreview, state.owehWorker);
       // A new plan or a finished pairing changes cooldowns: recount right away instead of in 30s.
       const nextReadinessKey = `${state.owehBreedPreview?.createdAt || 0}|${state.owehBreedCampaign?.active}|${state.owehBreedCampaign?.bredCount || 0}|${state.owehDatabaseMeta?.catalogAt || 0}`;
       const readinessChanged = nextReadinessKey !== readinessKey;
@@ -405,9 +416,9 @@ OWEH.register("ui-dashboard", helpers => {
       lastJobCount = jobs.length;
       const panelHidden = !isPanelVisible(lastJobCount);
       panel.classList.toggle("oweh-hidden", panelHidden);
-      // Both side windows share one spot; an open cull review takes it over the pair list.
-      const cullVisible = renderCullView(state, panelHidden);
-      renderBreedPlanView(state, panelHidden || cullVisible);
+      // Both side windows share one spot; an open discard review takes it over the pair list.
+      const surplusVisible = renderSurplusView(state, panelHidden);
+      renderBreedPlanView(state, panelHidden || surplusVisible);
       const summaryText = lastJobCount ? `${lastJobCount} automation${lastJobCount === 1 ? "" : "s"} running` : "No automation running";
       if (summary.textContent !== summaryText) summary.textContent = summaryText;
       const headerText = lastJobCount ? `${lastJobCount} active` : "Idle";

@@ -41,7 +41,7 @@ OWEH.register("feature-hatchlings", helpers => {
   }
 
   // Unnamed newborns always qualify. Everything else listed is an egg: one without a Turn/Hatch
-  // icon is read once (its colours feed the early poor-egg check) and then left alone until it
+  // icon is read once (its colours and parents feed the surplus review) and then left alone until it
   // hatches and shows up as an unnamed newborn. Only a failed read is tried again.
   async function eligibleCards(now = Date.now(), hatchery = null) {
     const panel = hatchery || await petFetch.readHatchery();
@@ -102,9 +102,8 @@ OWEH.register("feature-hatchlings", helpers => {
     const { profile, record } = result;
     const gender = String(profile.gender || "").trim();
     if (!/^(?:Female|Male)$/i.test(gender)) {
-      // Some OviPets egg profiles already expose colour rows before hatching. Preserve that
-      // read-only information so the retention engine can flag a poor egg early. No discard is
-      // sent here; destructive egg handling is separately gated by a live-verified UI command.
+      // An egg profile already shows its colour rows and pedigree before hatching. Save them so
+      // the surplus review (features/surplus.js) can judge the egg. Nothing is discarded here.
       const now = Date.now();
       const egg = {
         ...record,

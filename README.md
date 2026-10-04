@@ -17,6 +17,17 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
+## Unreleased — Discard surplus pets and eggs (2026-10-05)
+
+- **One flow replaces Male cull and Discard poor eggs.** Under Breeding: **Plan discard** lists every surplus hatched pet and egg, **View discard list** shows them with their colours and the kept pets that replace each one, and **Confirm & discard** sends OviPets' own **Send To → Discard** command for the list. **Discarding is permanent** — nothing is moved to Males discard any more.
+- **New rule, colours only.** A channel is worth `1/(distance+1)` (measured on 2,718 bred pets: exact when both parents are exact, about 1 in `d+1` when one parent is exact and the other is `d` off). A pet is surplus when at least **Spares** (default 10) kept pets of its own sex are at least as good in all 15 channels of Body 1, Body 2, Scales, Extra 1 and Extra 2, with 5 percentage points of slack. An egg needs that many males **and** that many females. Pedigree is not considered. The old rule (better on every channel by exact distance, two lineages) listed 1 egg out of 975.
+- **Never listed:** every Generated pet (kept as backup stock for the other colour slots), pets never checked for Generated, pets in a breeding plan, and eggs whose pedigree was not read or names no parents. Pets already in Males discard are reviewed but never count as a replacement.
+- **The game decides, not the database.** Plan and Confirm both read the live Overview and Hatchery. A pet OviPets no longer lists (sold, discarded by hand) is neither listed nor counted as a replacement, and at Confirm a row is sent only if it is still surplus in the live game, still an egg / still there, and has the colours you reviewed. If any enclosure or the Hatchery cannot be read, nothing is sent.
+- **Confirm sends exactly the plan you looked at.** A plan rebuilt after the click is refused until you confirm it.
+- **"Sent" is not "discarded".** After sending, the lists are read again and the database marks a pet gone only when OviPets no longer lists it. A command that timed out is checked the same way and counts toward the limit. Rows left "sent" by Stop are checked at the next Confirm or Plan. Three unanswered commands in a row stop the run.
+- **Limit per run** starts at **5** (the least useful go first); set it to 0 for the whole list once a small run has really removed them.
+- Eggs are judged from the colours the newborn pass saved; eggs it has not indexed yet are reported, not guessed.
+
 ## v5.10.2 Newborn outcross takes every Newborn female
 
 - **Plan Newborn outcross** now plans **every female in the Newborn enclosure**, whatever her colors. A female with an FF or 00 pair (in Body 1, Body 2, Scales or the extras) is no longer left out; only a female still on cooldown waits, because OviPets cannot breed her yet. Females in other enclosures are not part of this plan.

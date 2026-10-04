@@ -470,7 +470,8 @@
   font-size: 11px;
 }
 
-#ovipets-hatchery-helper input {
+#ovipets-hatchery-helper input,
+#ovipets-hatchery-helper select {
   box-sizing: border-box;
   width: 62px;
   padding: 4px 5px;
@@ -716,16 +717,25 @@
   font-weight: 700;
 }
 
-.oweh-plan-view .oweh-cull-moved .oweh-plan-status {
+.oweh-plan-view .oweh-surplus-discarded .oweh-plan-status {
   color: #7fcf97;
 }
 
-.oweh-plan-view .oweh-cull-error .oweh-plan-status {
+.oweh-plan-view .oweh-surplus-error .oweh-plan-status {
   color: #ef7f7f;
 }
 
-.oweh-plan-view .oweh-cull-skipped {
+.oweh-plan-view .oweh-surplus-skipped {
   opacity: 0.5;
+}
+
+.oweh-plan-view .oweh-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 2px;
+  border: 1px solid #5c6875;
+  vertical-align: -1px;
 }
 
 .oweh-plan-view .oweh-plan-done .oweh-plan-status {

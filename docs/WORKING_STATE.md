@@ -1,6 +1,6 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-10-01
+Last updated: 2026-10-05
 Current release baseline: v5.10.2
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
@@ -199,10 +199,24 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
+### Discard surplus: one flow for pets and eggs (2026-10-05)
+
+- Replaces the male cull (`domain/male-cull.js`, `features/male-cull.js`, move to Males discard) and the "Discard poor eggs" button (signature replay in `page-bridge.js`, `discardPoorEggCandidates` in `content.js`). All removed.
+- `domain/surplus.js` `planSurplus`: a channel is worth `1/(d+1)`; a pet is surplus when ≥ `minReplacements` (default 10; panel "Spares" 20/10/5/3 → `owehSurplusMinReplacements`) kept pets of its sex cover it on all 15 channels within 0.05; an egg needs that many males and females. No pedigree (owner decision). Rule and measurements: `docs/pure-breeding-guide.md`.
+- `features/surplus.js`: **Plan discard** (page, read-only) reads the live Overview (`petFetch.readOwnedPetIds`, stores nothing) and Hatchery, takes presence from them rather than from the database, and saves `owehSurplusPreview`. **Confirm & discard** stamps `confirmedPlan` on that review and starts the shared-worker job `surplus`; the job refuses a review without the stamp, so a plan rebuilt after the click is never sent.
+- The job trusts OviPets, not the database: it reads the live lists again and rebuilds the plan from them; a row is sent only if it is still surplus there (a replacement sold or discarded by hand no longer counts), still an egg / still listed, not Generated, not in a breeding plan, and has the reviewed colours. Any unreadable enclosure or a Hatchery answer without its section sends nothing.
+- `sent` is not `discarded`: a timed-out command also counts as `sent` (and toward the limit). Progress is saved after every command. Afterwards the lists are read again: `sent` becomes `discarded` (database `present: false`, `retentionDiscardReason: "surplus"`) or `error`. `sent` rows left by Stop are settled at the start of the next run and before Plan / Dismiss / expiry drop a review. Three unanswered commands in a row stop the run.
+- No `running` flag is stored: Plan / Dismiss / the panel read the live `owehWorker` lease (owner `surplus`). `owehSurplusLimit` caps one run and defaults to 5.
+- Eggs are listed only with a read pedigree that names parents (whether a generator egg shows the wand icon is unknown).
+- Command: `pet_sendto` + `SendTo=discard` (`core/game-actions.js` `discardPet`), read from the live dialog on 2026-10-05 (`docs/dom-audit-2026-09-17.md`). **Never sent yet: the first live run is unverified** — keep Limit at 5 or lower for it.
+- Eggs are identified by the live Hatchery list, not by `present`: a full catalog scan still marks egg records `present: false` because the Hatchery is not an Overview enclosure.
+- Still on the old classification: `domain/retention-policy.js` / `services/retention.js` (Copy retention CSV, ranking rebuilt after every Update database and newborn run). Nothing destructive depends on it any more.
+- Tests: `tests/surplus.test.js` (rule + feature), bridge guard in `tests/page-bridge.test.js`.
+
 ### Newborn pass reads only what is new (2026-10-04)
 
 - Before: the pass that follows Turn / hatch (and the "Newborns only" button) ran with `force = true`, so every egg still incubating in the Hatchery had its profile and pedigree re-read on every pass. The cost grew with the number of eggs, not with the number of newborns.
-- Now (`features/hatchlings.js` `eligibleCards`): unnamed newborns always qualify; an egg without a Turn/Hatch icon is read once (its colours feed the early poor-egg check used by Discard poor eggs) and then skipped until it hatches and appears in the Unnamed section; only a failed read (`error:*`) is retried, after 60 s. The `force` parameter is gone.
+- Now (`features/hatchlings.js` `eligibleCards`): unnamed newborns always qualify; an egg without a Turn/Hatch icon is read once (its colours and parents feed the surplus review) and then skipped until it hatches and appears in the Unnamed section; only a failed read (`error:*`) is retried, after 60 s. The `force` parameter is gone.
 - `owehHatchlingRecords` no longer expires after 24 h. A record lives while its id is listed in the Hatchery panel and is dropped by `forgetDeparted` at the start of the next pass (an empty panel drops nothing).
 - Unchanged: name → save → move per newborn, one retention-ranking rebuild per run that processed something, and the full-collection re-sort stays in Update database.
 - Not live-verified yet. `tests/hatchlings-feature.test.js` covers the three-pass sequence (index eggs once → hatch → idle).

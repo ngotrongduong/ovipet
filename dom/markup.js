@@ -188,6 +188,10 @@
       hatchable: /<img\b[^>]*title\s*=\s*"Hatch Egg"/.test(body)
     }));
     return {
+      // False when the answer has no Hatchery section at all (an error or login panel): an
+      // empty egg list then proves nothing. Confirmed live 2026-10-05: the panel's sections
+      // are presentation, hatchery, unnamed.
+      hatcherySeen: Boolean(hatchery),
       eggIds: eggs.map(egg => egg.id),
       turnable: eggs.filter(egg => egg.turnable).map(egg => egg.id),
       hatchable: eggs.filter(egg => egg.hatchable).map(egg => egg.id),

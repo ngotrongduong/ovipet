@@ -158,6 +158,36 @@
       return { catalog, partial, ownUserId };
     }
 
+    // Presence check for the surplus discard: every pet id the Overview enclosures list right
+    // now, Males discard included. Unlike collectCatalog it stores nothing. `partial` means an
+    // enclosure failed to load or answered without its `pets-<id>` section (confirmed live
+    // 2026-10-05: every enclosure panel carries it), so a missing id proves nothing.
+    async function readOwnedPetIds() {
+      const tabs = markup.parseEnclosureTabs(await fetchPanel(OVERVIEW_PATH));
+      const ids = new Set();
+      let partial = !tabs.length;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < tabs.length) {
+          const tab = tabs[cursor];
+          cursor += 1;
+          try {
+            const panel = tab.panel.startsWith("/") ? tab.panel : `/${tab.panel}`;
+            const output = await fetchPanel(panel);
+            if (!markup.sectionById(output, `pets-${tab.id}`)) {
+              partial = true;
+              continue;
+            }
+            for (const pet of markup.parseEnclosurePets(output, { id: tab.id, label: tab.label })) ids.add(pet.id);
+          } catch {
+            partial = true;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CATALOG_CONCURRENCY, tabs.length) }, worker));
+      return { ids: [...ids], partial };
+    }
+
     // Profile + pedigree in parallel. A failed pedigree read is reported as unverified rather
     // than failing the pet, exactly like a navigated profile whose Pedigree tab never loaded.
     //
@@ -214,7 +244,7 @@
       return markup.parseBreedingPartners(await fetchPanel(breedingPath(id, enclosureId, usr)), id);
     }
 
-    return Object.freeze({ fetchPanel, collectCatalog, readPet, readAndMerge, readHatchery, readBreedingPartners, mergePetRecord });
+    return Object.freeze({ fetchPanel, collectCatalog, readOwnedPetIds, readPet, readAndMerge, readHatchery, readBreedingPartners, mergePetRecord });
   }
 
   // A fresh read never downgrades a verified pedigree to an unverified one (the pedigree

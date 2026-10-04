@@ -27,7 +27,6 @@ OWEH.register("ui-panel", helpers => {
     requestStartBreedOutcrossCampaign,
     stopBreedCampaign,
     copyRetentionReviewCsv,
-    discardPoorEggCandidates,
     confirmBreedPreview,
     discardBreedPreview,
     setBreedPairLimit,
@@ -147,6 +146,20 @@ OWEH.register("ui-panel", helpers => {
       pairLimitInput.value = String(await setBreedPairLimit(pairLimitInput.value));
     });
 
+    // Discard surplus settings (features/surplus.js reads them when planning / confirming).
+    const surplusKeepInput = panel.querySelector("#oweh-surplus-keep");
+    storageGet("owehSurplusMinReplacements", 10).then(value => {
+      surplusKeepInput.value = String([20, 10, 5, 3].includes(Number(value)) ? Number(value) : 10);
+    });
+    surplusKeepInput.addEventListener("change", () => storageSet({ owehSurplusMinReplacements: Number(surplusKeepInput.value) || 10 }));
+    const surplusLimitInput = panel.querySelector("#oweh-surplus-limit");
+    storageGet("owehSurplusLimit", 5).then(value => { surplusLimitInput.value = String(Math.max(0, Math.floor(Number(value) || 0))); });
+    surplusLimitInput.addEventListener("change", () => {
+      const limit = Math.min(9999, Math.max(0, Math.floor(Number(surplusLimitInput.value) || 0)));
+      surplusLimitInput.value = String(limit);
+      storageSet({ owehSurplusLimit: limit });
+    });
+
     const autoRenameInput = panel.querySelector("#oweh-auto-rename");
     storageGet("owehAutoRename", true).then(value => { autoRenameInput.checked = value !== false; });
     autoRenameInput.addEventListener("change", () => storageSet({ owehAutoRename: autoRenameInput.checked }));
@@ -235,50 +248,51 @@ OWEH.register("ui-panel", helpers => {
     panel.querySelector("#oweh-view-breed-plan")?.addEventListener("click", () => {
       view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
-      // Both side windows share one spot: opening the pair list steps the cull review aside.
-      const cullView = document.getElementById("oweh-cull-view");
-      if (cullView) {
-        cullView.dataset.open = "";
-        cullView.classList.add("oweh-hidden");
+      // Both side windows share one spot: opening the pair list steps the discard review aside.
+      const surplusView = document.getElementById("oweh-surplus-view");
+      if (surplusView) {
+        surplusView.dataset.open = "";
+        surplusView.classList.add("oweh-hidden");
       }
     });
     document.body.appendChild(view);
     return view;
   }
 
-  // v5.6.0: side window listing the males a cull would move; ui/dashboard.js fills it.
-  function ensureCullView(panel) {
-    document.getElementById("oweh-cull-view")?.remove();
+  // Side window listing the pets and eggs a discard would send away; ui/dashboard.js fills it.
+  function ensureSurplusView(panel) {
+    document.getElementById("oweh-surplus-view")?.remove();
     const view = document.createElement("aside");
-    view.id = "oweh-cull-view";
+    view.id = "oweh-surplus-view";
     view.className = "oweh-plan-view oweh-hidden";
     view.dataset.owehUi = "1";
     view.innerHTML = `
       <header class="oweh-plan-view-header">
-        <div class="oweh-plan-view-title"><strong>Male cull review</strong><span id="oweh-cull-view-meta"></span></div>
-        <button id="oweh-cull-view-close" class="oweh-icon-button" type="button" aria-label="Close male cull review" title="Close" data-tip="Close the cull review. View cull list under Breeding opens it again.">×</button>
+        <div class="oweh-plan-view-title"><strong>Discard review</strong><span id="oweh-surplus-view-meta"></span></div>
+        <button id="oweh-surplus-view-close" class="oweh-icon-button" type="button" aria-label="Close discard review" title="Close" data-tip="Close the discard review. View discard list under Breeding opens it again.">×</button>
       </header>
       <div class="oweh-plan-view-scroll">
         <table class="oweh-plan-table">
           <thead><tr>
             <th>#</th>
-            <th>Male</th>
-            <th>Species</th>
+            <th>Kind</th>
+            <th>Name</th>
             <th>Enclosure</th>
-            <th title="Target channels this male already has exactly right">Exact</th>
-            <th title="Total distance to the target over all 15 channels">Distance</th>
-            <th title="Why it can go: no aligned FF/00 pair, or the kept males that are at least as close on every channel (one per lineage shown)">Why</th>
+            <th title="Body 1 · Body 2 · Scales · Extra 1 · Extra 2">Colours</th>
+            <th title="Target channels this pet already has exactly right">Exact</th>
+            <th title="Colour score: how many of the 15 channels its young would get exactly right with a perfect mate">Score</th>
+            <th title="Kept pets of the same sex that are at least as good in every colour channel (an egg needs that many males and females)">Replaced by</th>
             <th>Status</th>
           </tr></thead>
-          <tbody id="oweh-cull-view-rows"></tbody>
+          <tbody id="oweh-surplus-view-rows"></tbody>
         </table>
       </div>
     `;
-    view.querySelector("#oweh-cull-view-close").addEventListener("click", () => {
+    view.querySelector("#oweh-surplus-view-close").addEventListener("click", () => {
       view.dataset.open = "";
       view.classList.add("oweh-hidden");
     });
-    panel.querySelector("#oweh-view-cull")?.addEventListener("click", () => {
+    panel.querySelector("#oweh-view-surplus")?.addEventListener("click", () => {
       view.dataset.open = "1";
       view.classList.remove("oweh-hidden");
       const planView = document.getElementById("oweh-breed-plan-view");
@@ -374,22 +388,23 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
             </div>
             <button id="oweh-view-breed-plan" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every planned pair (or the confirmed campaign and its progress) in a full-size table.">View pairs</button>
-            <div class="oweh-inline-meta" data-tip="Male cull: a male can go when (1) no colour slot has an aligned FF or 00 pair (RR|GG|BB — EFF1F0 does not count), or (2) at least 2 kept males from different lineages are as close or closer to the pure target on all 15 channels. Generated males are never culled; males in a breeding plan or campaign are never listed. Males discard itself is never fed, scanned or renamed.">Male cull → Males discard</div>
+            <div class="oweh-inline-meta" data-tip="A pet is surplus when enough kept pets of its own sex are at least as good in every one of the 15 colour channels (Body 1, Body 2, Scales, Extra 1, Extra 2), where a channel is worth 1/(distance+1) and 5 percentage points of slack are allowed. An egg has no sex yet, so it needs that many males and that many females. Generated pets and pets in a breeding plan are never listed. Pedigree is not considered.">Discard surplus pets &amp; eggs</div>
+            <div class="oweh-row" data-tip="How many kept pets must be at least as good before one counts as surplus. 10 or 20 is cautious; 3 or 5 lists more."><label for="oweh-surplus-keep">Spares needed</label><select id="oweh-surplus-keep"><option value="20">20</option><option value="10" selected>10</option><option value="5">5</option><option value="3">3</option></select><span>pets</span></div>
             <div class="oweh-actions">
-              <button id="oweh-cull-plan" type="button" data-tip="From the database only: list the redundant males. Nothing is moved until you press Confirm cull.">Plan cull</button>
-              <button id="oweh-cull-stop" class="oweh-danger" type="button" data-tip="Stop moving males. Males already moved stay in Males discard; Confirm cull resumes the rest.">Stop</button>
+              <button id="oweh-surplus-plan" type="button" data-tip="Read the Hatchery egg list and the pet database, then list every surplus pet and egg. Nothing is sent until you press Confirm &amp; discard.">Plan discard</button>
+              <button id="oweh-surplus-stop" class="oweh-danger" type="button" data-tip="Stop discarding. What was already sent is gone; Confirm &amp; discard continues with the rest.">Stop</button>
             </div>
-            <div id="oweh-cull-preview" class="oweh-inline-meta oweh-breed-preview">No cull plan yet — press Plan cull</div>
+            <div id="oweh-surplus-preview" class="oweh-inline-meta oweh-breed-preview">No discard plan yet — press Plan discard</div>
+            <div class="oweh-row" data-tip="Discard at most this many per run (0 = the whole list). The least useful go first. Starts at 5: check that a first small run really removes them before raising it."><label for="oweh-surplus-limit">Limit per run</label><input id="oweh-surplus-limit" type="number" min="0" max="9999" step="1" value="5"><span>max</span></div>
             <div class="oweh-actions">
-              <button id="oweh-cull-confirm" class="oweh-primary" type="button" disabled data-tip="Move the listed males into the Males discard enclosure in the shared background tab. Nothing is deleted or sold — do that yourself in OviPets.">Confirm cull</button>
-              <button id="oweh-cull-discard" class="oweh-secondary" type="button" disabled data-tip="Throw the cull plan away without moving anything.">Discard</button>
+              <button id="oweh-surplus-confirm" class="oweh-danger" type="button" disabled data-tip="PERMANENT: send OviPets' own Send To → Discard command for every pet and egg in the list (up to the limit), in the shared background tab. Each one is checked against the live Overview and Hatchery before and after.">Confirm &amp; discard</button>
+              <button id="oweh-surplus-dismiss" class="oweh-secondary" type="button" disabled data-tip="Throw the discard plan away without sending anything.">Dismiss plan</button>
             </div>
-            <button id="oweh-view-cull" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every male the cull would move, the better males that cover it, and move progress.">View cull list</button>
+            <button id="oweh-view-surplus" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every pet and egg the discard would send away, its colours, the kept pets that replace it, and progress.">View discard list</button>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
               <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the retention review with Generated, endpoint, near-target, lineage and partner-potential reasons.">Copy retention CSV</button>
             </div>
-            <button id="oweh-discard-poor-eggs" class="oweh-danger oweh-primary-wide" type="button" data-tip="In your own Hatchery, discard only eggs classified as EARLY_CULL_CANDIDATE. The first use is locked until OviPets' real Edit → Send To → Discard command has been observed once.">Discard poor eggs</button>
           </div>
         </details>
 
@@ -480,7 +495,7 @@ OWEH.register("ui-panel", helpers => {
     `;
     document.body.appendChild(panel);
     ensureBreedPlanView(panel);
-    ensureCullView(panel);
+    ensureSurplusView(panel);
     attachTooltip(panel);
     loadPanelSettings(panel);
 
@@ -520,7 +535,6 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-copy-retention", "Copying retention review", copyRetentionReviewCsv, missingControls);
-    bindPanelAction(panel, "#oweh-discard-poor-eggs", "Discarding poor eggs", discardPoorEggCandidates, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-export-species-wrongs", "Exporting wrong Species cases", async () => {
