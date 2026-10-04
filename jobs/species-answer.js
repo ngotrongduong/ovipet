@@ -1,13 +1,12 @@
 "use strict";
 
 // Production Name-the-Species answerer.
-// The learned silhouette library is compiled into data/species-static.js. Runtime work is now
-// intentionally minimal: read the visible challenge, rank only the presented options, click the
-// real option + OK controls, and persist only aggregate correct/wrong counters.
+// The classifier is static. Normal questions are not retained; only explicit OviPets wrong-answer
+// rejections are persisted in a compact review queue so rare classifier misses can be improved.
 OWEH.register("species-answer", helpers => {
   const { storageGet, storageSet, sleep, setStatus, runtimeRequest } = helpers;
 
-  let pending = null; // { container, species, submittedAt, method }
+  let pending = null;
   let watchedContainer = null;
   let processing = false;
   let nextChoice = null;
@@ -126,6 +125,32 @@ OWEH.register("species-answer", helpers => {
     return stats;
   }
 
+  function reviewCase(value, extra = {}) {
+    if (!value) return null;
+    return {
+      eggId: String(value.eggId || currentPetId() || ""),
+      source: String(value.source || ""),
+      shape: String(value.shape || ""),
+      options: Array.isArray(value.options) ? [...value.options] : [],
+      wrongSpecies: String(value.species || value.wrongSpecies || ""),
+      method: String(value.method || ""),
+      distance: Number.isFinite(Number(value.distance)) ? Number(value.distance) : null,
+      ...extra
+    };
+  }
+
+  async function recordWrongCase(value) {
+    const record = reviewCase(value);
+    if (!record?.wrongSpecies) return;
+    try { await runtimeRequest({ type: "speciesWrongCaseRecord", case: record }); } catch {}
+  }
+
+  async function resolveWrongCase(value) {
+    if (!value?.species) return;
+    const record = reviewCase(value, { correctSpecies: String(value.species) });
+    try { await runtimeRequest({ type: "speciesWrongCaseResolve", case: record }); } catch {}
+  }
+
   async function waitForImage(image, timeoutMs = 500) {
     const end = Date.now() + timeoutMs;
     while (image && (!image.complete || !image.naturalWidth) && Date.now() < end) await sleep(25);
@@ -163,9 +188,6 @@ OWEH.register("species-answer", helpers => {
     if (!image) return null;
     const source = image.currentSrc || image.src || image.getAttribute?.("src");
 
-    // On app.ovipets.com the DOM image can be canvas-readable; on ovipets.com it is commonly
-    // cross-origin/tainted. Race the DOM path against the guarded fetch so a tainted image never
-    // adds a fixed wait before classification. Neither path stores the image.
     const direct = (async () => {
       await waitForImage(image, 350);
       return shapeFromImage(image);
@@ -208,6 +230,7 @@ OWEH.register("species-answer", helpers => {
     const staticLibrary = globalThis.OWEH_STATIC_SPECIES?.library || {};
     let choice = null;
     let method = "guess";
+    let distance = null;
 
     if (shapeApi && shape) {
       const ranked = shapeApi.rankOptions({
@@ -216,13 +239,24 @@ OWEH.register("species-answer", helpers => {
         library: staticLibrary
       });
       choice = pool.find(({ text }) => text === ranked?.species) || null;
-      if (choice) method = ranked.method;
+      if (choice) {
+        method = ranked.method;
+        distance = Number.isFinite(Number(ranked.distance)) ? Number(ranked.distance) : null;
+      }
     }
 
     if (!choice) choice = pool[Math.floor(Math.random() * pool.length)] || pool[0];
     if (!choice) return false;
 
-    nextChoice = { species: choice.text, method };
+    nextChoice = {
+      species: choice.text,
+      method,
+      distance,
+      shape: shape || "",
+      options: options.map(({ text }) => text),
+      source: canonicalSource(challengeImage(container)),
+      eggId: currentPetId()
+    };
     choice.element.click();
 
     const deadline = Date.now() + 500;
@@ -250,9 +284,20 @@ OWEH.register("species-answer", helpers => {
       return;
     }
     if (!choice || /^(Ok|Cancel|Close)$/i.test(choice)) return;
-    const method = nextChoice?.species === choice ? nextChoice.method : "manual";
+
+    const automatic = nextChoice?.species === choice ? nextChoice : null;
     nextChoice = null;
-    pending = { container, species: choice, submittedAt: 0, method };
+    pending = {
+      container,
+      species: choice,
+      submittedAt: 0,
+      method: automatic?.method || "manual",
+      distance: automatic?.distance ?? null,
+      shape: automatic?.shape || "",
+      options: automatic?.options || optionElements(container).map(item => item.text),
+      source: automatic?.source || canonicalSource(challengeImage(container)),
+      eggId: automatic?.eggId || currentPetId()
+    };
   }, true);
 
   async function monitor() {
@@ -293,7 +338,10 @@ OWEH.register("species-answer", helpers => {
     watchedContainer = null;
     if (rejected?.species) {
       rejectedChoices.add(rejected.species);
-      await updateStats({ wrong: 1 });
+      await Promise.all([
+        updateStats({ wrong: 1 }),
+        recordWrongCase(rejected)
+      ]);
     }
 
     const dismiss = incorrectDismissButton(error);
@@ -313,21 +361,28 @@ OWEH.register("species-answer", helpers => {
       return { rejected: true, terminal: false, stuck: true, reason: "species-error-stuck" };
     }
 
-    setStatus(`${rejected?.species || "That answer"} was incorrect; retrying without repeating it`);
+    setStatus(`${rejected?.species || "That answer"} was incorrect; saved for review and retrying without it`);
     return { rejected: true, terminal: false, reason: "species-incorrect" };
   }
 
   async function settleTurnResult(result) {
     if (result?.ok && pending) {
+      const accepted = pending;
       pending = null;
-      await updateStats({ correct: 1 });
+      await Promise.all([
+        updateStats({ correct: 1 }),
+        resolveWrongCase(accepted)
+      ]);
       return;
     }
     if (result && !result.ok && result.reason === "species-incorrect" && pending?.submittedAt) {
-      const rejected = pending.species;
+      const rejected = pending;
       pending = null;
-      if (rejected) rejectedChoices.add(rejected);
-      await updateStats({ wrong: 1 });
+      if (rejected.species) rejectedChoices.add(rejected.species);
+      await Promise.all([
+        updateStats({ wrong: 1 }),
+        recordWrongCase(rejected)
+      ]);
       return;
     }
     if (result && !result.ok) pending = null;
