@@ -314,7 +314,7 @@
   const readHatchlingRun = () => hatchlingModule?.read
     ? hatchlingModule.read()
     : storageGet("owehHatchlingRun", { active: false, phase: "scan", index: 0 });
-  const startHatchlingProcessing = (generation, force = true) => requireHatchlings().startWorker(generation, force);
+  const startHatchlingProcessing = generation => requireHatchlings().startWorker(generation);
   const requestStartHatchlingProcessing = () => requireHatchlings().requestStart();
   const stopHatchlingProcessing = () => requireHatchlings().stop();
   const stopHatchlingProcessingLocal = () => requireHatchlings().stopLocal();
@@ -407,7 +407,7 @@
     localWorkerHandlers: {
       sweep: { start: startFriendSweepWorker, stop: stopFriendSweepLocal },
       breed: { start: generation => startBreedCampaign(generation, false), stop: stopBreedCampaignLocal },
-      hatchlings: { start: generation => startHatchlingProcessing(generation, true), stop: stopHatchlingProcessingLocal }
+      hatchlings: { start: generation => startHatchlingProcessing(generation), stop: stopHatchlingProcessingLocal }
     },
     collectWorkerHandlers: () => OWEH.collect("workerHandlers"),
     recoverSweepWorker: () => requireFriendSweep().recoverWorker?.(),

@@ -110,7 +110,7 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
       hatchery: { eggIds: ["5", "6"], turnable: ["5"], hatchable: ["6"], unnamedIds: ["10", "20"] },
       profiles: { 10: female, 20: male }
     });
-    await env.api.startWorker(4, true);
+    await env.api.startWorker(4);
     const run = env.store.owehHatchlingRun;
     assert.equal(run.active, false);
     assert.equal(run.renamed, 2);
@@ -141,7 +141,7 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
       hatchery: { eggIds: ["7", "11", "12"], turnable: [], hatchable: [], unnamedIds: ["12"] },
       profiles: { 7: { gender: "", name: "Egg" }, 11: placed, 12: noOption }
     });
-    await env.api.startWorker(4, true);
+    await env.api.startWorker(4);
     const run = env.store.owehHatchlingRun;
     assert.equal(run.skippedEggs, 1);
     assert.equal(env.store.owehHatchlingRecords["7"].status, "not-hatched");
@@ -158,7 +158,7 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
       profiles: { 30: offTarget, 31: male },
       moveResult: { moved: false, reason: "direct-command-failed" }
     });
-    await env.api.startWorker(4, true);
+    await env.api.startWorker(4);
     const run = env.store.owehHatchlingRun;
     assert.equal(run.unroutable, 1);
     assert.equal(run.errors, 1);
@@ -172,26 +172,64 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
       profiles: { 40: female },
       nameResult: { ok: false, reason: "timeout" }
     });
-    await env.api.startWorker(4, true);
+    await env.api.startWorker(4);
     assert.equal(env.store.owehHatchlingRun.errors, 1);
     assert.equal(env.store.owehHatchlingRecords["40"].status, "error:timeout");
     assert.equal(env.store.owehPets["40"].gender, "Female");
     assert.equal(env.log.moves.length, 0);
   }
 
-  // Cooldowns: a recently processed pet is skipped unless forced; unnamed pets always qualify.
+  // Only what is new is read: an egg with a record is left alone however old the record is, an
+  // unnamed newborn always qualifies, and only a failed read is retried after the cooldown.
   {
     const env = setup();
-    env.store.owehHatchlingRecords = { 50: { at: env.clock.now - 1000, status: "moved-female" }, 51: { at: env.clock.now - 120_000, status: "not-hatched" } };
-    const panel = { eggIds: ["50", "51", "52"], turnable: ["52"], hatchable: [], unnamedIds: [] };
-    assert.deepEqual(clone((await env.api.eligibleCards(false, env.clock.now, panel)).map(item => item.id)), ["51"]);
-    assert.deepEqual(clone((await env.api.eligibleCards(true, env.clock.now, panel)).map(item => item.id)), ["50", "51"]);
+    const day = 24 * 60 * 60 * 1000;
+    env.store.owehHatchlingRecords = {
+      50: { at: env.clock.now - 3 * day, status: "egg-indexed" },
+      51: { at: env.clock.now - 120_000, status: "not-hatched" },
+      53: { at: env.clock.now - 1000, status: "error:profile:fetch" },
+      54: { at: env.clock.now - 120_000, status: "error:profile:fetch" },
+      55: { at: env.clock.now - 1000, status: "egg-indexed" }
+    };
+    const panel = { eggIds: ["50", "51", "52", "53", "54", "56"], turnable: ["52"], hatchable: [], unnamedIds: ["55"] };
+    assert.deepEqual(clone((await env.api.eligibleCards(env.clock.now, panel)).map(item => item.id)), ["55", "54", "56"]);
+  }
+
+  // After a hatch the next pass reads the newborn only: eggs indexed by an earlier pass are not
+  // read again, and records of items that left the Hatchery are dropped.
+  {
+    const eggProfile = { gender: "", name: "Egg", colors: { body1: "111111", body2: "222222" } };
+    const hatchery = { eggIds: ["80", "81"], turnable: [], hatchable: [], unnamedIds: [] };
+    const profiles = { 80: eggProfile, 81: eggProfile };
+    const env = setup({ hatchery, profiles });
+    await env.api.startWorker(4);
+    assert.deepEqual(env.log.reads.map(read => read[0]), ["80", "81"], "a new egg is indexed once");
+    assert.equal(env.store.owehHatchlingRecords["80"].status, "egg-indexed");
+    assert.match(env.log.status.find(text => /^Processing/.test(text)), /0 newborn\(s\).*2 new egg\(s\) to index once/);
+
+    hatchery.eggIds = ["80"];
+    hatchery.unnamedIds = ["81"];
+    profiles[81] = female;
+    env.log.reads.length = 0;
+    await env.api.startWorker(4);
+    assert.deepEqual(env.log.reads.map(read => read[0]), ["81"], "the egg still incubating is not read again");
+    assert.deepEqual(env.log.names, [["81", "FFFFFF-FF0000", true]]);
+    assert.deepEqual(env.log.moves, [["81", "#55"]]);
+    assert.equal(env.store.owehHatchlingRecords["81"].status, "moved-female");
+
+    hatchery.unnamedIds = [];
+    env.log.reads.length = 0;
+    await env.api.startWorker(4);
+    assert.equal(env.log.reads.length, 0, "nothing new, nothing read");
+    assert.match(env.log.status.at(-1), /No newborns to process/);
+    assert.deepEqual(Object.keys(env.store.owehHatchlingRecords), ["80"], "the moved newborn's record is dropped");
+    assert.equal(env.log.ranking, 2, "the idle pass does not rebuild the ranking");
   }
 
   // Nothing to do: the claim is released at once with a clear status.
   {
     const env = setup({ hatchery: { eggIds: ["5"], turnable: ["5"], hatchable: [], unnamedIds: [] } });
-    await env.api.startWorker(4, true);
+    await env.api.startWorker(4);
     assert.equal(env.log.done, 1);
     assert.match(env.log.status.at(-1), /still need Turn Egg/);
     assert.equal(env.store.owehHatchlingRun.active, false);
