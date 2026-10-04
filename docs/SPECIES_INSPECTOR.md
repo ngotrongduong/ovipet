@@ -39,22 +39,37 @@ For each real Name the Species dialog:
 4. Compare only the answer options currently offered by OviPets against the built-in static library.
 5. Click the selected real option and real OK button.
 6. Wait for the real OviPets result.
-7. Persist only an aggregate `correct` or `wrong` counter.
+7. Persist the aggregate `correct` or `wrong` counter.
+8. Only when OviPets explicitly rejects an answer, save one compact wrong-case record for later review. If a retry succeeds, update that same case with the confirmed correct species.
 
 A rejected choice is remembered only in RAM for that current egg so the immediate retry does not repeat the same answer. It is not written to storage.
 
 ## Persistent Species data
 
-The production runtime stores only:
+The production runtime stores the aggregate totals plus a capped wrong-only review queue:
 
 ```json
 {
   "owehSpeciesStats": {
     "correct": 0,
     "wrong": 0
-  }
+  },
+  "owehSpeciesWrongCases": [
+    {
+      "eggId": "…",
+      "source": "…/credit-challenge",
+      "shape": "<32x32 alpha mask>",
+      "options": ["…"],
+      "wrongSpecies": "…",
+      "method": "shape-match",
+      "distance": 0,
+      "correctSpecies": "…"
+    }
+  ]
 }
 ```
+
+The wrong-case queue is deduplicated, capped at 250 records, and contains no image bytes or full quiz trace.
 
 On the first production stats update, legacy learning keys are removed:
 
@@ -74,14 +89,14 @@ The production runtime does not store or collect:
 - exact-image fingerprints/history;
 - question HTML;
 - Answer-ID history;
-- raw correct/wrong mappings by image;
+- full correct/wrong mappings for normal questions;
 - egg/user IDs for Species learning;
 - network traces;
 - source-code hints;
 - mutable silhouette examples;
 - unresolved-question review data.
 
-The old Inspector, Species Review, seed learner, mutable shape writer and MAIN-world Species network tracing are removed from the production package/runtime.
+The old Inspector, Species Review, seed learner, mutable shape writer and MAIN-world Species network tracing are removed from the production package/runtime. A small **Export wrongs** action downloads only the retained rejected cases for targeted classifier improvement.
 
 ## Full Sweep performance
 
