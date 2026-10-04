@@ -23,7 +23,7 @@ for (const required of [
   "async function settleTurnResult(result)",
   "async function checkRejected()",
   "egg can no longer be turned",
-  "retrying without repeating it",
+  "saved for review and retrying without it",
   "OWEH_STATIC_SPECIES",
   "rankOptions"
 ]) {
