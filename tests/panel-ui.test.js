@@ -51,7 +51,7 @@ function setup() {
       stopAllAutomation() {}, saveCurrentPet() {}, refreshDatabaseHealth: async () => null, rankPartners() {},
       startOwnEggs() {}, stopOwnEggs() {}, scanFriends() {}, requestFriendSweepWorker() {}, requestGoToNextFriend() {},
       stopFriendSweep() {}, copyBlacklistCsv() {}, applySuggestedName() {}, requestStartBreedCampaign() {}, requestStartBreedTargetCampaign() {}, requestStartBreedOutcrossCampaign() {}, stopBreedCampaign() {},
-      copyRetentionReviewCsv() {}, requestStartHatchlingProcessing() {}, stopHatchlingProcessing() {},
+      requestStartHatchlingProcessing() {}, stopHatchlingProcessing() {},
       confirmBreedPreview() {}, discardBreedPreview() {}, setBreedPairLimit: async value => Number(value) || 0,
       getPetNameSuggestion: () => suggestion,
       friendBlacklist: async () => blacklistValue,

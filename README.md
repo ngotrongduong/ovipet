@@ -27,6 +27,7 @@ Key goals:
 - **"Sent" is not "discarded".** After sending, the lists are read again and the database marks a pet gone only when OviPets no longer lists it. A command that timed out is checked the same way and counts toward the limit. Rows left "sent" by Stop are checked at the next Confirm or Plan. Three unanswered commands in a row stop the run.
 - **Limit per run** starts at **5** (the least useful go first); set it to 0 for the whole list once a small run has really removed them.
 - Eggs are judged from the colours the newborn pass saved; eggs it has not indexed yet are reported, not guessed.
+- **The old retention review is gone.** The **Copy retention CSV** button and its ranking (old rule: pedigree, lineages, Body 1 first) were removed. The whole pet database is no longer re-ranked after every **Update database**, after every newborn pass and once a day; keep / discard is decided only when you press **Plan discard**, and **View discard list** is the one place to read it. The old ranking stored by earlier versions is deleted from extension storage on upgrade; pet records are not touched.
 
 ## v5.10.2 Newborn outcross takes every Newborn female
 

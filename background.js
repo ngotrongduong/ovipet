@@ -51,6 +51,15 @@ function ensureWorkerHealthAlarm() {
   chrome.alarms.create(WORKER_HEALTH_ALARM, { periodInMinutes: WORKER_HEALTH_INTERVAL_MINUTES });
 }
 
+function dropRetentionRanking() {
+  // The retention ranking was removed on 2026-10-05 (Discard surplus replaced it). Free the
+  // whole-database ranking it left in extension storage when upgrading.
+  chrome.storage.local.remove([
+    "owehRetentionRanking", "owehRetentionReview", "owehRetentionSummary", "owehRetentionLastFullScanAt"
+  ]).catch(() => {});
+}
+
+chrome.runtime.onInstalled.addListener(dropRetentionRanking);
 chrome.runtime.onInstalled.addListener(disableLegacyDailyAlarm);
 chrome.runtime.onInstalled.addListener(ensureWorkerHealthAlarm);
 chrome.runtime.onStartup.addListener(disableLegacyDailyAlarm);

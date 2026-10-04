@@ -63,7 +63,7 @@
     return;
   }
   const { friendLinks } = OWEH.dom.friends;
-  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.retentionPolicy || !OWEH.domain?.surplus) {
+  if (!OWEH.domain?.colors || !OWEH.domain?.pedigree || !OWEH.domain?.breedingScore || !OWEH.domain?.breedingPlan || !OWEH.domain?.surplus) {
     console.error("[OviPets Helper] domain modules did not load before content.js — check manifest.json script order");
     return;
   }
@@ -79,7 +79,7 @@
   const { pairPureMetrics, comparePairPureMetrics, formatPureProbability } = OWEH.domain.breedingScore;
   const {
     MALES_ENCLOSURE, DEFAULT_BREEDING_STOCK_MAX_DISTANCE, NEWBORN_ENCLOSURES,
-    normalizeEnclosureLabel, isBreedingProgramEnclosure, desiredProgramEnclosure, buildDatabaseBreedPlan
+    normalizeEnclosureLabel, desiredProgramEnclosure, buildDatabaseBreedPlan
   } = OWEH.domain.breedingPlan;
   if (!OWEH.core?.gameActions) {
     console.error("[OviPets Helper] core/game-actions.js did not load before content.js — check manifest.json script order");
@@ -120,7 +120,7 @@
   const { sleep, holdAwake } = OWEH.core.wakeSleep.createWakeSleep({ isBusy: () => workerClient.hasOwner() });
 
   if (!OWEH.services?.status || !OWEH.services?.diagnostics || !OWEH.services?.overviewCatalog || !OWEH.services?.petEdit
-    || !OWEH.services?.friendDirectory || !OWEH.services?.retention || !OWEH.services?.partnerRanking
+    || !OWEH.services?.friendDirectory || !OWEH.services?.partnerRanking
     || !OWEH.services?.workerControl || !OWEH.services?.petFetch || !OWEH.dom?.markup) {
     console.error("[OviPets Helper] services/*.js did not load before content.js — check manifest.json script order");
     return;
@@ -157,11 +157,6 @@
     storageGet, storageSet, sleep, setStatus, getPageLoadDelayMs: () => pageLoadDelayMs,
     getOwnUserId: () => ownUserId, getBlacklist: () => friendBlacklist(), writeClipboard,
     friendLinks, chatDom: OWEH.dom.chat
-  });
-  const { updateRetentionRanking, maybeDailyRetentionScan, copyRetentionReviewCsv } = OWEH.services.retention.createRetention({
-    storageGet, storageSet, setStatus, writeClipboard,
-    petPureMetrics, STRICT_PURE_TARGET, isBreedingProgramEnclosure,
-    retentionPolicy: OWEH.domain.retentionPolicy
   });
 
   const { rankPartners, hasBreedingCandidates } =OWEH.services.partnerRanking.createPartnerRanking({
@@ -381,7 +376,6 @@
       pedigree: OWEH.domain.pedigree,
       breedingScore: OWEH.domain.breedingScore,
       breedingPlan: OWEH.domain.breedingPlan,
-      retentionPolicy: OWEH.domain.retentionPolicy,
       surplus: OWEH.domain.surplus
     },
     gameActions: OWEH.core.gameActions,
@@ -392,7 +386,6 @@
       RECENT_FULL_FOOD_MS, PET_FEED_DELAY_MS, DEFAULT_REQUEST_DELAY
     },
     catalogService: {
-      updateRetentionRanking,
       setOwnUserId: id => { if (id) ownUserId = id; },
       getOwnUserId: () => ownUserId
     },
@@ -407,10 +400,7 @@
       setRunning,
       relayNext: () => runtimeRequest({ type: "relaySweepSkip" })
     },
-    hatchlingActions: {
-      getOwnUserId: () => ownUserId,
-      updateRetentionRanking
-    },
+    hatchlingActions: { getOwnUserId: () => ownUserId },
     breedingActions: {
       readHatchlingRun: () => hatchlingModule?.read() || storageGet("owehHatchlingRun", { active: false }),
       getOwnUserId: () => ownUserId,
@@ -423,7 +413,7 @@
       startOwnEggs: () => ownEggsModule?.start(),
       stopOwnEggs: () => ownEggsModule?.stop("Egg turn/hatch stopped"),
       scanFriends, requestFriendSweepWorker, requestGoToNextFriend, stopFriendSweep, copyBlacklistCsv,
-      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign, copyRetentionReviewCsv,
+      applySuggestedName, requestStartBreedCampaign, requestStartBreedTargetCampaign, requestStartBreedOutcrossCampaign, stopBreedCampaign,
       confirmBreedPreview, discardBreedPreview, setBreedPairLimit,
       requestStartHatchlingProcessing, stopHatchlingProcessing,
       exportDiagnosticLog, clearDiagnosticLog, getDiagnosticSummary,
@@ -462,10 +452,6 @@
   storageGet("owehOwnUserId", null).then(value => {
     if (value) ownUserId = value;
   });
-  // Local database-only daily retention scan. This never discards anything; it refreshes the
-  // keep/cull review opportunistically once per 24h whenever OviPets is open.
-  maybeDailyRetentionScan().catch(() => {});
-
   runtimeRequest({ type: "stateGetTabIdentity" }).then(async result => {
     if (result.ok) currentTabId = result.tabId;
     await recoverAfterReload();

@@ -171,8 +171,6 @@ OWEH.register("feature-hatchlings", helpers => {
     state.active = false;
     state.finishedAt = Date.now();
     await storageSet({ owehHatchlingRun: state });
-    // Ranking needs the whole pet DB, so compute it once per run rather than per hatchling.
-    await hatchlingActions.updateRetentionRanking();
     setStatus(message || `Hatchery complete — renamed ${state.renamed || 0}, females moved ${state.movedFemales || 0}, males moved to ${breedingPlan.MALES_ENCLOSURE} ${state.movedMales || 0}, egg profiles ${state.scannedEggs || 0}, not hatched ${state.skippedEggs || 0}, unroutable ${state.unroutable || 0}, errors ${state.errors || 0}`);
     reportWorkerDone();
   }

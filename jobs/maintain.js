@@ -287,9 +287,6 @@ OWEH.register("job-maintain", helpers => {
       if (steps.profiles && !isCancelled()) parts.profiles = await profilesStep(ctx);
       if (steps.sort && !isCancelled()) parts.sort = await sortStep(ctx);
       if (steps.feed && !isCancelled()) parts.feed = await feedStep(ctx);
-      if ((parts.catalog && !parts.catalog.empty) || parts.profiles?.read || parts.sort?.moved) {
-        await catalogService.updateRetentionRanking();
-      }
       status(summary(parts, isCancelled()));
     }
   });

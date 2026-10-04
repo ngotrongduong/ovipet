@@ -27,7 +27,7 @@ function setup({
     owehOwnUserId: "77"
   };
   const log = {
-    status: [], claims: [], releases: [], phases: [], done: 0, ranking: 0,
+    status: [], claims: [], releases: [], phases: [], done: 0,
     names: [], moves: [], reads: [], fullPetReads: 0, petWrites: [], navigations: 0
   };
   const helpers = {
@@ -84,10 +84,7 @@ function setup({
       },
       mergePetRecord: (previous, record) => ({ ...(previous || {}), ...record })
     },
-    hatchlingActions: {
-      getOwnUserId: () => "77",
-      updateRetentionRanking: async () => { log.ranking += 1; }
-    }
+    hatchlingActions: { getOwnUserId: () => "77" }
   };
   const sandbox = vm.createContext({
     console: { error() {} }, Promise, Date: { now: () => clock.now },
@@ -125,7 +122,6 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
     assert.equal(env.store.owehDatabaseMeta.catalogCount, 2);
     assert.equal(env.store.owehHatchlingRecords["10"].status, "moved-female");
     assert.equal(env.store.owehHatchlingRecords["20"].status, "moved-male");
-    assert.equal(env.log.ranking, 1);
     assert.equal(env.log.done, 1);
     assert.equal(env.log.navigations, 0);
     assert.equal(env.log.fullPetReads, 0, "per-pet writes never read the whole DB");
@@ -223,7 +219,6 @@ const male = { gender: "Male", name: "Unnamed", unnamed: true, canName: true, co
     assert.equal(env.log.reads.length, 0, "nothing new, nothing read");
     assert.match(env.log.status.at(-1), /No newborns to process/);
     assert.deepEqual(Object.keys(env.store.owehHatchlingRecords), ["80"], "the moved newborn's record is dropped");
-    assert.equal(env.log.ranking, 2, "the idle pass does not rebuild the ranking");
   }
 
   // Nothing to do: the claim is released at once with a clear status.

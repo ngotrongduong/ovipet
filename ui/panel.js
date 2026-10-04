@@ -26,7 +26,6 @@ OWEH.register("ui-panel", helpers => {
     requestStartBreedTargetCampaign,
     requestStartBreedOutcrossCampaign,
     stopBreedCampaign,
-    copyRetentionReviewCsv,
     confirmBreedPreview,
     discardBreedPreview,
     setBreedPairLimit,
@@ -403,7 +402,6 @@ OWEH.register("ui-panel", helpers => {
             <button id="oweh-view-surplus" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every pet and egg the discard would send away, its colours, the kept pets that replace it, and progress.">View discard list</button>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
-              <button id="oweh-copy-retention" class="oweh-link-button" type="button" data-tip="Copy the retention review with Generated, endpoint, near-target, lineage and partner-potential reasons.">Copy retention CSV</button>
             </div>
           </div>
         </details>
@@ -534,7 +532,6 @@ OWEH.register("ui-panel", helpers => {
     bindPanelAction(panel, "#oweh-stop-breed", "Stopping breeding campaign", stopBreedCampaign, missingControls);
     bindPanelAction(panel, "#oweh-confirm-breed", "Confirming breeding plan", confirmBreedPreview, missingControls);
     bindPanelAction(panel, "#oweh-discard-breed", "Discarding breeding plan", discardBreedPreview, missingControls);
-    bindPanelAction(panel, "#oweh-copy-retention", "Copying retention review", copyRetentionReviewCsv, missingControls);
     bindPanelAction(panel, "#oweh-start-hatchlings", "Starting Hatchery processing", requestStartHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-stop-hatchlings", "Stopping Hatchery processing", stopHatchlingProcessing, missingControls);
     bindPanelAction(panel, "#oweh-export-species-wrongs", "Exporting wrong Species cases", async () => {
