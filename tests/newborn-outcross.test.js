@@ -148,7 +148,11 @@ assert.equal(unverifiedNoList.femaleCount, 0, "an unverified female without a ga
 assert.deepEqual(breedingPlan.plannableFemales(pets, target, OUTCROSS).map(item => item.id).sort(),
   ["nf1", "nfBlank", "nfEnd", "nfExtras", "nfRaptor", "nfScales"]);
 assert.deepEqual(breedingPlan.plannableMaleEnclosures(pets, target, OUTCROSS).sort(), ["Males", "Stud", "Wolf males"]);
-// The other strategies are unchanged by the new one.
-assert.deepEqual(breedingPlan.plannableMaleEnclosures(pets, target, BREEDING_STRATEGIES.PURE_LINE), ["Males"]);
+// Pure-line also reads every enclosure containing a usable male so a real OviPets-compatible
+// partner cannot disappear merely because it was not sorted into the "Males" enclosure.
+assert.deepEqual(
+  breedingPlan.plannableMaleEnclosures(pets, target, BREEDING_STRATEGIES.PURE_LINE).sort(),
+  ["Males", "Stud", "Wolf males"]
+);
 
 console.log("newborn outcross domain tests passed");
