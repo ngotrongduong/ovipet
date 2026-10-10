@@ -198,7 +198,9 @@
     for (const pet of Object.values(pets || {})) {
       if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || isCullEnclosure(pet.enclosure)
         || !completeForTarget(pet, target)) continue;
-      if (!sameFf && normalizeEnclosureLabel(pet.enclosure) !== normalizeEnclosureLabel(MALES_ENCLOSURE)) continue;
+      // Pure-line and Same-FF both need OviPets' real partner lists from every enclosure
+      // that contains a usable male. Restricting Pure-line to the "Males" enclosure can hide
+      // perfectly breedable partners before ranking even begins.
       if (pet.enclosure) labels.add(String(pet.enclosure));
     }
     return [...labels];
@@ -461,20 +463,13 @@
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
         && pedigreeUsable(pet, eligible) && isBreedingFemaleEnclosure(pet.enclosure)
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
-    const speciesCounts = breedableFemales.reduce((counts, pet) => {
-      const key = pet.species || "Unknown";
-      counts.set(key, (counts.get(key) || 0) + 1);
-      return counts;
-    }, new Map());
-    const focusSpecies = [...speciesCounts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    const females = sortByPureMetrics(breedableFemales
-      .filter(pet => (pet.species || "Unknown") === focusSpecies), target);
+    // Pure-line is female-first across the entire breeding program. Do not pick one
+    // "focus species" and silently ignore the rest: each female gets her own same-species pool.
+    const focusSpecies = null;
+    const females = sortByPureMetrics(breedableFemales, target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
-        && (pet.pedigreeVerified === true || eligible.size > 0)
-        && normalizeEnclosureLabel(pet.enclosure) === normalizeEnclosureLabel(MALES_ENCLOSURE)
-        && (pet.species || "Unknown") === focusSpecies
+        && !isCullEnclosure(pet.enclosure)
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
     const usage = recentMaleUsage(history, now);
     const lineageUsage = new Map();
@@ -485,15 +480,23 @@
     }
     let unpaired = 0;
     const queue = females.map(female => {
-      const shortlist = shortlistMales(female, males, target, shortlistSize);
+      // Critical ordering: establish the real compatible pool first, THEN apply the colour
+      // shortlist. The old order could fill all 40 shortlist slots with related/not-offered
+      // males and miss a valid OviPets-listed male ranked 41st+ by colour.
+      const compatible = males
+        .filter(male => (male.species || "Unknown") === (female.species || "Unknown"))
+        .map(male => ({ male, pedigree: pairCompatibility(female, male, eligible) }))
+        .filter(item => item.pedigree.safe);
+      const pedigreeByMaleId = new Map(compatible.map(item => [String(item.male.id), item.pedigree]));
+      const shortlist = shortlistMales(female, compatible.map(item => item.male), target, shortlistSize);
       const ranked = shortlist.map(male => ({
         male,
         pure: pairPureMetrics(female, male, target),
         secondary: bestSecondaryTargetDistance(male, target),
-        pedigree: pairCompatibility(female, male, eligible),
+        pedigree: pedigreeByMaleId.get(String(male.id)) || pairCompatibility(female, male, eligible),
         usageCount: usage.get(String(male.id)) || 0,
         lineageUse: lineageUsage.get(lineageKey(male)) || 0
-      })).filter(item => item.pedigree.safe && Number.isFinite(item.pure.distance))
+      })).filter(item => Number.isFinite(item.pure.distance))
         .sort((a, b) => comparePairPureMetrics(
           { ...a, otherId: a.male.id },
           { ...b, otherId: b.male.id }
@@ -530,6 +533,8 @@
         maleName: chosen?.male.name || null,
         pure: chosen?.pure || null,
         maleCandidates,
+        compatibleMaleCount: compatible.length,
+        sameSpeciesMaleCount: males.filter(male => (male.species || "Unknown") === (female.species || "Unknown")).length,
         maleCandidateIndex: 0,
         rejectedMaleIds: [],
         maleUsageBefore: chosen?.usageCount || 0,
