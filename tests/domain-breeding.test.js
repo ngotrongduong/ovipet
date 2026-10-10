@@ -84,7 +84,7 @@ const plan = breedingPlan.buildDatabaseBreedPlan(
   [{ fatherId: "m1", at: now - 1000 }],
   { now, shortlistSize: 40 }
 );
-assert.equal(plan.focusSpecies, "Raptor");
+assert.equal(plan.focusSpecies, null, "Pure-line no longer drops other species behind one focus species");
 assert.equal(plan.femaleCount, 1);
 assert.equal(plan.maleCount, 3);
 assert.equal(plan.queue[0].maleId, "m2", "equivalent unused male should win diversity tie-break; related male must be excluded");
@@ -193,6 +193,72 @@ assert.equal(globalPairPlan.queue[0].pure.body1PurePossible, true);
 assert.equal(globalPairPlan.queue[1].pure.body1PurePossible, false);
 assert.deepEqual(globalPairPlan.queue.map(row => row.globalPairRank), [1, 2]);
 
+// Regression: compatibility must be applied BEFORE the colour shortlist. The only male
+// OviPets offers is deliberately worse by the shortlist pre-score and sits outside the first
+// 40 colour-ranked males. Old Pure-line returned no partner; the fixed planner must still use it.
+const shortlistBugFemale = {
+  ...female, id: "fShortlistBug", pedigreeVerified: false, ancestors: [], parentIds: []
+};
+const colourBetterButBlocked = {};
+for (let index = 0; index < 40; index += 1) {
+  const id = `mBlocked${String(index).padStart(2, "0")}`;
+  colourBetterButBlocked[id] = {
+    ...complement,
+    id,
+    enclosure: "Males",
+    pedigreeVerified: true,
+    ancestors: [`blocked-${index}`],
+    parentIds: [`blocked-${index}`],
+    colors: { ...exactColors, body1: "#00FFFF" }
+  };
+}
+const offeredOutsideShortlist = {
+  ...complement,
+  id: "mOffered41",
+  enclosure: "Archive males",
+  pedigreeVerified: false,
+  ancestors: [],
+  parentIds: [],
+  colors: { ...exactColors, body1: "#010101" }
+};
+const shortlistBugPlan = breedingPlan.buildDatabaseBreedPlan(
+  { fShortlistBug: shortlistBugFemale, ...colourBetterButBlocked, mOffered41: offeredOutsideShortlist },
+  target,
+  [],
+  { now, shortlistSize: 40, gameEligible: { fShortlistBug: ["mOffered41"] } }
+);
+assert.equal(shortlistBugPlan.queue[0].maleId, "mOffered41",
+  "a game-listed male outside the pre-compatibility top 40 must not disappear");
+assert.equal(shortlistBugPlan.queue[0].compatibleMaleCount, 1);
+assert.equal(shortlistBugPlan.queue[0].sameSpeciesMaleCount, 41);
+assert.equal(shortlistBugPlan.queue[0].maleCandidates[0].gameListed, true);
+
+// Regression: Pure-line must plan all eligible species in one campaign, not only the species
+// with the largest female count.
+const draconisFemale = {
+  ...female,
+  id: "fDraconis",
+  species: "Draconis",
+  ancestors: ["df-a"],
+  parentIds: ["df-a"]
+};
+const draconisMale = {
+  ...complement,
+  id: "mDraconis",
+  species: "Draconis",
+  enclosure: "Reserve males",
+  ancestors: ["dm-a"],
+  parentIds: ["dm-a"]
+};
+const multiSpeciesPlan = breedingPlan.buildDatabaseBreedPlan(
+  { f1: female, m2: sameMetricsLessUsed, fDraconis: draconisFemale, mDraconis: draconisMale },
+  target, [], { now, shortlistSize: 40 }
+);
+assert.equal(multiSpeciesPlan.femaleCount, 2);
+assert.equal(multiSpeciesPlan.maleCount, 2);
+assert.deepEqual(new Set(multiSpeciesPlan.queue.filter(row => row.maleId).map(row => row.species)),
+  new Set(["Raptor", "Draconis"]));
+
 // Strategy 2 — Same-FF target improvement. This strategy scans the complete
 // enclosure snapshot rather than only breeding-program enclosures. For each
 // breedable female it requires the male to carry the exact same Body-1 FF mask,
@@ -278,8 +344,9 @@ assert.deepEqual(
   ["fU"], "pure-line reads only breeding-enclosure females, verified or not"
 );
 assert.deepEqual(
-  breedingPlan.plannableMaleEnclosures({ m2: sameMetricsLessUsed, lm12: lineMale12 }, target, breedingPlan.BREEDING_STRATEGIES.PURE_LINE),
-  ["Males"]
+  breedingPlan.plannableMaleEnclosures({ m2: sameMetricsLessUsed, lm12: lineMale12 }, target, breedingPlan.BREEDING_STRATEGIES.PURE_LINE).sort(),
+  ["Another enclosure", "Males"],
+  "Pure-line must read OviPets partner lists from every enclosure containing a usable male"
 );
 assert.deepEqual(
   breedingPlan.plannableMaleEnclosures({ m2: sameMetricsLessUsed, lm12: lineMale12 }, target, breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET).sort(),
