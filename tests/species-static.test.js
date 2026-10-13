@@ -10,19 +10,24 @@ sandbox.globalThis = sandbox;
 vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "data", "species-static.js"), "utf8"), sandbox, { filename: "species-static.js" });
 vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "domain", "species-shape.js"), "utf8"), sandbox, { filename: "species-shape.js" });
 
-const QUIZ_SPECIES = ["Canis", "Draconis", "Equus", "Feline", "Gekko", "Lupus", "Mantis", "Raptor", "Slime", "Vulpes"];
+// The ten species the quiz offered until 2026-10. Since then it offers about 39, so the
+// library holds every species there is any silhouette for.
+const ORIGINAL_POOL = ["Canis", "Draconis", "Equus", "Feline", "Gekko", "Lupus", "Mantis", "Raptor", "Slime", "Vulpes"];
 const db = sandbox.OWEH_STATIC_SPECIES;
 const shapeApi = sandbox.OWEH_SPECIES_SHAPE;
 assert.ok(db && db.library && db.meta);
-assert.equal(db.meta.species, 10);
-assert.deepEqual(Object.keys(db.library).sort(), QUIZ_SPECIES);
+assert.equal(db.meta.species, Object.keys(db.library).length);
+assert.ok(db.meta.species >= 37, "the expanded quiz pool must be covered");
+for (const species of ORIGINAL_POOL) assert.ok(db.library[species], `missing ${species}`);
+for (const species of ["Struthio", "Chiropy", "Anura", "Haliaeetus", "Ovis", "Catus"]) assert.ok(db.library[species]?.examples.length, `missing ${species}`);
+assert.deepEqual(Object.keys(db.library), [...Object.keys(db.library)].sort(), "species are written in a stable order");
 
-// The 451-silhouette subsample (v5.10.2) left gaps a real quiz fell into; every species keeps
-// (nearly) the full learned set now.
+// The 451-silhouette subsample (v5.10.2) left gaps a real quiz fell into; the original ten
+// species keep (nearly) the full learned set. The newer species start thin.
 let examples = 0;
 for (const [species, record] of Object.entries(db.library)) {
   assert.ok(Array.isArray(record.examples));
-  assert.ok(record.examples.length >= 140, `too few silhouettes for ${species}`);
+  assert.ok(record.examples.length >= (ORIGINAL_POOL.includes(species) ? 140 : 1), `too few silhouettes for ${species}`);
   assert.equal(record.examples.length, db.meta.counts[species], `meta count mismatch for ${species}`);
   assert.equal(new Set(record.examples).size, record.examples.length, `duplicate silhouette for ${species}`);
   assert.ok(db.meta.gameConfirmed[species] <= record.examples.length);

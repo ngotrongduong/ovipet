@@ -199,6 +199,15 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
 
+### Name the Species: the quiz pool grew to ~39 species (2026-10-13)
+
+- Owner export of 2026-10-13: 250 wrong cases (the queue's cap), all from 2026-10-10. The six options now come from at least 39 species; the library had 10. Details and numbers: `docs/SPECIES_INSPECTOR.md`.
+- `data/species-static.js` rebuilt with every species there is a silhouette for: 1,612 silhouettes in 37 species (the original ten unchanged at ~150 each; 27 new ones with 1–19 each from the old export's Adoption-Center silhouettes plus the 32 distinct quizzes the game resolved). Taurus and Ursa still have none.
+- `scripts/build-species-static.js` no longer has a fixed species list; the label-noise filter only applies to species with ≥ 20 silhouettes; it accepts the owner's label files as well as wrongs files.
+- Accuracy on the new species is expected to stay poor until more confirmed silhouettes arrive: the thin species score 82/113 leave-one-out, and 30/54 of the resolved quizzes were answerable before they were added. `rankOptions` and `MATCH_DISTANCE` (250) are unchanged and not re-measured for the larger pool.
+- Pending: the owner is verifying the 196 unresolved cases by eye on a generated page (`Desktop\ovipets-xac-minh-loai.html`, not in the repository); its label file goes through the builder. The runtime still learns nothing by itself, so each new species needs this manual loop — a compact learner for under-sampled species is the obvious next step.
+- Friend Sweep Lite (branch `feat/friend-sweep-lite`, folder `friend-sweep-lite/`) still ships the 10-species / 451-silhouette library and has its own **Export wrongs** (`ovipets-lite-species-wrongs-*.json`).
+
 ### Highlight best eggs (2026-10-05)
 
 - `domain/egg-rank.js` `rankEggs`: per channel `1/(d+1)` (same scale as `domain/surplus.js`), slot weights Body 1 5, Body 2 4, Scales 3, Extra 1 2, Extra 2 1 (owner's priority order), max 45; ties by total distance, then id.
