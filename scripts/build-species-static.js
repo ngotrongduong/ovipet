@@ -34,6 +34,41 @@ const MIN_AGREEING = 4;
 // A species with a handful of silhouettes has no "own" neighbours to be found among.
 const MIN_CLASS_FOR_NOISE_FILTER = 20;
 const SPECIES_NAME = /^[A-Za-z][A-Za-z -]{1,30}$/;
+// Two wrong cases of one egg show the same quiz image when their silhouettes are this close
+// (measured: retries repeat the image and its six options exactly).
+const SAME_IMAGE_DISTANCE = 20;
+
+// An owner label is checked against what the game itself said about that quiz image: the answer
+// is one of the six options, never a species the game rejected for it, and never different from
+// the species the game later accepted. Labels of one image that disagree with each other are all
+// dropped. A label made on a newer image of the egg (imageChanged) has no quiz to be checked
+// against. Returns the cases to learn and the labels refused, with the reason.
+function vetCases(raw, hamming) {
+  const labelled = item => SPECIES_NAME.test(String(item.correctSpecies || "").trim());
+  const byOwner = item => item.method === "owner-label" || Boolean(item.ownerLabel);
+  const sameImage = (a, b) => Boolean(a.eggId) && String(a.eggId) === String(b.eggId)
+    && hamming(a.shape, b.shape) <= SAME_IMAGE_DISTANCE;
+  const accepted = [];
+  const refused = [];
+  for (const item of raw.filter(labelled)) {
+    const label = String(item.correctSpecies).trim();
+    if (!byOwner(item) || item.imageChanged) { accepted.push(item); continue; }
+    const peers = raw.filter(other => sameImage(other, item));
+    const gameAnswer = peers.filter(other => !byOwner(other) && labelled(other)).map(other => String(other.correctSpecies).trim())[0];
+    const rejected = new Set(peers.map(other => String(other.wrongSpecies || "").trim()).filter(Boolean));
+    const options = Array.isArray(item.options) ? item.options : [];
+    const otherLabels = peers.filter(other => byOwner(other) && !other.imageChanged && labelled(other))
+      .map(other => String(other.correctSpecies).trim()).filter(name => name !== label);
+    let reason = "";
+    if (gameAnswer && gameAnswer !== label) reason = `the game accepted ${gameAnswer}`;
+    else if (rejected.has(label)) reason = "the game rejected that species for this image";
+    else if (options.length && !options.includes(label)) reason = "not one of the quiz options";
+    else if (otherLabels.length) reason = `another label of the same image says ${[...new Set(otherLabels)].join("/")}`;
+    if (reason) refused.push({ label, reason });
+    else accepted.push(item);
+  }
+  return { accepted, refused };
+}
 
 function loadRuntime() {
   const sandbox = vm.createContext({});
@@ -148,8 +183,11 @@ function build() {
   }
   for (const { species, shape } of currentConfirmed) add(species, shape, true);
 
-  const cases = args.cases.flatMap(file => JSON.parse(fs.readFileSync(file, "utf8")).cases || [])
-    .filter(item => SPECIES_NAME.test(String(item.correctSpecies || "").trim()) && shapeApi.validShape(item.shape));
+  const { accepted: cases, refused } = vetCases(
+    args.cases.flatMap(file => JSON.parse(fs.readFileSync(file, "utf8")).cases || [])
+      .filter(item => item && shapeApi.validShape(item.shape)),
+    shapeApi.hamming
+  );
   const speciesOf = () => [...new Set(entries.filter(entry => !entry.dropped).map(entry => entry.species))].sort();
   const libraryOf = () => Object.fromEntries(speciesOf().map(species => [species, {
     examples: [false, true].flatMap(confirmed => entries
@@ -221,6 +259,7 @@ ${lines.join(",\n")}
   for (const { entry, looksLike } of dropped) {
     console.log(`dropped ${entry.species} silhouette${looksLike ? ` that looks like ${looksLike}` : " rejected for that species"}`);
   }
+  for (const { label, reason } of refused) console.log(`refused owner label ${label}: ${reason}`);
   const errorText = errors => Object.entries(errors).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([pair, n]) => `${pair}${n > 1 ? ` x${n}` : ""}`).join(" ") || "no errors";
   console.log(`cases with a confirmed species: ${cases.length}, appended ${appended}`
     + (heldOut.judged ? ` — before learning them the library answered ${heldOut.right}/${heldOut.judged} correctly` : ""));
@@ -230,4 +269,5 @@ ${lines.join(",\n")}
   console.log(`leave-one-out, thinner species: ${loo.small.right}/${loo.small.total} (${errorText(loo.small.errors)})`);
 }
 
-build();
+if (require.main === module) build();
+module.exports = { vetCases };

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Species Review</title>
+  <link rel="stylesheet" href="species-review.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Species Review</h1>
+      <p class="sub">Every "Name the Species" answer the game rejected. Click the right species under a picture: the helper learns that silhouette at once and uses it for the next eggs.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="pause" id="pause" hidden>
+    <div>
+      <strong id="pause-title"></strong>
+      <p id="pause-text"></p>
+    </div>
+    <button type="button" id="resume" class="primary">Resume answering</button>
+  </section>
+
+  <nav class="toolbar" aria-label="Filters and tools">
+    <div class="segmented" id="filters">
+      <button type="button" data-filter="open" class="active">Needs review</button>
+      <button type="button" data-filter="mine">My labels</button>
+      <button type="button" data-filter="game">Game-confirmed</button>
+      <button type="button" data-filter="all">All</button>
+    </div>
+    <span class="muted" id="count"></span>
+    <span class="spacer"></span>
+    <button type="button" id="reload" title="Read the saved wrong answers again">Reload</button>
+    <button type="button" id="export-wrongs" title="Download the saved wrong answers (the same file as the panel's Export wrongs)">Export wrongs</button>
+    <button type="button" id="export-learned" title="Download every learned silhouette, to fold into the built-in library">Export learned</button>
+    <button type="button" id="clear-reviewed" title="Remove the cases that already have an answer; the learned silhouettes stay">Remove reviewed</button>
+  </nav>
+
+  <main id="grid" class="grid" aria-live="polite"></main>
+  <p class="empty" id="empty" hidden></p>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="../domain/species-shape.js"></script>
+  <script src="../data/species-static.js"></script>
+  <script src="species-review.js"></script>
+</body>
+</html>

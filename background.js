@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-stats.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/state-health.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -19,8 +19,9 @@ const workerManager = globalThis.OWEH_BG?.workerManager;
 const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
 const speciesStats = globalThis.OWEH_BG?.speciesStats;
+const speciesLearned = globalThis.OWEH_BG?.speciesLearned;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -34,6 +35,34 @@ const { read: readStateHealth } = stateHealthService;
 
 function diagnostic(level, source, event, data = {}) {
   return diagnosticLog.append(level, source, event, data).catch(() => null);
+}
+
+// Name the Species: the totals and the safety pause see the same answers. When the pause trips,
+// the owner gets the review page and (unless muted) the alert sound once.
+async function bumpSpeciesStats(message) {
+  const result = await speciesStats.bump(message);
+  // The totals are already written: a failing pause check must not make the answerer count the
+  // same answer again through its storage fallback.
+  const { guard, tripped } = await speciesLearned.noteAnswers(message)
+    .catch(() => ({ guard: null, tripped: false }));
+  if (tripped) {
+    diagnostic("warning", "species", "species.paused", { reason: guard?.paused?.reason || "", streak: guard?.streak || 0, wrongInHour: guard?.wrongAt?.length || 0 });
+    speciesLearned.openReview().catch(() => {});
+    chrome.storage.local.get({ owehSpeciesAlertSound: true })
+      .then(stored => showSpeciesVerification({}, stored.owehSpeciesAlertSound))
+      .catch(() => {});
+  }
+  return { ...result, guard, tripped };
+}
+
+// A species the game rejected (or overruled) for an image must not stay learned for it.
+async function forgetRefutedSpecies(result, refuted = null) {
+  const targets = [...(Array.isArray(result?.overruled) ? result.overruled : [])];
+  if (refuted) targets.push(refuted);
+  for (const target of targets) {
+    await speciesLearned.forget({ ...target, refuted: true }).catch(() => null);
+  }
+  return result;
 }
 
 diagnostic("info", "runtime", "service-worker.loaded", { version: chrome.runtime.getManifest?.().version || "unknown" });
@@ -205,17 +234,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message?.type === "speciesStatsBump") {
-    speciesStats.bump(message).then(sendResponse)
+    bumpSpeciesStats(message).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
   if (message?.type === "speciesWrongCaseRecord") {
-    speciesStats.recordWrong(message).then(sendResponse)
+    const rejected = message.case || message.record || {};
+    speciesStats.recordWrong(message)
+      .then(result => forgetRefutedSpecies(result, { species: rejected.wrongSpecies, shape: rejected.shape }))
+      .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
   if (message?.type === "speciesWrongCaseResolve") {
-    speciesStats.resolveWrong(message).then(sendResponse)
+    speciesStats.resolveWrong(message).then(forgetRefutedSpecies).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
@@ -225,7 +257,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "speciesWrongCasesClear") {
-    speciesStats.clearWrongCases().then(sendResponse)
+    speciesStats.clearWrongCases(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesConfirmedShape") {
+    speciesLearned.learn(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesOwnerLabel") {
+    speciesLearned.labelCase(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesLearnedGet") {
+    speciesLearned.readAll().then(library => sendResponse({ ok: true, library }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardGet") {
+    speciesLearned.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardResume") {
+    speciesLearned.resume().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardLimits") {
+    speciesLearned.setLimits(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongReviewOpen") {
+    speciesLearned.openReview().then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

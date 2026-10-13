@@ -9,7 +9,11 @@ const clickListeners = [];
 const statuses = [];
 const wrongCases = [];
 const resolvedCases = [];
+const learnedShapes = [];
+const bumps = [];
+const stops = [];
 const store = {};
+let tripNextWrong = false;
 
 class FakeElement {
   constructor(text, { onClick = null } = {}) {
@@ -30,6 +34,9 @@ class FakeElement {
 }
 
 const TEST_SHAPE = "f".repeat(16) + "0".repeat(240);
+// 128 bits from every built-in example below: only a learned silhouette can decide it.
+const OTHER_SHAPE = "0".repeat(64) + "f".repeat(16) + "0".repeat(176);
+let canvasShape = TEST_SHAPE;
 function rgbaFromShape(shape) {
   const data = new Uint8ClampedArray(32 * 32 * 4);
   let pixel = 0;
@@ -97,7 +104,7 @@ const document = {
           return {
             clearRect() {},
             drawImage() {},
-            getImageData() { return { data: rgbaFromShape(TEST_SHAPE) }; }
+            getImageData() { return { data: rgbaFromShape(canvasShape) }; }
           };
         }
       };
@@ -132,16 +139,35 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "jobs", "species-answ
 const helpers = {
   storageGet: async (key, fallback) => key in store ? JSON.parse(JSON.stringify(store[key])) : fallback,
   storageSet: async values => Object.assign(store, JSON.parse(JSON.stringify(values))),
+  storageGetMany: async defaults => Object.fromEntries(Object.entries(defaults)
+    .map(([key, fallback]) => [key, key in store ? JSON.parse(JSON.stringify(store[key])) : fallback])),
   sleep: async () => {},
   setStatus: text => statuses.push(text),
+  sweepService: { stopFriendSweep: async () => { stops.push("sweep"); } },
+  uiPanelActions: { stopOwnEggs: async () => { stops.push("own"); } },
   runtimeRequest: async message => {
     if (message.type === "speciesStatsBump") {
+      bumps.push(JSON.parse(JSON.stringify(message)));
       const current = store.owehSpeciesStats || { correct: 0, wrong: 0 };
       store.owehSpeciesStats = {
         correct: Number(current.correct || 0) + Number(message.patch?.correct || 0),
         wrong: Number(current.wrong || 0) + Number(message.patch?.wrong || 0)
       };
-      return { ok: true, stats: store.owehSpeciesStats };
+      // The background writes the pause itself and reports it with the totals.
+      if (tripNextWrong && message.patch?.wrong) {
+        tripNextWrong = false;
+        store.owehSpeciesGuard = { wrongAt: [], streak: 3, paused: { at: 5, reason: "3 wrong answers in a row" } };
+        return { ok: true, stats: store.owehSpeciesStats, guard: store.owehSpeciesGuard, tripped: true };
+      }
+      return { ok: true, stats: store.owehSpeciesStats, guard: store.owehSpeciesGuard || { paused: null }, tripped: false };
+    }
+    if (message.type === "speciesConfirmedShape") {
+      learnedShapes.push({ species: message.species, shape: message.shape });
+      return { ok: true, added: true };
+    }
+    if (message.type === "eggBatchStop") {
+      stops.push("batch");
+      return { ok: true };
     }
     if (message.type === "speciesWrongCaseRecord") {
       wrongCases.push(JSON.parse(JSON.stringify(message.case)));
@@ -179,6 +205,7 @@ async function openAndAnswer() {
   assert.deepEqual(store.owehSpeciesStats, { correct: 1, wrong: 0 });
   assert.equal("owehSpeciesMemory" in store, false);
   assert.equal("owehSpeciesShapes" in store, false);
+  assert.equal(learnedShapes.length, 0, "an outline the built-in library already has is not learned again");
 
   // New egg: explicit Error increments wrong and excludes that choice only in transient RAM.
   location.hash = "#!/?src=pets&sub=profile&usr=44&pet=9002";
@@ -213,12 +240,77 @@ async function openAndAnswer() {
   assert.equal(resolvedCases.length, 1);
   assert.equal(resolvedCases[0].eggId, "9002");
   assert.equal(resolvedCases[0].correctSpecies, accepted);
+  // The game accepting the retry confirms that image's species: its mask is learned.
+  assert.deepEqual(learnedShapes, [{ species: accepted, shape: TEST_SHAPE }]);
 
   // Generic timeout is not evidence of a wrong answer.
   const beforeTimeout = { ...store.owehSpeciesStats };
   await api.settleTurnResult({ ok: false, reason: "ui-turn-timeout" });
   assert.deepEqual(store.owehSpeciesStats, beforeTimeout);
   assert.equal(wrongCases.length, 1);
+
+  function nextEgg(id, shape) {
+    location.hash = `#!/?src=pets&sub=profile&usr=44&pet=${id}`;
+    location.href = "https://ovipets.com/" + location.hash;
+    image.currentSrc = `https://app.ovipets.com/img/pet/${id}/credit-challenge?size=200`;
+    image.src = image.currentSrc;
+    canvasShape = shape;
+    errorDialog.visible = false;
+    dialog.visible = false;
+  }
+
+  // A learned silhouette decides a question the built-in library can not.
+  nextEgg(9003, OTHER_SHAPE);
+  store.owehSpeciesLearned_Raptor = { examples: [OTHER_SHAPE], updatedAt: 1 };
+  dialog.okHides = true;
+  await api.monitor();
+  await openAndAnswer();
+  assert.equal(chosenOption(), "Raptor", "learned silhouettes are matched next to the built-in ones");
+  await api.settleTurnResult({ ok: true, reason: "ui-confirmed" });
+  assert.deepEqual(learnedShapes.at(-1), { species: "Raptor", shape: OTHER_SHAPE });
+  assert.equal(bumps.at(-1).auto, true);
+
+  // Safety pause: the wrong answer that trips it stops the egg automation that is running.
+  nextEgg(9004, TEST_SHAPE);
+  store.owehSweep = { active: true };
+  tripNextWrong = true;
+  dialog.okHides = false;
+  await api.monitor();
+  await openAndAnswer();
+  errorDialog.visible = true;
+  const pausedResult = await api.checkRejected();
+  assert.equal(pausedResult.reason, "species-paused");
+  assert.equal(pausedResult.terminal, false);
+  assert.deepEqual(stops, ["sweep", "batch"], "only what was running is stopped, plus the egg tabs");
+  assert.ok(statuses.at(-1).includes("paused"));
+
+  // While paused nothing is answered automatically (and the stop is not repeated).
+  nextEgg(9005, TEST_SHAPE);
+  await api.monitor();
+  resetClicks();
+  dialog.visible = true;
+  await api.monitor();
+  assert.equal(chosenOption(), null, "no automatic answer while paused");
+  assert.equal(ok.clicks, 0);
+  assert.deepEqual(stops, ["sweep", "batch"]);
+  assert.ok(statuses.at(-1).includes("press Resume"));
+
+  // The owner answers by hand: it counts as theirs, and an accepted answer is still learned.
+  dialog.okHides = true;
+  options[2].click();
+  ok.click();
+  await api.settleTurnResult({ ok: true, reason: "ui-confirmed" });
+  assert.equal(bumps.at(-1).auto, false);
+  assert.deepEqual(learnedShapes.at(-1), { species: "Raptor", shape: TEST_SHAPE });
+
+  // Resume clears the pause: answering is automatic again.
+  delete store.owehSpeciesGuard;
+  store.owehSweep = { active: false };
+  nextEgg(9006, TEST_SHAPE);
+  await api.monitor();
+  await openAndAnswer();
+  assert.equal(chosenOption(), "Feline");
+  await api.settleTurnResult({ ok: true, reason: "ui-confirmed" });
 
   terminalDialog.visible = true;
   const terminal = await api.checkRejected();

@@ -535,6 +535,12 @@
   font-style: italic;
 }
 
+/* Name-the-Species safety pause is on. */
+#ovipets-hatchery-helper .oweh-inline-meta.oweh-alert {
+  color: var(--oweh-gold);
+  font-weight: 600;
+}
+
 #ovipets-hatchery-helper .oweh-divider {
   height: 1px;
   margin: 9px 0;

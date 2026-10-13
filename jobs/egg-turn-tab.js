@@ -102,6 +102,9 @@ OWEH.register("egg-turn-tab", helpers => {
         // saved; close this owned tab and let a later sweep pass retry the egg rather than leave
         // a permanent leftover tab that can stop the whole sweep.
         return report(eggId, "abandoned", lastReason);
+      } else if (lastReason === "species-paused") {
+        // The safety pause tripped: no further automatic answer may be tried on this egg.
+        return report(eggId, "abandoned", lastReason);
       } else {
         genericFailures += 1;
       }

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], hatchlingActive = false, claimOk = true } = {}) {
+function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], hatchlingActive = false, claimOk = true, remoteStop = false } = {}) {
   const clock = { now: 1000000 };
   const store = {
     owehEggRun: { active: false, hatchery: "", count: 0, attempts: {}, batchId: null },
@@ -30,6 +30,11 @@ function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], 
         return { ok: true, expected: message.eggs.length };
       }
       if (message.type === "eggBatchStatus") {
+        if (remoteStop) {
+          // Another tab stopped the run (Stop All there, or the Species safety pause in an egg tab).
+          store.owehEggRun = { active: false, hatchery: "", count: 0, attempts: {}, batchId: null };
+          return { ok: true, expected: 1, turned: 0, already: 0, failed: 0, open: 1, done: false };
+        }
         if (!currentBatch || currentBatch.id !== message.batchId) return { ok: false, reason: "unknown-batch" };
         page.eggs = page.eggs.filter(egg => !currentBatch.eggs.includes(egg.id));
         return { ok: true, expected: currentBatch.eggs.length, turned: currentBatch.eggs.length, already: 0, failed: 0, open: 0, done: true };
@@ -186,6 +191,41 @@ function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], 
     await env.api.maybeAutoStart();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(env.log.claims.length, 1, "fresh Hatchery open still auto-starts own eggs");
+  }
+
+  // Name-the-Species safety pause: no run starts, by itself or by the button, until Resume.
+  {
+    const env = setup({ eggs: [{ id: "60", href: "?pet=60" }] });
+    env.store.owehSpeciesGuard = { wrongAt: [], streak: 3, paused: { at: 1, reason: "3 wrong answers in a row" } };
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, 0, "auto-start must not open eggs while paused");
+    assert.equal(env.log.status.length, 0, "auto-start stays silent while paused");
+    await env.api.start();
+    assert.equal(env.log.claims.length, 0, "Start is refused while paused");
+    assert.ok(env.log.status.at(-1).includes("paused after 3 wrong answers in a row"));
+    assert.equal(env.store.owehEggRun.active, false);
+
+    env.store.owehSpeciesGuard = { wrongAt: [], streak: 0, paused: null };
+    await env.api.start();
+    assert.equal(env.log.claims.length, 1, "Start works again after Resume");
+  }
+
+  // A run stopped from another tab (the pause is seen in an egg tab) must not auto-start again
+  // on this Hatchery tab's next refresh.
+  {
+    const env = setup({ eggs: [{ id: "70", href: "?pet=70" }], remoteStop: true });
+    env.store.owehEggRun = {
+      active: true, hatchery: env.page.hash, count: 0, attempts: { 70: 1 }, batchId: "own-1",
+      ownerInstance: "instance-1", ownerTabId: 42
+    };
+    await env.api.process();
+    assert.equal(env.store.owehEggRun.active, false);
+    assert.equal(env.log.reloads, 0);
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, 0, "a stop from another tab holds here too");
+    assert.equal(env.log.opened.length, 0);
   }
 
   console.log("own egg feature UI-tab behavior tests passed");

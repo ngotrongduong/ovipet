@@ -17,6 +17,15 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
+## Unreleased — Name the Species learns, pauses and can be reviewed (2026-10-13)
+
+The quiz now draws from about 39 species (10 before); the built-in library is thin for the new ones.
+
+- **Learns while it runs.** When the game accepts an answer, that picture's silhouette is confirmed: it is kept for every species the built-in library knows poorly, and for any species after a first wrong answer. The next eggs are matched against the built-in library plus these learned silhouettes.
+- **Safety pause.** After **3 wrong answers in a row**, or **more than 10 wrong within one hour**, the helper stops answering, stops the friend sweep / Hatchery run, plays the alert and opens the review page. Check the wrong answers, press **Resume answering** (panel → Species, or the review page) and start the run again. Both limits can be changed in the Species section (0 = off). Expect it to pause often until the new species are learned.
+- **Review wrongs** (panel → Species) opens a page with one card per missed picture: the real quiz picture, the answers the game rejected (struck out) and the remaining options. Click the right species and the helper learns it at once; click another to change it, or remove the label. A label the game contradicts is refused. If the egg already shows a newer question, you label the picture you see instead.
+- The built-in library was rebuilt with the owner's 196 labels of 2026-10-13 (8 refused because the game itself contradicted them): 1,691 silhouettes in 39 species.
+
 ## Unreleased — Highlight best eggs (2026-10-05)
 
 - **Highlight best eggs** (Hatchery section) marks the eggs closest to the pure target, 10 by default (**Best eggs to mark**, 1–50). Each gets a gold frame and its rank on the Hatchery page, and the panel lists them with their colours; hover a mark for the score.

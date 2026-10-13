@@ -1,10 +1,19 @@
 "use strict";
 
 // Production Name-the-Species answerer.
-// The classifier is static. Normal questions are not retained; only explicit OviPets wrong-answer
-// rejections are persisted in a compact review queue so rare classifier misses can be improved.
+// The classifier is the built-in silhouette library plus the silhouettes confirmed since the
+// build (bg/species-learned.js): the game accepting an answer confirms that image's species, and
+// that mask is kept for a species the built-in library knows poorly, or after a rejected answer.
+// Normal questions are not retained otherwise; explicit OviPets wrong-answer rejections go to a
+// compact review queue the owner can label.
+// Safety pause: after too many wrong automatic answers the background sets owehSpeciesGuard
+// .paused; this module then stops answering and stops the egg-turning automation until Resume.
 OWEH.register("species-answer", helpers => {
-  const { storageGet, storageSet, sleep, setStatus, runtimeRequest } = helpers;
+  const { storageGet, storageSet, storageGetMany, sleep, setStatus, runtimeRequest, sweepService, uiPanelActions } = helpers;
+  const LEARNED_PREFIX = "owehSpeciesLearned_";
+  const GUARD_KEY = "owehSpeciesGuard";
+  // A species with fewer built-in silhouettes than this keeps learning every confirmed answer.
+  const WELL_SAMPLED = 100;
 
   let pending = null;
   let watchedContainer = null;
@@ -12,6 +21,8 @@ OWEH.register("species-answer", helpers => {
   let nextChoice = null;
   let activeQuestionKey = "";
   let rejectedChoices = new Set();
+  let questionShape = { key: "", shape: "" };
+  let pauseHandledAt = 0;
 
   function dialogElement() {
     return [...document.querySelectorAll('[role="dialog"], .ui-dialog, .ui-dialog-content')]
@@ -99,17 +110,22 @@ OWEH.register("species-answer", helpers => {
     }
   }
 
-  async function updateStats(patch = {}) {
+  // options.auto === false: the owner clicked this answer, so a miss is not the helper's.
+  // Returns the totals; when this answer tripped the safety pause, it is acted on at once.
+  async function updateStats(patch = {}, options = {}) {
     let stats = null;
+    let guard = null;
     try {
       const response = typeof runtimeRequest === "function"
-        ? await runtimeRequest({ type: "speciesStatsBump", patch: {
+        ? await runtimeRequest({ type: "speciesStatsBump", auto: options.auto !== false, patch: {
           correct: Number(patch.correct || 0),
           wrong: Number(patch.wrong || 0)
         } })
         : null;
       if (response?.ok && response.stats) stats = response.stats;
+      if (response?.tripped) guard = response.guard || null;
     } catch {}
+    if (guard?.paused) await haltForPause(guard.paused);
     if (!stats) {
       stats = await storageGet("owehSpeciesStats", { correct: 0, wrong: 0 });
       stats = {
@@ -217,6 +233,78 @@ OWEH.register("species-answer", helpers => {
     await runtimeRequest({ type: "speciesVerificationRequired", playSound });
   }
 
+  // The silhouette of the question on screen, computed once: a hand-clicked answer needs it too
+  // (the game accepting it confirms the species just the same).
+  async function shapeOfQuestion(container) {
+    const key = questionKey(container);
+    if (questionShape.key === key && questionShape.shape) return questionShape.shape;
+    const shape = await challengeShape(container);
+    if (shape) questionShape = { key, shape };
+    return shape;
+  }
+
+  function staticExamples(species) {
+    const examples = globalThis.OWEH_STATIC_SPECIES?.library?.[species]?.examples;
+    return Array.isArray(examples) ? examples : [];
+  }
+
+  // Built-in silhouettes plus the ones learned since, for the offered species only.
+  async function libraryFor(names) {
+    let stored = {};
+    try {
+      if (typeof storageGetMany === "function") {
+        stored = await storageGetMany(Object.fromEntries(names.map(name => [LEARNED_PREFIX + name, null]))) || {};
+      }
+    } catch {}
+    return Object.fromEntries(names.map(name => {
+      const learned = stored[LEARNED_PREFIX + name]?.examples;
+      const builtIn = staticExamples(name);
+      return [name, { examples: Array.isArray(learned) && learned.length ? [...builtIn, ...learned] : builtIn }];
+    }));
+  }
+
+  // Keeps the mask of an answer the game accepted. Skipped when the built-in library already
+  // has that outline, and for a well-covered species unless this question was first missed.
+  async function learnConfirmed(accepted, missedFirst) {
+    const shapeApi = OWEH.domain?.speciesShape;
+    const species = String(accepted?.species || "");
+    const shape = String(accepted?.shape || "");
+    if (!shapeApi?.validShape(shape) || !species || !accepted.submittedAt) return;
+    const builtIn = staticExamples(species);
+    if (builtIn.length >= WELL_SAMPLED && !missedFirst) return;
+    if (builtIn.some(example => shapeApi.hamming(example, shape) <= shapeApi.DEDUPE_DISTANCE)) return;
+    try { await runtimeRequest({ type: "speciesConfirmedShape", species, shape }); } catch {}
+  }
+
+  async function pausedState() {
+    try { return (await storageGet(GUARD_KEY, null))?.paused || null; } catch { return null; }
+  }
+
+  // Stops the automation that opens eggs (friend sweep, own Hatchery run, their egg tabs) and
+  // says why. Breeding, database and newborn jobs never meet the quiz and keep running. The
+  // background has already alerted the owner and opened the review page.
+  async function haltForPause(paused) {
+    const text = `Name the Species paused after ${paused?.reason || "too many wrong answers"} — review the wrong answers (panel → Species), then press Resume`;
+    if (pauseHandledAt === Number(paused?.at || 0)) {
+      setStatus(text);
+      return;
+    }
+    pauseHandledAt = Number(paused?.at || 0);
+    let running = {};
+    try {
+      if (typeof storageGetMany === "function") running = await storageGetMany({ owehSweep: { active: false }, owehEggRun: { active: false } }) || {};
+    } catch {}
+    const steps = [
+      () => running.owehSweep?.active && sweepService?.stopFriendSweep?.(),
+      () => running.owehEggRun?.active && uiPanelActions?.stopOwnEggs?.(),
+      () => runtimeRequest({ type: "eggBatchStop" })
+    ];
+    for (const step of steps) {
+      try { await step(); } catch {}
+    }
+    setStatus(text);
+  }
+
   async function autoAnswer(container) {
     resetQuestionIfNeeded(container);
     const options = optionElements(container);
@@ -225,18 +313,18 @@ OWEH.register("species-answer", helpers => {
 
     const eligible = options.filter(({ text }) => !rejectedChoices.has(text));
     const pool = eligible.length ? eligible : options;
-    const shape = await challengeShape(container);
+    const shape = await shapeOfQuestion(container);
     const shapeApi = OWEH.domain?.speciesShape;
-    const staticLibrary = globalThis.OWEH_STATIC_SPECIES?.library || {};
     let choice = null;
     let method = "guess";
     let distance = null;
 
     if (shapeApi && shape) {
+      const names = pool.map(({ text }) => text);
       const ranked = shapeApi.rankOptions({
         shape,
-        options: pool.map(({ text }) => text),
-        library: staticLibrary
+        options: names,
+        library: await libraryFor(names)
       });
       choice = pool.find(({ text }) => text === ranked?.species) || null;
       if (choice) {
@@ -247,6 +335,13 @@ OWEH.register("species-answer", helpers => {
 
     if (!choice) choice = pool[Math.floor(Math.random() * pool.length)] || pool[0];
     if (!choice) return false;
+
+    // Another egg tab may have tripped the pause while this image was being read.
+    const paused = await pausedState();
+    if (paused) {
+      await haltForPause(paused);
+      return true;
+    }
 
     nextChoice = {
       species: choice.text,
@@ -287,13 +382,14 @@ OWEH.register("species-answer", helpers => {
 
     const automatic = nextChoice?.species === choice ? nextChoice : null;
     nextChoice = null;
+    const knownShape = questionShape.key === questionKey(container) ? questionShape.shape : "";
     pending = {
       container,
       species: choice,
       submittedAt: 0,
       method: automatic?.method || "manual",
       distance: automatic?.distance ?? null,
-      shape: automatic?.shape || "",
+      shape: automatic?.shape || knownShape || shapeFromImage(challengeImage(container)) || "",
       options: automatic?.options || optionElements(container).map(item => item.text),
       source: automatic?.source || canonicalSource(challengeImage(container)),
       eggId: automatic?.eggId || currentPetId()
@@ -312,6 +408,13 @@ OWEH.register("species-answer", helpers => {
     processing = true;
     watchedContainer = container;
     try {
+      const paused = await pausedState();
+      if (paused) {
+        // No automatic answer while paused; the owner may still answer this one by hand.
+        await shapeOfQuestion(container).catch(() => null);
+        await haltForPause(paused);
+        return;
+      }
       const answered = await autoAnswer(container).catch(() => false);
       if (!answered) {
         setStatus("Name the Species — choose an answer and press OK; this queue will continue afterward");
@@ -339,9 +442,13 @@ OWEH.register("species-answer", helpers => {
     if (rejected?.species) {
       rejectedChoices.add(rejected.species);
       await Promise.all([
-        updateStats({ wrong: 1 }),
+        updateStats({ wrong: 1 }, { auto: rejected.method !== "manual" }),
         recordWrongCase(rejected)
       ]);
+      if (await pausedState()) {
+        setStatus(`${rejected.species} was incorrect; Name the Species is paused until you press Resume`);
+        return { rejected: true, terminal: false, reason: "species-paused" };
+      }
     }
 
     const dismiss = incorrectDismissButton(error);
@@ -369,8 +476,9 @@ OWEH.register("species-answer", helpers => {
     if (result?.ok && pending) {
       const accepted = pending;
       pending = null;
-      const tasks = [updateStats({ correct: 1 })];
-      if (rejectedChoices.size) tasks.push(resolveWrongCase(accepted));
+      const missedFirst = rejectedChoices.size > 0;
+      const tasks = [updateStats({ correct: 1 }, { auto: accepted.method !== "manual" }), learnConfirmed(accepted, missedFirst)];
+      if (missedFirst) tasks.push(resolveWrongCase(accepted));
       await Promise.all(tasks);
       return;
     }
@@ -379,7 +487,7 @@ OWEH.register("species-answer", helpers => {
       pending = null;
       if (rejected.species) rejectedChoices.add(rejected.species);
       await Promise.all([
-        updateStats({ wrong: 1 }),
+        updateStats({ wrong: 1 }, { auto: rejected.method !== "manual" }),
         recordWrongCase(rejected)
       ]);
       return;

@@ -52,9 +52,23 @@ OWEH.register("feature-own-eggs", helpers => {
     return storageGet("owehHatchlingRun", { active: false, phase: "scan", index: 0 });
   }
 
+  // Name-the-Species safety pause (bg/species-learned.js): no egg tab may be opened until the
+  // owner presses Resume, however the run would start.
+  async function speciesPaused() {
+    try {
+      return (await storageGet("owehSpeciesGuard", null))?.paused || null;
+    } catch {
+      return null;
+    }
+  }
+
   async function start() {
     if (!routes.isOwnHatchery()) {
       return setStatus("Open your own Hatchery first. Friend eggs are handled only by Start full sweep.");
+    }
+    const paused = await speciesPaused();
+    if (paused) {
+      return setStatus(`Name the Species is paused after ${paused.reason || "too many wrong answers"} — review the wrong answers and press Resume answering (panel → Species) first`);
     }
     const hatchlingRun = await readHatchlingRun();
     if (hatchlingRun.active) {
@@ -107,7 +121,12 @@ OWEH.register("feature-own-eggs", helpers => {
   async function waitForBatch(batchId, token) {
     const startedAt = Date.now();
     while (token === runToken) {
-      if (!(await ownsRun())) return { outcome: "cancelled" };
+      if (!(await ownsRun())) {
+        // Stopped from another tab (Stop All there, or the Species safety pause seen in an egg
+        // tab): that stop holds here too, or the next refresh would auto-start a fresh run.
+        autoStartSuppressed = true;
+        return { outcome: "cancelled" };
+      }
       const status = await runtimeRequest({ type: "eggBatchStatus", batchId });
       if (!status.ok) return { outcome: "lost", reason: status.reason || status.error };
       const finished = status.turned + status.already;
@@ -279,7 +298,9 @@ OWEH.register("feature-own-eggs", helpers => {
       if (!hatcheryDom.getHatcheryEggs().length
         && !(hatcheryDom.getHatcheryHatchableEggs?.().length || 0)) return;
       const run = await read();
-      if (!run.active && !processing && !autoStartSuppressed) start();
+      if (run.active || processing || autoStartSuppressed) return;
+      if (await speciesPaused()) return;
+      start();
     } finally {
       autoStarting = false;
     }

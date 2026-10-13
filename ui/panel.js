@@ -135,6 +135,19 @@ OWEH.register("ui-panel", helpers => {
     storageGet("owehSpeciesAlertSound", true).then(value => { speciesSoundInput.checked = value !== false; });
     speciesSoundInput.addEventListener("change", () => storageSet({ owehSpeciesAlertSound: speciesSoundInput.checked }));
 
+    // Name-the-Species safety pause limits (kept by the background, bg/species-learned.js).
+    const speciesStreakInput = panel.querySelector("#oweh-species-streak");
+    const speciesHourInput = panel.querySelector("#oweh-species-hour");
+    const saveSpeciesLimits = async () => {
+      const response = await runtimeRequest({
+        type: "speciesGuardLimits",
+        limits: { streak: speciesStreakInput.value, perHour: speciesHourInput.value }
+      });
+      if (response?.ok) showSpeciesGuard(response.guard, null, true);
+    };
+    speciesStreakInput?.addEventListener("change", saveSpeciesLimits);
+    speciesHourInput?.addEventListener("change", saveSpeciesLimits);
+
     const removeEmptyInput = panel.querySelector("#oweh-remove-empty");
     storageGet("owehRemoveEmptyFriends", true).then(value => { removeEmptyInput.checked = value !== false; });
     removeEmptyInput.addEventListener("change", () => storageSet({ owehRemoveEmptyFriends: removeEmptyInput.checked }));
@@ -454,12 +467,19 @@ OWEH.register("ui-panel", helpers => {
           <summary><i class="oweh-ico">✦</i>Species <span>production classifier</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
+            <div id="oweh-species-guard" class="oweh-inline-meta">Auto-answer: checking…</div>
             <div id="oweh-species-wrong-count" class="oweh-inline-meta">Wrong review: loading…</div>
+            <div class="oweh-actions">
+              <button id="oweh-wrongs-review" type="button" data-tip="Open the review page: every saved wrong answer with its quiz image. Pick the right species and the helper learns it at once.">Review wrongs</button>
+              <button id="oweh-species-resume" type="button" data-tip="After a safety pause: let the helper answer Name the Species again. Then start the friend sweep or the Hatchery run again yourself." disabled>Resume answering</button>
+            </div>
+            <div class="oweh-row" data-tip="Safety pause: stop answering and stop egg turning after this many wrong answers in a row (0 = never)."><label for="oweh-species-streak">Pause after</label><input id="oweh-species-streak" type="number" min="0" max="99" step="1" value="3"><span>wrong in a row</span></div>
+            <div class="oweh-row" data-tip="Safety pause: also stop when more than this many answers were wrong within one hour (0 = never)."><label for="oweh-species-hour">or more than</label><input id="oweh-species-hour" type="number" min="0" max="999" step="1" value="10"><span>wrong in 1 hour</span></div>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-export-species-wrongs" class="oweh-link-button" type="button" data-tip="Download only the compact Name the Species cases that OviPets explicitly rejected.">Export wrongs</button>
-              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals are not reset.">Clear wrongs</button>
+              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals and learned silhouettes are not reset.">Clear wrongs</button>
             </div>
-            <div class="oweh-inline-meta oweh-note">Production classifier: built-in silhouette library for every quiz species seen so far. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: built-in silhouette library for every quiz species seen so far, plus the silhouettes confirmed since then (by the game accepting an answer, or by you on the review page). Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
           </div>
         </details>
 
@@ -560,6 +580,17 @@ OWEH.register("ui-panel", helpers => {
       await updateSpeciesWrongCount(true);
       setStatus("Saved wrong Species review cases cleared");
     }, missingControls);
+    bindPanelAction(panel, "#oweh-wrongs-review", "Opening the wrong-answer review page", async () => {
+      const response = await runtimeRequest({ type: "speciesWrongReviewOpen" });
+      if (!response?.ok) throw new Error(response?.error || "review page unavailable");
+      setStatus("Wrong-answer review page opened in its own tab");
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-species-resume", "Resuming Name the Species answering", async () => {
+      const response = await runtimeRequest({ type: "speciesGuardResume" });
+      if (!response?.ok) throw new Error(response?.error || "pause state unavailable");
+      showSpeciesGuard(response.guard, null, true);
+      setStatus("Name the Species answering resumed — start the friend sweep or the Hatchery run again");
+    }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
       await updateDiagnosticStats(true);
@@ -657,6 +688,49 @@ OWEH.register("ui-panel", helpers => {
     }
   }
 
+  let speciesGuardAt = 0;
+  let speciesGuardPending = false;
+  let speciesLearnedCount = 0;
+
+  // The pause line, the Resume button and the two limits. `learned` (species -> count) is only
+  // known from a full status read; a limits/resume reply keeps the last count.
+  function showSpeciesGuard(guard, learned, syncInputs = false) {
+    const label = document.querySelector("#oweh-species-guard");
+    if (!label || !guard) return;
+    if (learned) speciesLearnedCount = Object.values(learned).reduce((sum, count) => sum + Number(count || 0), 0);
+    const paused = guard.paused;
+    const text = paused
+      ? `⚠ Auto-answer PAUSED after ${paused.reason} — review the wrong answers, then press Resume`
+      : `Auto-answer on · ${Number(guard.streak || 0)} wrong in a row · ${(guard.wrongAt || []).length} wrong in the last hour · ${speciesLearnedCount} learned silhouette(s)`;
+    if (label.textContent !== text) label.textContent = text;
+    label.classList?.toggle("oweh-alert", Boolean(paused));
+    const resume = document.querySelector("#oweh-species-resume");
+    if (resume && resume.disabled !== !paused) resume.disabled = !paused;
+    for (const [selector, value] of [["#oweh-species-streak", guard.limits?.streak], ["#oweh-species-hour", guard.limits?.perHour]]) {
+      const input = document.querySelector(selector);
+      if (!input || value == null || (!syncInputs && document.activeElement === input)) continue;
+      if (input.value !== String(value)) input.value = String(value);
+    }
+  }
+
+  async function updateSpeciesGuard(force = false) {
+    const label = document.querySelector("#oweh-species-guard");
+    if (!label) return;
+    const now = Date.now();
+    if (!force && (speciesGuardPending || now - speciesGuardAt < 5000)) return;
+    speciesGuardPending = true;
+    try {
+      const response = await runtimeRequest({ type: "speciesGuardGet" });
+      speciesGuardAt = Date.now();
+      if (!response?.ok) throw new Error(response?.error || "pause state unavailable");
+      showSpeciesGuard(response.guard, response.learned || {});
+    } catch {
+      if (label.textContent !== "Auto-answer: status unavailable") label.textContent = "Auto-answer: status unavailable";
+    } finally {
+      speciesGuardPending = false;
+    }
+  }
+
   let diagnosticStatsAt = 0;
   let diagnosticStatsPending = false;
   async function updateDiagnosticStats(force = false) {
@@ -690,6 +764,7 @@ OWEH.register("ui-panel", helpers => {
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
     updateSpeciesWrongCount();
+    updateSpeciesGuard();
     updateDiagnosticStats();
   }
 

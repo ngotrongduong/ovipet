@@ -86,6 +86,12 @@ OWEH.register("feature-friend-sweep", helpers => {
 
   async function requestStart() {
     diagnosticLog?.("info", "friend-sweep", "sweep.start-requested", {});
+    // Name-the-Species safety pause: the sweep would stop again at its first quiz.
+    const paused = (await storageGet("owehSpeciesGuard", null))?.paused;
+    if (paused) {
+      setStatus(`Name the Species is paused after ${paused.reason || "too many wrong answers"} — review the wrong answers and press Resume answering (panel → Species) first`);
+      return;
+    }
     let queue = await storageGet("owehFriendQueue", []);
     if (!queue.length && friendDirectory.hasVisibleFriends()) {
       await friendDirectory.scanFriends();
