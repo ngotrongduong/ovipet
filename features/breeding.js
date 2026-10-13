@@ -7,7 +7,7 @@
 OWEH.register("feature-breeding", helpers => {
   const {
     storageGet, storageSet, getPetsByIds, setStatus, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-    requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone,
+    holdAwake, requestClaimWorker, requestReleaseWorker, reportWorkerPhase, reportWorkerDone,
     isWorkerOwner, workerClient, routes, domain, gameActions, settings, breedingActions
   } = helpers;
   const { colors, petRecord, breedingPlan, breedingScore } = domain;
@@ -26,6 +26,17 @@ OWEH.register("feature-breeding", helpers => {
   const OVERVIEW_URL = "https://ovipets.com/#!/?src=pets&sub=overview";
   // A preview reflects cooldowns at planning time; after this long it must be rebuilt.
   const PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
+  // The planner lists every safe male per female (hundreds for Same-FF and Newborn outcross:
+  // measured ~70 MB of queue for 300 females x 420 males). The saved plan and the running
+  // campaign keep only the planned male and his next fallbacks, in the planner's order: every
+  // tab's dashboard reads the whole queue on each step, and a female the game refuses with this
+  // many males in a row is not breedable now.
+  const EXECUTION_CANDIDATES = 8;
+  function executionRow(row) {
+    return Array.isArray(row?.maleCandidates) && row.maleCandidates.length > EXECUTION_CANDIDATES
+      ? { ...row, maleCandidates: row.maleCandidates.slice(0, EXECUTION_CANDIDATES) }
+      : row;
+  }
 
   async function read() {
     return storageGet("owehBreedCampaign", { active: false, femaleIndex: 0, attempted: {}, bredCount: 0 });
@@ -101,7 +112,7 @@ OWEH.register("feature-breeding", helpers => {
         owehBreedPreview: {
           strategy: planStrategy,
           createdAt: now,
-          queue: plan.queue,
+          queue: plan.queue.map(executionRow),
           femaleCount: plan.femaleCount,
           pairable,
           maleCount: plan.maleCount,
@@ -338,7 +349,8 @@ OWEH.register("feature-breeding", helpers => {
         return;
       }
       const limit = normalizePairLimit(await storageGet("owehBreedPairLimit", 0));
-      const queue = limit ? preview.queue.slice(0, limit) : preview.queue;
+      // Already trimmed when the plan was saved; a plan saved by an older build is trimmed here.
+      const queue = (limit ? preview.queue.slice(0, limit) : preview.queue).map(executionRow);
       const now = Date.now();
       const campaign = {
         active: true,
@@ -502,14 +514,14 @@ OWEH.register("feature-breeding", helpers => {
     const remaining = Math.max(0, candidateList(current).length - current.maleCandidateIndex);
     if (remaining > 0) {
       setStatus(`${current.name}: OviPets rejected ${male?.name || male?.id || "male"} (${reason}); trying ${remaining} alternate male candidate(s)`);
-      setTimeout(() => process(), Math.max(300, settings.getDelayMs()));
       return true;
     }
     return false;
   }
 
-  async function recordBreed(father, mother, eggId, pure, now = Date.now(), strategy = BREEDING_STRATEGIES.PURE_LINE) {
-    const history = await storageGet("owehBreedHistory", []);
+  // `history` is the pass's own copy (only the running campaign appends to it), so a pairing
+  // costs one write instead of a read and a write of up to 1000 entries.
+  async function recordBreed(history, father, mother, eggId, pure, now = Date.now(), strategy = BREEDING_STRATEGIES.PURE_LINE) {
     history.push({
       fatherId: father.id,
       motherId: mother.id,
@@ -527,104 +539,135 @@ OWEH.register("feature-breeding", helpers => {
       pureProbability: pure.pureProbability,
       at: now
     });
-    await storageSet({ owehBreedHistory: history.slice(-1000) });
+    if (history.length > 1000) history.splice(0, history.length - 1000);
+    await storageSet({ owehBreedHistory: history });
   }
 
+  // Sends every remaining pair in one pass. The game's own callback paces it: one command is in
+  // flight at a time and the next goes out as soon as that one is answered. Nothing waits on a
+  // page timer between two pairs — a hidden worker tab's timers fire once a second at best — and
+  // the user's Delay setting, when set, is slept on the throttle-proof clock.
   async function process() {
     if (processing) return;
     processing = true;
+    // The pass may run for many minutes in a hidden tab: keep Chrome from freezing it.
+    const release = holdAwake?.() || (() => {});
     try {
-      const campaign = await read();
-      if (!campaign.active || !(await isWorkerOwner("breed"))) return;
-      if (campaign.mode !== "database-direct-v2") {
-        campaign.active = false;
-        await storageSet({ owehBreedCampaign: campaign });
-        setStatus("Previous breeding campaign stopped after database upgrade; start a new campaign");
-        reportWorkerDone();
-        return;
-      }
-      const queue = await storageGet("owehBreedQueue", []);
-      const current = queue[campaign.femaleIndex];
-      if (!current) {
-        campaign.active = false;
-        await storageSet({ owehBreedCampaign: campaign });
-        setStatus(`Database breeding complete — ${campaign.bredCount || 0} command-confirmed pairing(s)`);
-        reportWorkerDone();
-        return;
-      }
-      const candidates = candidateList(current);
-      const candidateIds = candidates.map(item => String(item?.maleId || "")).filter(Boolean);
-      const pets = await getPetsByIds([String(current.id), ...candidateIds]);
-      const female = pets[current.id];
-      const gameVouched = candidates.some(item => item?.gameListed === true);
-      if (!female || female.gender !== "Female" || female.onCooldown || (female.pedigreeVerified !== true && !gameVouched)) {
-        campaign.unpaired = (campaign.unpaired || 0) + 1;
-        setStatus(`${current.name}: female pedigree/state is not safely breedable; skipped without sending a command`);
-        await advance(campaign, queue);
-        setTimeout(() => process(), Math.max(300, settings.getDelayMs()));
-        return;
-      }
-
-      const selected = nextSafeCandidate(current, female, pets);
-      if (!selected || !selected.candidate?.pure) {
-        campaign.unpaired = (campaign.unpaired || 0) + 1;
-        setStatus(`${current.name}: no pedigree-verified male candidate remains; skipped without sending a command`);
-        await advance(campaign, queue);
-        setTimeout(() => process(), Math.max(300, settings.getDelayMs()));
-        return;
-      }
-      const { male, candidate, index: candidateIndex, total: candidateTotal } = selected;
-      applyCandidate(current, candidate, candidateIndex);
-      queue[campaign.femaleIndex] = current;
-      await storageSet({ owehBreedQueue: queue });
-
-      reportWorkerPhase(`breeding ${campaign.femaleIndex + 1}/${queue.length}`);
-      const choiceText = candidateTotal > 1 ? ` · male ${candidateIndex + 1}/${candidateTotal}` : "";
-      setStatus(`Direct breeding ${campaign.femaleIndex + 1}/${queue.length}: ${female.name} × ${male.name}${choiceText}`);
-      const result = await gameActions.breedPairDirect(female.id, male.id, campaign.startedAt || "legacy");
-      if (!(await isWorkerOwner("breed"))) return;
-      const latest = await read();
-      if (!latest.active) return;
-      if (result.ok) {
-        campaign.bredCount = (campaign.bredCount || 0) + 1;
-        female.onCooldown = true;
-        female.lastBredAt = Date.now();
-        await recordBreed(male, female, null, current.pure, Date.now(), campaign.strategy);
-        await storageSet({ owehPets: { [female.id]: female } });
-        const secondaryLabel = secondaryKeyLabel(current.maleSecondaryBestKey);
-        const secondaryText = Number.isFinite(current.maleSecondaryBestDistance)
-          ? ` · best secondary ${secondaryLabel || "slot"} ${current.maleSecondaryBestDistance} off`
-          : "";
-        if (campaign.strategy === BREEDING_STRATEGIES.SAME_FF_TARGET) {
-          const candidateText = Number(current.sameFfCandidateCount || 0)
-            ? ` · ${current.sameFfCandidateCount} same-FF candidate(s)` : "";
-          setStatus(`Command confirmed ${female.name} × ${male.name} · Same-FF target improvement${secondaryText}${candidateText}`);
-        } else if (campaign.strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
-          const endpointText = Number.isFinite(current.maleEndpointPairs)
-            ? ` · male has ${current.maleEndpointPairs} target FF/00 pair(s)` : "";
-          setStatus(`Command confirmed ${female.name} × ${male.name} · Newborn outcross${endpointText}${secondaryText}`);
-        } else {
-          const equivalentText = Number(current.maleBody1EquivalentPoolSize || 0) > 1
-            ? ` · Body 1 equivalent pool ${current.maleBody1EquivalentPoolSize}`
-            : "";
-          setStatus(`Command confirmed ${female.name} × ${male.name} · Body 1 ${current.pure.body1ReachableChannels}/3 reachable, +${current.pure.body1NewExactChannels} new FF${secondaryText}${equivalentText}`);
+      // The queue and the history are read once per campaign: only this pass changes them
+      // while it runs. The small campaign record is re-read every pair, which is how a Stop
+      // pressed in another tab reaches this loop.
+      const pass = { startedAt: null, queue: [], history: [] };
+      for (;;) {
+        const campaign = await read();
+        if (!campaign.active || !(await isWorkerOwner("breed"))) return;
+        if (campaign.mode !== "database-direct-v2") {
+          campaign.active = false;
+          await storageSet({ owehBreedCampaign: campaign });
+          setStatus("Previous breeding campaign stopped after database upgrade; start a new campaign");
+          reportWorkerDone();
+          return;
         }
-      } else {
-        campaign.errors = (campaign.errors || 0) + 1;
-        const reason = result.reason || "unknown";
-        if (reason === "unable-to-breed-pets" || reason === "command-timeout") {
-          if (await retryNextMale(campaign, queue, current, male, reason)) return;
-          campaign.unpaired = (campaign.unpaired || 0) + 1;
-          setStatus(`${female.name}: all pedigree-verified male candidates were rejected by OviPets`);
-        } else {
-          setStatus(`Breeding command rejected for ${female.name} × ${male.name}: ${reason}`);
+        const startedAt = campaign.startedAt ?? "legacy";
+        if (pass.startedAt !== startedAt) {
+          pass.startedAt = startedAt;
+          pass.queue = await storageGet("owehBreedQueue", []);
+          pass.history = await storageGet("owehBreedHistory", []);
         }
+        if (!(await breedNext(campaign, pass))) return;
+        const delay = Number(settings.getDelayMs?.() || 0);
+        if (delay > 0) await sleep(delay);
       }
-      await advance(campaign, queue);
-      setTimeout(() => process(), Math.max(300, settings.getDelayMs()));
     } finally {
+      release();
       processing = false;
     }
+  }
+
+  // One step: the current female's first safe male is sent and the outcome recorded. Returns
+  // false when the pass must end (campaign finished or stopped, or the lease was lost).
+  async function breedNext(campaign, pass) {
+    const { queue } = pass;
+    const current = queue[campaign.femaleIndex];
+    if (!current) {
+      campaign.active = false;
+      await storageSet({ owehBreedCampaign: campaign });
+      setStatus(`Database breeding complete — ${campaign.bredCount || 0} command-confirmed pairing(s)`);
+      reportWorkerDone();
+      return false;
+    }
+    const candidates = candidateList(current);
+    const candidateIds = candidates.map(item => String(item?.maleId || "")).filter(Boolean);
+    const pets = await getPetsByIds([String(current.id), ...candidateIds]);
+    const female = pets[current.id];
+    const gameVouched = candidates.some(item => item?.gameListed === true);
+    if (!female || female.gender !== "Female" || female.onCooldown || (female.pedigreeVerified !== true && !gameVouched)) {
+      campaign.unpaired = (campaign.unpaired || 0) + 1;
+      setStatus(`${current.name}: female pedigree/state is not safely breedable; skipped without sending a command`);
+      return advance(campaign, queue);
+    }
+
+    const selected = nextSafeCandidate(current, female, pets);
+    if (!selected || !selected.candidate?.pure) {
+      campaign.unpaired = (campaign.unpaired || 0) + 1;
+      setStatus(`${current.name}: no pedigree-verified male candidate remains; skipped without sending a command`);
+      return advance(campaign, queue);
+    }
+    const { male, candidate, index: candidateIndex, total: candidateTotal } = selected;
+    // The stored row already names the planned male. It is rewritten only when another one is
+    // tried in his place (he left the program since the plan), so the plan window shows who.
+    const replaced = String(current.maleId || "") !== String(candidate.maleId || "")
+      || Number(current.maleCandidateIndex || 0) !== candidateIndex;
+    applyCandidate(current, candidate, candidateIndex);
+    queue[campaign.femaleIndex] = current;
+    if (replaced) await storageSet({ owehBreedQueue: queue });
+
+    reportWorkerPhase(`breeding ${campaign.femaleIndex + 1}/${queue.length}`);
+    const choiceText = candidateTotal > 1 ? ` · male ${candidateIndex + 1}/${candidateTotal}` : "";
+    setStatus(`Direct breeding ${campaign.femaleIndex + 1}/${queue.length}: ${female.name} × ${male.name}${choiceText}`);
+    const result = await gameActions.breedPairDirect(female.id, male.id, campaign.startedAt || "legacy");
+    if (!(await isWorkerOwner("breed"))) return false;
+    const latest = await read();
+    // Stopped meanwhile, or another campaign was confirmed: this pass owns neither.
+    if (!latest.active || (latest.startedAt ?? "legacy") !== pass.startedAt) return false;
+    if (result.ok) {
+      campaign.bredCount = (campaign.bredCount || 0) + 1;
+      female.onCooldown = true;
+      female.lastBredAt = Date.now();
+      await Promise.all([
+        recordBreed(pass.history, male, female, null, current.pure, Date.now(), campaign.strategy),
+        storageSet({ owehPets: { [female.id]: female } })
+      ]);
+      const secondaryLabel = secondaryKeyLabel(current.maleSecondaryBestKey);
+      const secondaryText = Number.isFinite(current.maleSecondaryBestDistance)
+        ? ` · best secondary ${secondaryLabel || "slot"} ${current.maleSecondaryBestDistance} off`
+        : "";
+      if (campaign.strategy === BREEDING_STRATEGIES.SAME_FF_TARGET) {
+        const candidateText = Number(current.sameFfCandidateCount || 0)
+          ? ` · ${current.sameFfCandidateCount} same-FF candidate(s)` : "";
+        setStatus(`Command confirmed ${female.name} × ${male.name} · Same-FF target improvement${secondaryText}${candidateText}`);
+      } else if (campaign.strategy === BREEDING_STRATEGIES.NEWBORN_OUTCROSS) {
+        const endpointText = Number.isFinite(current.maleEndpointPairs)
+          ? ` · male has ${current.maleEndpointPairs} target FF/00 pair(s)` : "";
+        setStatus(`Command confirmed ${female.name} × ${male.name} · Newborn outcross${endpointText}${secondaryText}`);
+      } else {
+        const equivalentText = Number(current.maleBody1EquivalentPoolSize || 0) > 1
+          ? ` · Body 1 equivalent pool ${current.maleBody1EquivalentPoolSize}`
+          : "";
+        setStatus(`Command confirmed ${female.name} × ${male.name} · Body 1 ${current.pure.body1ReachableChannels}/3 reachable, +${current.pure.body1NewExactChannels} new FF${secondaryText}${equivalentText}`);
+      }
+    } else {
+      campaign.errors = (campaign.errors || 0) + 1;
+      const reason = result.reason || "unknown";
+      if (reason === "unable-to-breed-pets" || reason === "command-timeout") {
+        // Same female again on the next step, with her next male.
+        if (await retryNextMale(campaign, queue, current, male, reason)) return true;
+        campaign.unpaired = (campaign.unpaired || 0) + 1;
+        setStatus(`${female.name}: all pedigree-verified male candidates were rejected by OviPets`);
+      } else {
+        setStatus(`Breeding command rejected for ${female.name} × ${male.name}: ${reason}`);
+      }
+    }
+    return advance(campaign, queue);
   }
 
   return {

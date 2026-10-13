@@ -17,6 +17,15 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
+## Unreleased — Confirmed breeding plans are sent much faster (2026-10-13)
+
+After **Confirm**, each pair used to take seconds for reasons that had nothing to do with the game:
+
+- The plan kept every safe male for every female (hundreds each for Same-FF and Newborn outcross — about 70 MB for 300 females × 420 males), and that whole list was read and written again for every pair, and re-read by every open OviPets tab. The saved plan and the campaign now keep the planned male plus 7 fallbacks per female (about 1.5 MB for the same plan), and the list is no longer rewritten per pair.
+- The next pair waited on a page timer, which Chrome slows to once a second (or worse) in the hidden background tab. The next command now goes out as soon as the game has answered the previous one. The **Delay** setting is still honoured if you set one.
+
+Still one command at a time, each confirmed by the game before the next. A female the game refuses with 8 males in a row is skipped (before: every listed male was tried, one server round trip each).
+
 ## Unreleased — Name the Species learns, pauses and can be reviewed (2026-10-13)
 
 The quiz now draws from about 39 species (10 before); the built-in library is thin for the new ones.
