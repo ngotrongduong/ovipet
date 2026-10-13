@@ -1,9 +1,16 @@
 "use strict";
 
+// Name the Species is shared with the full extension, file for file (scripts/sync-lite-species.js):
+// the silhouette matcher, the totals and wrong-case store, and the learned overlay with the
+// safety pause. This file only wires them to the sweep.
+importScripts("domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js");
+const speciesStats = globalThis.OWEH_BG.speciesStats;
+const speciesLearned = globalThis.OWEH_BG.speciesLearned;
+
 const STATE_KEY = "owehLiteSweep";
-const STATS_KEY = "owehLiteSpeciesStats";
-const WRONG_KEY = "owehLiteSpeciesWrongCases";
-const MAX_WRONG_CASES = 250;
+// Lite 0.1 kept its totals and wrong cases under these keys; they are moved once.
+const LEGACY_STATS_KEY = "owehLiteSpeciesStats";
+const LEGACY_WRONG_KEY = "owehLiteSpeciesWrongCases";
 const SPEED_KEY = "owehLiteSpeed";
 const BATCH_KEY = "owehLiteBatch";
 const WATCHDOG_ALARM = "oweh-lite-watchdog";
@@ -19,7 +26,6 @@ const ALLOWED_IMAGE_HOSTS = new Set(["ovipets.com", "app.ovipets.com"]);
 
 const sessionStore = chrome.storage.session || chrome.storage.local;
 let batchChain = Promise.resolve();
-let statsChain = Promise.resolve();
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -365,6 +371,9 @@ async function stopBatch() {
 async function startSweep(message, sender) {
   const workerTabId = Number(sender.tab?.id);
   if (!Number.isInteger(workerTabId)) return { ok: false, reason: "tab-required" };
+  // Safety pause: the sweep would stop again at its first quiz.
+  const guard = await speciesLearned.readGuard();
+  if (guard.paused) return { ok: false, reason: "species-paused", paused: guard.paused };
   const existingState = await getState();
   if (existingState.active && Number(existingState.workerTabId) !== workerTabId) {
     return { ok: false, reason: "already-running" };
@@ -428,110 +437,83 @@ async function advanceFriend(sender) {
   return { ok: true, state };
 }
 
-async function bumpSpeciesStats(patch) {
-  const run = statsChain.then(async () => {
-    const current = await localGet(STATS_KEY, { correct: 0, wrong: 0 });
-    const stats = {
-      correct: Math.max(0, Number(current.correct || 0)) + Math.max(0, Number(patch?.correct || 0)),
-      wrong: Math.max(0, Number(current.wrong || 0)) + Math.max(0, Number(patch?.wrong || 0))
+// Totals and wrong cases of Lite 0.1 move to the shared store's keys once; every species
+// request waits for it.
+async function migrateSpeciesKeys() {
+  const stored = await chrome.storage.local.get({
+    [LEGACY_STATS_KEY]: null, [LEGACY_WRONG_KEY]: null, owehSpeciesStats: null, owehSpeciesWrongCases: null
+  });
+  const oldStats = stored[LEGACY_STATS_KEY];
+  const oldCases = Array.isArray(stored[LEGACY_WRONG_KEY]) ? stored[LEGACY_WRONG_KEY] : [];
+  if (!oldStats && !oldCases.length) return;
+  // One write moves the data and blanks the old keys together, so an interrupted start can
+  // neither lose the 0.1 totals nor add them twice. They are added to whatever already exists.
+  const moved = { [LEGACY_STATS_KEY]: null, [LEGACY_WRONG_KEY]: null };
+  if (oldStats) {
+    moved.owehSpeciesStats = {
+      correct: Math.max(0, Number(stored.owehSpeciesStats?.correct || 0)) + Math.max(0, Number(oldStats.correct || 0)),
+      wrong: Math.max(0, Number(stored.owehSpeciesStats?.wrong || 0)) + Math.max(0, Number(oldStats.wrong || 0))
     };
-    await localSet(STATS_KEY, stats);
-    return stats;
-  });
-  statsChain = run.catch(() => {});
-  return run;
+  }
+  if (oldCases.length) {
+    const current = Array.isArray(stored.owehSpeciesWrongCases) ? stored.owehSpeciesWrongCases : [];
+    const known = new Set(current.map(item => String(item?.id || "")));
+    moved.owehSpeciesWrongCases = [...current, ...oldCases.filter(item => !known.has(String(item?.id || "")))]
+      .slice(0, speciesStats.MAX_WRONG_CASES);
+  }
+  await chrome.storage.local.set(moved);
+  await chrome.storage.local.remove([LEGACY_STATS_KEY, LEGACY_WRONG_KEY]).catch(() => {});
+}
+const speciesReady = migrateSpeciesKeys().catch(() => {});
+
+// The totals and the safety pause see the same answers. When the pause trips, the sweep stops
+// (its egg tabs close) and the owner gets the review page.
+async function bumpSpecies(message) {
+  const result = await speciesStats.bump(message);
+  const { guard, tripped } = await speciesLearned.noteAnswers(message)
+    .catch(() => ({ guard: null, tripped: false }));
+  if (tripped) await pauseSweep(guard?.paused?.reason || "");
+  return { ...result, guard, tripped };
 }
 
-function cleanWrongText(value, max = 300) {
-  return String(value || "").trim().slice(0, max);
+// Stop first; telling the worker tab and opening the review page must not hold the stop up.
+async function pauseSweep(reason) {
+  const workerTabId = Number((await getState()).workerTabId);
+  await stopSweep().catch(() => {});
+  if (Number.isInteger(workerTabId)) {
+    chrome.tabs.sendMessage(workerTabId, { type: "liteSpeciesPaused", reason }).catch(() => {});
+  }
+  speciesLearned.openReview().catch(() => {});
 }
 
-function cleanWrongShape(value) {
-  const shape = String(value || "").trim().toLowerCase();
-  return /^[0-9a-f]{256}$/.test(shape) ? shape : "";
+// A species the game rejected (or overruled) for an image must not stay learned for it.
+async function forgetRefutedSpecies(result, refuted = null) {
+  const targets = [...(Array.isArray(result?.overruled) ? result.overruled : [])];
+  if (refuted) targets.push(refuted);
+  for (const target of targets) {
+    await speciesLearned.forget({ ...target, refuted: true }).catch(() => null);
+  }
+  return result;
 }
 
-function cleanWrongOptions(value) {
-  return [...new Set((Array.isArray(value) ? value : [])
-    .map(item => cleanWrongText(item, 60)).filter(Boolean))].slice(0, 20);
-}
-
-function wrongIdentity(item = {}) {
-  return [
-    cleanWrongText(item.eggId, 40),
-    cleanWrongText(item.source, 320),
-    cleanWrongText(item.wrongSpecies, 80),
-    cleanWrongShape(item.shape)
-  ].join("|");
-}
-
-async function readWrongCases() {
-  const value = await localGet(WRONG_KEY, []);
-  return Array.isArray(value) ? value : [];
-}
-
-function recordWrongCase(input = {}) {
-  const run = statsChain.then(async () => {
-    const wrongSpecies = cleanWrongText(input.wrongSpecies, 80);
-    if (!wrongSpecies) return { ok: false, reason: "missing-wrong-species" };
-    const now = Math.max(0, Number(input.at || Date.now()));
-    const candidate = {
-      id: wrongIdentity(input),
-      firstAt: now,
-      lastAt: now,
-      count: 1,
-      eggId: cleanWrongText(input.eggId, 40),
-      source: cleanWrongText(input.source, 320),
-      shape: cleanWrongShape(input.shape),
-      options: cleanWrongOptions(input.options),
-      wrongSpecies,
-      method: cleanWrongText(input.method, 60),
-      distance: Number.isFinite(Number(input.distance)) ? Number(input.distance) : null,
-      correctSpecies: "",
-      resolvedAt: 0
-    };
-    let cases = await readWrongCases();
-    const index = cases.findIndex(item => String(item?.id || "") === candidate.id);
-    if (index >= 0) {
-      const previous = cases[index] || {};
-      candidate.firstAt = Number(previous.firstAt || now);
-      candidate.count = Math.max(1, Number(previous.count || 1)) + 1;
-      candidate.correctSpecies = cleanWrongText(previous.correctSpecies, 80);
-      candidate.resolvedAt = Number(previous.resolvedAt || 0);
-      cases.splice(index, 1);
-    }
-    cases.unshift(candidate);
-    cases = cases.slice(0, MAX_WRONG_CASES);
-    await localSet(WRONG_KEY, cases);
-    return { ok: true, count: cases.length, record: candidate };
-  });
-  statsChain = run.catch(() => {});
-  return run;
-}
-
-function resolveWrongCase(input = {}) {
-  const run = statsChain.then(async () => {
-    const eggId = cleanWrongText(input.eggId, 40);
-    const source = cleanWrongText(input.source, 320);
-    const correctSpecies = cleanWrongText(input.correctSpecies, 80);
-    if (!correctSpecies || (!eggId && !source)) return { ok: false, reason: "missing-resolution-key" };
-    const now = Math.max(0, Number(input.at || Date.now()));
-    const cases = await readWrongCases();
-    let updated = 0;
-    for (const item of cases) {
-      const sameEgg = eggId && String(item?.eggId || "") === eggId;
-      const sameSource = source && String(item?.source || "") === source;
-      if (!(sameEgg || sameSource) || item.correctSpecies) continue;
-      item.correctSpecies = correctSpecies;
-      item.resolvedAt = now;
-      item.lastAt = Math.max(Number(item.lastAt || 0), now);
-      updated += 1;
-    }
-    if (updated) await localSet(WRONG_KEY, cases);
-    return { ok: true, updated, count: cases.length };
-  });
-  statsChain = run.catch(() => {});
-  return run;
+function speciesRequest(message) {
+  const rejected = message.case || {};
+  const handlers = {
+    speciesStatsBump: () => bumpSpecies(message),
+    speciesWrongCaseRecord: () => speciesStats.recordWrong(message)
+      .then(result => forgetRefutedSpecies(result, { species: rejected.wrongSpecies, shape: rejected.shape })),
+    speciesWrongCaseResolve: () => speciesStats.resolveWrong(message).then(forgetRefutedSpecies),
+    speciesWrongCasesGet: () => speciesStats.readWrongCases().then(cases => ({ ok: true, cases, count: cases.length })),
+    speciesWrongCasesClear: () => speciesStats.clearWrongCases(message),
+    speciesConfirmedShape: () => speciesLearned.learn(message),
+    speciesOwnerLabel: () => speciesLearned.labelCase(message),
+    speciesLearnedGet: () => speciesLearned.readAll().then(library => ({ ok: true, library })),
+    speciesGuardGet: () => speciesLearned.status(),
+    speciesGuardResume: () => speciesLearned.resume(),
+    speciesWrongReviewOpen: () => speciesLearned.openReview()
+  };
+  const handler = handlers[message?.type];
+  return handler ? speciesReady.then(handler) : null;
 }
 
 async function watchdog() {
@@ -577,16 +559,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (type === "liteGetState") {
-    Promise.all([getState(), getBatch(), readSpeed(), localGet(STATS_KEY, { correct: 0, wrong: 0 })])
-      .then(([state,batch,speed,stats]) => sendResponse({
+    speciesReady.then(() => Promise.all([getState(), getBatch(), readSpeed(), speciesStats.read(), speciesLearned.readGuard()]))
+      .then(([state,batch,speed,stats,guard]) => sendResponse({
         ok: true,
         state,
         batch: batchSummary(batch),
         speed,
         stats,
+        paused: guard.paused,
         isWorker: state.active && Number(state.workerTabId) === Number(sender.tab?.id)
       }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  const species = speciesRequest(message);
+  if (species) {
+    species.then(sendResponse).catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
   if (type === "liteStartSweep") {
@@ -613,27 +601,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (type === "liteEggResult") {
-    eggResult(message, sender).then(sendResponse).catch(error => sendResponse({ ok: false, error: error.message }));
-    return true;
-  }
-  if (type === "liteSpeciesStats") {
-    bumpSpeciesStats(message.patch || {}).then(stats => sendResponse({ ok: true, stats }))
-      .catch(error => sendResponse({ ok: false, error: error.message }));
-    return true;
-  }
-  if (type === "liteSpeciesWrongRecord") {
-    recordWrongCase(message.case || {}).then(sendResponse)
-      .catch(error => sendResponse({ ok: false, error: error.message }));
-    return true;
-  }
-  if (type === "liteSpeciesWrongResolve") {
-    resolveWrongCase(message.case || {}).then(sendResponse)
-      .catch(error => sendResponse({ ok: false, error: error.message }));
-    return true;
-  }
-  if (type === "liteSpeciesWrongGet") {
-    readWrongCases().then(cases => sendResponse({ ok: true, cases, count: cases.length }))
-      .catch(error => sendResponse({ ok: false, error: error.message }));
+    // An egg tab that met the safety pause means the sweep must not go on, whatever happened
+    // to the stop that normally follows the pause. Stopping closes the batch's tabs; the egg is
+    // not counted as a failed turn and no replacement tab is opened.
+    const done = message.reason === "species-paused"
+      ? stopSweep().then(() => ({ ok: true, stopped: true }))
+      : eggResult(message, sender);
+    done.then(sendResponse).catch(error => sendResponse({ ok: false, error: error.message }));
     return true;
   }
   if (type === "liteSpeciesImage") {

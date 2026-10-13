@@ -4,6 +4,12 @@
   const PANEL_ID = "oweh-lite-panel";
   const TURN_SELECTOR = 'button[onclick*="pet_turn_egg"]';
   const VERIFY_ATTEMPTS = 2;
+  // Name the Species (shared with the full extension): storage keys the service worker writes,
+  // and the built-in count below which a species keeps learning every confirmed answer.
+  const LEARNED_PREFIX = "owehSpeciesLearned_";
+  const GUARD_KEY = "owehSpeciesGuard";
+  const WELL_SAMPLED = 100;
+  const IDLE_PROGRESS = "Low-resource mode · 3→4→6 egg tabs";
   let workerBusy = false;
   let workerTimer = null;
 
@@ -37,10 +43,14 @@
     panel.innerHTML = `
       <strong>Friend Sweep Lite</strong>
       <div id="oweh-lite-status">Ready</div>
-      <div id="oweh-lite-progress">Low-resource mode · 3→4→6 egg tabs</div>
+      <div id="oweh-lite-progress">${IDLE_PROGRESS}</div>
       <div class="row">
         <button id="oweh-lite-start" class="primary" type="button">Start</button>
         <button id="oweh-lite-stop" class="stop" type="button">Stop</button>
+      </div>
+      <div class="row">
+        <button id="oweh-lite-review" type="button" title="Open the review page: every wrong answer with its picture. Click the right species and Lite learns it.">Review wrongs</button>
+        <button id="oweh-lite-resume" type="button" title="After a safety pause: let Lite answer Name the Species again, then press Start." disabled>Resume</button>
       </div>
       <div class="row">
         <button id="oweh-lite-export-wrongs" type="button">Export wrongs</button>
@@ -49,12 +59,40 @@
     document.body.appendChild(panel);
     panel.querySelector("#oweh-lite-start").addEventListener("click", () => startFromPanel());
     panel.querySelector("#oweh-lite-stop").addEventListener("click", () => stopFromPanel());
+    panel.querySelector("#oweh-lite-review").addEventListener("click", () => request({ type: "speciesWrongReviewOpen" }));
+    panel.querySelector("#oweh-lite-resume").addEventListener("click", () => resumeFromPanel());
     panel.querySelector("#oweh-lite-export-wrongs").addEventListener("click", () => exportWrongCases());
     return panel;
   }
 
+  // The safety pause (too many wrong Name the Species answers) keeps the sweep stopped until
+  // the owner presses Resume; the status line says so on every OviPets tab.
+  let pauseShown = false;
+  function showPause(paused) {
+    const resume = document.querySelector("#oweh-lite-resume");
+    if (resume && resume.disabled !== !paused) resume.disabled = !paused;
+    if (paused) {
+      pauseShown = true;
+      setStatus(`Paused after ${paused.reason || "too many wrong answers"} — Review wrongs, then Resume`);
+    } else if (pauseShown) {
+      // Resumed from the review page: the pause line must not stay on this tab.
+      pauseShown = false;
+      setStatus("Resumed — press Start to sweep again");
+    }
+  }
+
+  async function resumeFromPanel() {
+    const result = await request({ type: "speciesGuardResume" });
+    if (!result?.ok) {
+      setStatus(`Could not resume: ${result?.error || "unknown"}`);
+      return;
+    }
+    pauseShown = true;
+    showPause(null);
+  }
+
   async function exportWrongCases() {
-    const response = await request({ type: "liteSpeciesWrongGet" });
+    const response = await request({ type: "speciesWrongCasesGet" });
     const cases = Array.isArray(response?.cases) ? response.cases : [];
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -157,6 +195,7 @@
     const result = await request({ type: "liteStartSweep", queue });
     if (!result?.ok) {
       if (result?.reason === "already-running") setStatus("Friend Sweep Lite is already running in another OviPets tab");
+      else if (result?.reason === "species-paused") showPause(result.paused || {});
       else setStatus(`Could not start: ${result?.reason || result?.error || "unknown"}`);
       return;
     }
@@ -168,7 +207,7 @@
     setStatus("Stopping...");
     await request({ type: "liteStopSweep" });
     setStatus("Stopped");
-    setProgress("Low-resource mode · 3→4→6 egg tabs");
+    setProgress(IDLE_PROGRESS);
   }
 
   async function waitForMain(timeoutMs = 10000) {
@@ -243,6 +282,7 @@
       const snapshot = await request({ type: "liteGetState" });
       if (!snapshot?.ok) return;
       const { state, batch, speed, stats } = snapshot;
+      showPause(snapshot.paused || null);
       if (state?.active && !snapshot.isWorker) return;
       if (!state?.active || Number(state.workerTabId) <= 0) {
         setProgress(`Name Species: ${stats?.correct || 0} correct · ${stats?.wrong || 0} wrong`);
@@ -384,7 +424,7 @@
   }
 
   function shapeFromImage(image) {
-    const api = globalThis.OWEH_LITE_SHAPE;
+    const api = globalThis.OWEH_SPECIES_SHAPE;
     if (!api || !image?.complete || !image.naturalWidth) return null;
     try {
       const canvas = document.createElement("canvas");
@@ -432,10 +472,49 @@
     return first.source === "direct" ? await fetched : await direct;
   }
 
+  function builtInExamples(species) {
+    const examples = globalThis.OWEH_STATIC_SPECIES?.library?.[species]?.examples;
+    return Array.isArray(examples) ? examples : [];
+  }
+
+  // Built-in silhouettes plus the ones learned since, for the offered species only.
+  async function libraryFor(names) {
+    let stored = {};
+    try {
+      stored = await chrome.storage.local.get(Object.fromEntries(names.map(name => [LEARNED_PREFIX + name, null]))) || {};
+    } catch {}
+    return Object.fromEntries(names.map(name => {
+      const learned = stored[LEARNED_PREFIX + name]?.examples;
+      const builtIn = builtInExamples(name);
+      return [name, { examples: Array.isArray(learned) && learned.length ? [...builtIn, ...learned] : builtIn }];
+    }));
+  }
+
+  async function speciesPaused() {
+    try {
+      return (await chrome.storage.local.get({ [GUARD_KEY]: null }))[GUARD_KEY]?.paused || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The game accepted this answer, so the picture's species is confirmed: its mask is kept for
+  // a species the built-in library knows poorly, and for any species after a first miss —
+  // unless the built-in library already has that outline.
+  async function learnConfirmed(submitted, missedFirst) {
+    const api = globalThis.OWEH_SPECIES_SHAPE;
+    if (!api?.validShape(submitted?.shape) || !submitted.species) return;
+    const builtIn = builtInExamples(submitted.species);
+    if (builtIn.length >= WELL_SAMPLED && !missedFirst) return;
+    if (builtIn.some(example => api.hamming(example, submitted.shape) <= api.DEDUPE_DISTANCE)) return;
+    await request({ type: "speciesConfirmedShape", species: submitted.species, shape: submitted.shape });
+  }
+
   async function answerSpecies(container, rejected) {
     const allOptions = optionElements(container);
     const options = allOptions.filter(item => !rejected.has(item.text));
     if (!options.length) return { ok: false, reason: "no-eligible-species" };
+    if (await speciesPaused()) return { ok: false, reason: "species-paused" };
 
     let shape = null;
     for (let attempt = 0; attempt < 2 && !shape; attempt += 1) {
@@ -444,9 +523,12 @@
     }
     if (!shape) return { ok: false, reason: "shape-unavailable" };
 
-    const ranked = globalThis.OWEH_LITE_SHAPE?.rankOptions(shape, options.map(item => item.text));
+    const names = options.map(item => item.text);
+    const ranked = globalThis.OWEH_SPECIES_SHAPE?.rankOptions({ shape, options: names, library: await libraryFor(names) });
     const choice = options.find(item => item.text === ranked?.species);
     if (!choice) return { ok: false, reason: "species-no-match" };
+    // Another egg tab may have tripped the pause while this picture was being read.
+    if (await speciesPaused()) return { ok: false, reason: "species-paused" };
 
     choice.element.click();
     const deadline = Date.now() + 700;
@@ -495,9 +577,9 @@
       if (error) {
         if (submitted?.species) {
           rejected.add(submitted.species);
-          await Promise.all([
-            request({ type: "liteSpeciesStats", patch: { wrong: 1 } }),
-            request({ type: "liteSpeciesWrongRecord", case: {
+          const [bumped] = await Promise.all([
+            request({ type: "speciesStatsBump", auto: true, patch: { wrong: 1 } }),
+            request({ type: "speciesWrongCaseRecord", case: {
               eggId: submitted.eggId || currentPetId(),
               source: submitted.source || "",
               shape: submitted.shape || "",
@@ -507,6 +589,8 @@
               distance: submitted.distance ?? null
             } })
           ]);
+          // This miss tripped the safety pause: the service worker is stopping the sweep.
+          if (bumped?.tripped) return { ok: false, reason: "species-paused" };
         }
         await dismissIncorrect(error);
         return { ok: false, reason: "species-incorrect" };
@@ -524,11 +608,20 @@
       }
 
       if (!document.querySelector(TURN_SELECTOR)) {
+        // The page can drop the button for a moment while it redraws. Look once more before
+        // believing the turn went through: the answer is counted and learned on this evidence.
+        await sleep(250);
+        if (document.querySelector(TURN_SELECTOR) || incorrectDialog() || exhaustedDialog() || speciesDialog()) continue;
         if (submitted?.species) {
-          const tasks = [request({ type: "liteSpeciesStats", patch: { correct: 1 } })];
-          if (rejected.size) tasks.push(request({ type: "liteSpeciesWrongResolve", case: {
+          const missedFirst = rejected.size > 0;
+          const tasks = [
+            request({ type: "speciesStatsBump", auto: true, patch: { correct: 1 } }),
+            learnConfirmed(submitted, missedFirst)
+          ];
+          if (missedFirst) tasks.push(request({ type: "speciesWrongCaseResolve", case: {
             eggId: submitted.eggId || currentPetId(),
             source: submitted.source || "",
+            shape: submitted.shape || "",
             correctSpecies: submitted.species
           } }));
           await Promise.all(tasks);
@@ -578,6 +671,11 @@
         await reportEgg(eggId, "exhausted", lastReason);
         return;
       }
+      if (lastReason === "species-paused") {
+        // No further answer may be tried while the safety pause is on.
+        await reportEgg(eggId, "failed", lastReason);
+        return;
+      }
       if (lastReason === "species-incorrect") speciesRejects += 1;
       else genericFailures += 1;
       await sleep(lastReason === "species-incorrect" ? 300 : 600);
@@ -610,6 +708,10 @@
       setStatus(`Starting pass ${message.state?.cycle || ""}`);
       scheduleWorker(50);
     }
+    if (message?.type === "liteSpeciesPaused") {
+      showPause({ reason: message.reason });
+      setProgress(IDLE_PROGRESS);
+    }
   });
 
   window.addEventListener("hashchange", () => scheduleWorker(250));
@@ -626,6 +728,7 @@
     if (snapshot?.ok) {
       const stats = snapshot.stats || {};
       setProgress(`Name Species: ${stats.correct || 0} correct · ${stats.wrong || 0} wrong`);
+      showPause(snapshot.paused || null);
       if (snapshot.isWorker) scheduleWorker(150);
     }
   })().catch(error => console.error("[Friend Sweep Lite] startup failed", error));

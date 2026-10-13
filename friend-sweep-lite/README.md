@@ -8,7 +8,6 @@ Standalone low-resource extension whose only job is friend egg sweeping.
 - open only turnable egg profiles;
 - use the real Turn Egg UI;
 - keep the real Name the Species dialog;
-- static 10-species / 451-silhouette classifier;
 - rolling low-resource egg-tab pool;
 - one final friend Hatchery verification after a batch;
 - automatic next sweep cycle after a cooldown;
@@ -16,10 +15,24 @@ Standalone low-resource extension whose only job is friend egg sweeping.
 - persistent Name the Species correct/wrong totals;
 - compact wrong-only review queue (max 250 deduplicated cases) with an **Export wrongs** button; normal successful questions are never logged.
 
+## Name the Species (0.2.0, shared with the full extension)
+
+The quiz draws from about 39 species since 2026-10. Lite now carries the same files as the full extension (`SHARED_FROM.txt` names them and the commit they came from):
+
+- **Built-in library**: 1,691 silhouettes in 39 species (was 451 in 10).
+- **Learns while it runs**: when the game accepts an answer, that picture's silhouette is kept for a species the built-in library knows poorly, and for any species after a first wrong answer. Learned silhouettes are matched next to the built-in ones.
+- **Safety pause**: after 3 wrong answers in a row, or more than 10 wrong within one hour, Lite stops the sweep and opens the review page. Look at the wrong answers, press **Resume** (panel or review page), then **Start** again. Start is refused while paused.
+- **Review wrongs** (panel button): one card per missed picture with the real quiz picture, the answers the game rejected and the remaining options. Click the right species and Lite learns it at once. **Export wrongs** / **Export learned** on that page download the data for folding into the built-in library.
+
+Totals and wrong cases saved by Lite 0.1 are kept (moved to the shared storage keys on first start). What the full extension learned on its own is not copied: Lite is a separate extension with its own storage and learns for itself.
+
 ## Deliberately excluded
-Breeding, own-Hatchery automation, pet database, retention/culling, Ninja/Ads, friend removal, blacklist, Species learning/Inspector, general review/import tools, large diagnostic logs, pet naming, feeding, enclosure management.
+Breeding, own-Hatchery automation, pet database, retention/culling, Ninja/Ads, friend removal, blacklist, the old Species Inspector/import tools, large diagnostic logs, pet naming, feeding, enclosure management, alert sound.
 
 ## Low-resource policy
 Adaptive egg concurrency starts at 3, may promote to 4 then 6 after clean work, and demotes on timeout/failure. Ordinary images, media and fonts are blocked in extension-owned sweep tabs; the Name the Species credit-challenge image is explicitly allowed.
 
 Do not enable Friend Sweep Lite and the full OviPets extension at the same time. Both can react to Name the Species.
+
+## Updating the shared files
+From a checkout of the full extension's branch: `node scripts/sync-lite-species.js <path-to-that-checkout>`, then run `tests/friend-sweep-lite*.test.js`.
