@@ -164,6 +164,64 @@ test("surplus domain: Generated, unchecked, protected, species and Males discard
     { m: male("m", {}, { enclosure: "Males discard" }), a: male("a") }, target, breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET), ["Males"]);
 });
 
+test("surplus domain: males stay only for exact channels or a clearly strong slot", () => {
+  const { surplus, colors } = load().domain;
+  const target = { ...colors.STRICT_PURE_TARGET };
+  const entry = patch => {
+    const worth = surplus.channelWorth(surplus.channelDistances({ colors: { ...FAR, ...patch } }, target));
+    return { worth, slots: surplus.slotScores(worth) };
+  };
+  const strict = (better, worse) => surplus.coversStrict(entry(better), entry(worse), surplus.DEFAULT_MALE_SLOT_TOLERANCE);
+  assert.deepEqual(surplus.slotScores(surplus.channelWorth([0, 0, 0, 1, 1, 1, 3, 3, 3, 9, 9, 9, 19, 19, 19])).map(value => Math.round(value * 100)),
+    [300, 150, 75, 30, 15]);
+
+  // An exact channel is replaced only by the same exact channel.
+  assert.equal(strict({ body1: "#80FF80" }, { body1: "#80FF80" }), true);
+  assert.equal(strict({ body1: "#80FF80" }, { body1: "#FF8080" }), false, "green exact does not replace red exact");
+  assert.equal(strict({ body1: "#80FFFF" }, { body1: "#80FF80" }), true, "more exact channels replace fewer");
+  // A shade nearer on a far channel is no reason to stay ...
+  assert.equal(strict({}, { body2: "#F08080" }), true);
+  assert.equal(surplus.covers(entry({}).worth, entry({ body2: "#F08080" }).worth, surplus.DEFAULT_TOLERANCE), false,
+    "... although the per-channel rule used for females would keep it");
+  // ... but a clearly strong slot is: nothing exact, Body 2 one step off in every channel.
+  assert.equal(strict({}, { body2: "#FE0101" }), false);
+  assert.equal(strict({ body2: "#FF8080" }, { body2: "#FE0101" }), false, "one exact channel is not as strong as three near ones");
+  assert.equal(strict({ body2: "#FF0000" }, { body2: "#FE0101" }), true);
+
+  const males = {
+    // Exact Body 1 green and pure Scales: the two really good males.
+    1: male("1", { body1: "#80FF80", scales: "#000000" }),
+    2: male("2", { body1: "#80FF80", scales: "#000000" }),
+    // The same exact Body 1 channel plus a shade on Body 2: 1 and 2 replace him.
+    3: male("3", { body1: "#80FF80", body2: "#F08080" }),
+    // Nothing exact, but Body 2 almost pure: a high score in another slot keeps him.
+    5: male("5", { body2: "#FE0101" }),
+    // An exact channel nobody else has: kept.
+    6: male("6", { body1: "#FF8080" }),
+    // Nothing exact, nothing strong: goes.
+    7: male("7")
+  };
+  let result = surplus.planSurplus(males, target, { minReplacements: 2 });
+  assert.deepEqual(ids(result.rows), ["7", "3"]);
+  assert.equal(result.summary.maleSlotTolerance, 0.25);
+  assert.deepEqual(clone(result.summary.kept), { egg: 0, female: 0, male: 4 });
+
+  // The same pets as females are judged channel by channel: the shade keeps number 3.
+  const females = Object.fromEntries(Object.entries(males).map(([id, pet]) => [id, { ...pet, gender: "Female", enclosure: "Breeding Stock" }]));
+  result = surplus.planSurplus(females, target, { minReplacements: 2 });
+  assert.deepEqual(ids(result.rows), ["7"]);
+
+  // An egg is judged under each sex's own rule: as a male the shaded egg is replaceable, as a
+  // female it is not, so it stays; the plain one goes.
+  result = surplus.planSurplus({
+    1: males[1], 2: males[2],
+    11: female("11", { body1: "#80FF80" }), 12: female("12", { body1: "#80FF80" }),
+    20: egg("20", { body1: "#80FF80", body2: "#F08080" }),
+    21: egg("21", { body1: "#80FF80" })
+  }, target, { minReplacements: 2, eggIds: ["20", "21"] });
+  assert.deepEqual(ids(result.rows), ["21"]);
+});
+
 test("surplus domain: an egg needs replacements among males and females", () => {
   const { surplus, colors } = load().domain;
   const target = { ...colors.STRICT_PURE_TARGET };

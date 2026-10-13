@@ -131,9 +131,9 @@ OWEH.register("feature-surplus", helpers => {
     return view;
   }
 
-  function planFromLive(pets, live, { target, minReplacements, tolerance, protectedIds }) {
+  function planFromLive(pets, live, { target, minReplacements, tolerance, maleSlotTolerance, protectedIds }) {
     return surplus.planSurplus(liveView(pets, live), target, {
-      eggIds: [...live.eggs], minReplacements, tolerance, protectedIds
+      eggIds: [...live.eggs], minReplacements, tolerance, maleSlotTolerance, protectedIds
     });
   }
 
@@ -306,6 +306,7 @@ OWEH.register("feature-surplus", helpers => {
         target: preview.target,
         minReplacements: preview.minReplacements,
         tolerance: preview.summary?.tolerance,
+        maleSlotTolerance: preview.summary?.maleSlotTolerance,
         protectedIds
       }).rows.map(row => String(row.id)));
 

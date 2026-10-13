@@ -100,6 +100,38 @@ On the 2026-10-05 stock (1,898 pets, 975 eggs) with 10 replacements this lists 4
 kept pet unchanged. The rule it replaces (at least as close on all 15 channels by exact
 distance, two lineages) listed 1 egg.
 
+### Males: only exact channels and strong slots count (2026-10-13)
+
+Owner decision: keep only the really good males and those with a high score in another colour
+slot; most males have to go (the Males enclosure was full at 1,000 and newborn males were
+piling up in Newborn and Unnamed). For males the per-channel comparison is replaced by
+`coversStrict`: a kept male replaces another when
+
+- he is exact on every channel the other is exact on (channel by channel, so a green-exact
+  male never replaces a red-exact one), and
+- each of his five slot scores (the sum of a slot's three channel worths, 0..3) is no more
+  than 0.25 lower.
+
+Under the per-channel rule a male that was merely a shade nearer on one far channel had no
+replacement and stayed. Measured on the 2026-10-13 stock read from the game (1,255 males and
+1,250 females, 398 of them still unnamed newborns, and 354 eggs) with 10 replacements:
+
+| rule | males listed | males kept |
+|---|---|---|
+| per channel, 0.05 | 85 | 1,170 |
+| exact channels + slots, 0.25 | 1,098 | 157 |
+
+The 157 kept: none with zero exact channels (402 such males go), 9 of 521 with one, 64 of 199
+with two, 22 of 44 with three, 8 of 11 with four, 39 of 63 with five and all 15 with six or
+seven; the 35 Generated males are among them. Every one of the
+15 channels still has at least 14 exact kept males (the scarcest, Extra 2 blue, has 23 in
+all). For each of the 1,250 females the best mate among the kept males is as good as among
+all males (largest loss 0.05 expected exact channels), and 9–10 of the 10 highest-scoring
+males of every slot are kept. With 5 replacements 104 males stay, with 3, 86.
+
+Females keep the per-channel rule. An egg has to be surplus under each sex's own rule: 66 of
+354 eggs are listed (46 before).
+
 Pedigree is deliberately not part of the rule (owner decision 2026-10-05): with ten
 replacements a related pair always has an unrelated alternative. **Generated** pets (wand
 icon), pets whose Generated flag was never read, and pets in a breeding plan are never listed.

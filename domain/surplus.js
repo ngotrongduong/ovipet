@@ -15,6 +15,9 @@
 // in every channel, give or take `tolerance`. An egg has no sex yet, so it needs that many
 // replacements among the kept males AND among the kept females. Pedigree is deliberately left
 // out (owner decision): with this many replacements a related pair always has an alternative.
+//
+// Males are judged more strictly (owner decision 2026-10-13: only the really good males and
+// the ones clearly strong in some colour slot stay, most go). See coversStrict below.
 (() => {
   if (!globalThis.OWEH?.domain?.colors || !OWEH.domain?.breedingPlan) {
     throw new Error("colors and breeding-plan must load before domain/surplus.js");
@@ -27,6 +30,8 @@
   // 0.05 = five percentage points of pass-on chance: an exact channel must be matched by an
   // exact one, and anything 19 or more off the target counts as equally far.
   const DEFAULT_TOLERANCE = 0.05;
+  // A quarter of an exact channel: a slot has to be clearly stronger, not a shade nearer.
+  const DEFAULT_MALE_SLOT_TOLERANCE = 0.25;
   const KIND_ORDER = Object.freeze({ egg: 0, female: 1, male: 2 });
   const EXAMPLES_SHOWN = 3;
 
@@ -49,6 +54,24 @@
   function covers(better, worse, tolerance) {
     for (let index = 0; index < better.length; index += 1) {
       if (better[index] < worse[index] - tolerance) return false;
+    }
+    return true;
+  }
+
+  // The five slot scores (0..3 each): the sum of a slot's three channel worths.
+  const slotScores = worth => TARGET_KEYS.map((_, slot) => worth[slot * 3] + worth[slot * 3 + 1] + worth[slot * 3 + 2]);
+
+  // The male rule. What a male gives the program is the exact channels he can hand on, and
+  // being clearly strong in some colour slot (Body 1, Body 2, Scales, Extra 1, Extra 2). So a
+  // kept male replaces another when he is exact on every channel the other is exact on, and
+  // his score in each slot is no more than `slotTolerance` lower. Unlike the per-channel rule,
+  // a small edge on one far channel no longer makes a male irreplaceable.
+  function coversStrict(better, worse, slotTolerance) {
+    for (let index = 0; index < worse.worth.length; index += 1) {
+      if (worse.worth[index] === 1 && better.worth[index] !== 1) return false;
+    }
+    for (let slot = 0; slot < worse.slots.length; slot += 1) {
+      if (better.slots[slot] < worse.slots[slot] - slotTolerance) return false;
     }
     return true;
   }
@@ -116,12 +139,19 @@
     const minReplacements = Math.max(1, Math.floor(Number(options.minReplacements) || DEFAULT_MIN_REPLACEMENTS));
     const tolerance = Number.isFinite(Number(options.tolerance)) && Number(options.tolerance) >= 0
       ? Number(options.tolerance) : DEFAULT_TOLERANCE;
+    const maleSlotTolerance = Number.isFinite(Number(options.maleSlotTolerance)) && Number(options.maleSlotTolerance) >= 0
+      ? Number(options.maleSlotTolerance) : DEFAULT_MALE_SLOT_TOLERANCE;
     const protectedIds = new Set([...(options.protectedIds || [])].map(String));
     const eggIds = new Set([...(options.eggIds || [])].map(String));
     const species = options.species ? new Set(options.species) : programSpecies(pets);
     const count = () => ({ egg: 0, female: 0, male: 0 });
+    // Which kept pets replace `entry`, judged as a male or as a female.
+    const replacing = {
+      female: (kept, entry) => kept.filter(other => covers(other.worth, entry.worth, tolerance)),
+      male: (kept, entry) => kept.filter(other => coversStrict(other, entry, maleSlotTolerance))
+    };
     const summary = {
-      minReplacements, tolerance, species: [...species].sort(),
+      minReplacements, tolerance, maleSlotTolerance, species: [...species].sort(),
       considered: count(), surplus: count(), kept: count(),
       generated: 0, unchecked: 0, protected: 0, incomplete: 0, eggsNotIndexed: 0
     };
@@ -150,7 +180,7 @@
       const worth = channelWorth(distances);
       if (!groups.has(pet.species)) groups.set(pet.species, { egg: [], female: [], male: [] });
       groups.get(pet.species)[isEgg ? "egg" : sex].push({
-        pet, id, kind: isEgg ? "egg" : sex, worth,
+        pet, id, kind: isEgg ? "egg" : sex, worth, slots: slotScores(worth),
         score: worth.reduce((sum, value) => sum + value, 0),
         exactChannels: distances.filter(value => value === 0).length,
         distance: distances.reduce((sum, value) => sum + value, 0)
@@ -188,7 +218,7 @@
         for (const entry of [...inProgram, ...penned]) {
           summary.considered[sex] += 1;
           const penPet = isCullEnclosure(entry.pet.enclosure);
-          const replacements = kept[sex].filter(other => covers(other.worth, entry.worth, tolerance));
+          const replacements = replacing[sex](kept[sex], entry);
           const hold = holdReason(entry.pet, sex, protectedIds);
           if (replacements.length >= minReplacements && !hold) {
             addRow(entry, replacements.length, replacements);
@@ -201,8 +231,9 @@
       }
       for (const entry of group.egg.sort(byScore)) {
         summary.considered.egg += 1;
-        const males = kept.male.filter(other => covers(other.worth, entry.worth, tolerance));
-        const females = kept.female.filter(other => covers(other.worth, entry.worth, tolerance));
+        // Its sex is unknown, so it has to be surplus under each sex's own rule.
+        const males = replacing.male(kept.male, entry);
+        const females = replacing.female(kept.female, entry);
         const enough = males.length >= minReplacements && females.length >= minReplacements;
         const hold = holdReason(entry.pet, "egg", protectedIds);
         if (enough && !hold) {
@@ -224,9 +255,12 @@
   OWEH.domain.surplus = Object.freeze({
     DEFAULT_MIN_REPLACEMENTS,
     DEFAULT_TOLERANCE,
+    DEFAULT_MALE_SLOT_TOLERANCE,
     channelDistances,
     channelWorth,
+    slotScores,
     covers,
+    coversStrict,
     colorKey,
     isJudgeable,
     programSpecies,
