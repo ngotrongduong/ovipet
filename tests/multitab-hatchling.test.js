@@ -23,7 +23,9 @@ for (const required of [
   'message?.type === "startSharedWorker"',
   "reportWorkerDone",
   'waitForButtonText("Name", 5000)',
-  "unnamed.has(id) || force",
+  // Unnamed newborns always qualify; recorded eggs are not re-read on every pass.
+  "if (unnamed.has(id)) return true;",
+  "await forgetDeparted(hatchery);",
   "Number(b.unnamed) - Number(a.unnamed)",
   "gameActions.namePet(pet.id, desiredName, { unnamed })",
   "owehPets: { [pet.id]: merged }",

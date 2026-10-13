@@ -95,6 +95,16 @@
     return dispatchGameCommand("pet_turn_egg", petId, {}, timeout, true, null, "own-hatch");
   }
 
+  // Permanent: the pet or egg is gone for good. Only features/surplus.js calls this, for a row
+  // of the list the user confirmed; the bridge refuses pet_sendto without this exact purpose
+  // and field, so no other caller of sendGameCommand can send a pet away.
+  // The timeout is longer than the bridge's own 15 s, so the bridge's verdict always arrives
+  // first and "bridge-timeout" means the page never answered at all.
+  async function sendDiscardCommand(petId, timeout = 17000) {
+    if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
+    return dispatchGameCommand("pet_sendto", petId, { SendTo: "discard" }, timeout, false, null, "confirmed-discard");
+  }
+
   // Asks the page-side bridge whether the game's dispatcher exists yet. Never sends a game command.
   function pingGameBridge(timeout = 1500) {
     return new Promise(resolve => {
@@ -127,6 +137,7 @@
     GAME_PING_EVENT,
     sendGameCommand,
     sendOwnHatchCommand,
+    sendDiscardCommand,
     pingGameBridge
   });
 })();

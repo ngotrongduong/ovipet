@@ -20,12 +20,13 @@ class FakeElement {
     this.children = [];
     this.title = "";
     this.className = "";
+    this.style = {};
   }
   replaceChildren(...children) { this.children = children; }
   append(...children) { this.children.push(...children); }
 }
 
-function setup({ pets = {}, withPlanView = false, getPetFields = null } = {}) {
+function setup({ pets = {}, withPlanView = false, withSurplusView = false, getPetFields = null } = {}) {
   const clock = { now: 1_000_000 };
   const state = {
     owehEggRun: { active: false, count: 0 },
@@ -68,8 +69,25 @@ function setup({ pets = {}, withPlanView = false, getPetFields = null } = {}) {
   const planRows = new FakeElement();
   const viewButton = new FakeElement();
   planView.querySelector = selector => ({ "#oweh-plan-view-meta": planMeta, "#oweh-plan-view-rows": planRows })[selector] || null;
+  const surplusPreview = new FakeElement();
+  const surplusConfirm = new FakeElement();
+  const surplusDismiss = new FakeElement();
+  const surplusOpener = new FakeElement();
+  const surplusView = new FakeElement();
+  surplusView.classList.add("oweh-hidden");
+  const surplusMeta = new FakeElement();
+  const surplusRows = new FakeElement();
+  surplusView.querySelector = selector => ({ "#oweh-surplus-view-meta": surplusMeta, "#oweh-surplus-view-rows": surplusRows })[selector] || null;
+  if (withSurplusView) {
+    Object.assign(selectors, {
+      "#oweh-surplus-preview": surplusPreview, "#oweh-surplus-confirm": surplusConfirm,
+      "#oweh-surplus-dismiss": surplusDismiss, "#oweh-view-surplus": surplusOpener
+    });
+  }
   const document = {
-    getElementById: id => id === "panel" ? panel : (withPlanView && id === "oweh-breed-plan-view" ? planView : null),
+    getElementById: id => id === "panel" ? panel
+      : (withPlanView && id === "oweh-breed-plan-view" ? planView
+        : (withSurplusView && id === "oweh-surplus-view" ? surplusView : null)),
     querySelector: selector => ({ "#oweh-db-health": health, "#oweh-breed-ready": ready, ...(withPlanView ? { "#oweh-view-breed-plan": viewButton } : {}) })[selector] || null,
     createElement: () => new FakeElement()
   };
@@ -109,10 +127,67 @@ function setup({ pets = {}, withPlanView = false, getPetFields = null } = {}) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../jobs/core.js"), "utf8"), sandbox, { filename: "core.js" });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../ui/dashboard.js"), "utf8"), sandbox, { filename: "dashboard.js" });
   const modules = sandbox.OWEH.boot(helpers);
-  return { api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, ready, preview, confirm, discard, log, timers, planView, planMeta, planRows, viewButton };
+  return {
+    api: modules["ui-dashboard"].api, state, clock, panel, summary, jobs, header, meta, health, ready, preview, confirm, discard, log, timers, planView, planMeta, planRows, viewButton,
+    surplusPreview, surplusConfirm, surplusDismiss, surplusOpener, surplusView, surplusMeta, surplusRows
+  };
 }
 
 (async () => {
+  // Discard review: the meta line, the button states and the side window follow owehSurplusPreview.
+  {
+    const env = setup({ withSurplusView: true });
+    await env.api.update();
+    assert.equal(env.surplusPreview.textContent, "No discard plan yet — press Plan discard");
+    assert.equal(env.surplusConfirm.disabled, true);
+    env.state.owehSurplusPreview = {
+      createdAt: env.clock.now - 60_000,
+      minReplacements: 10,
+      summary: { surplus: { egg: 1, female: 0, male: 1 }, generated: 2, eggsNotIndexed: 3 },
+      rows: [
+        {
+          id: "10", name: "egg 10", kind: "egg", enclosure: "Hatchery", colors: "808080-808080-808080-808080-808080",
+          exactChannels: 0, score: 0.12, replacements: 12, replacementMales: 12, replacementFemales: 15,
+          examples: [{ id: "3", name: "P3" }], status: "queued"
+        },
+        {
+          id: "5", name: "P5", kind: "male", enclosure: "Males", colors: "FFFFFF-808080-808080-808080-808080",
+          exactChannels: 3, score: 3.09, replacements: 11, examples: [], status: "discarded"
+        }
+      ]
+    };
+    await env.api.update();
+    assert.equal(env.surplusPreview.textContent,
+      "2 can go: 1 egg(s), 0 female(s), 1 male(s) · each replaced by ≥10 kept · 1 discarded · 1 queued · 2 Generated kept, 3 egg(s) not indexed — run Newborns only · built 1m ago");
+    assert.equal(env.surplusConfirm.disabled, false);
+    assert.equal(env.surplusDismiss.disabled, false);
+    assert.equal(env.surplusOpener.disabled, false);
+    assert.equal(env.surplusView.classList.contains("oweh-hidden"), true, "the review opens only from its View button");
+    assert.equal(env.surplusRows.children.length, 2);
+    const [eggRow, maleRow] = env.surplusRows.children;
+    assert.deepEqual(eggRow.children.map(cell => cell.textContent),
+      ["1", "Egg", "egg 10", "Hatchery", "", "0/15", "0.12", "12 males / 15 females · e.g. P3", "queued"]);
+    assert.equal(eggRow.children[4].children.length, 5, "one swatch per colour slot");
+    assert.equal(eggRow.children[4].children[0].style.background, "#808080");
+    assert.equal(maleRow.className, "oweh-plan-row oweh-surplus-discarded");
+    assert.equal(maleRow.children[7].textContent, "11");
+
+    // A run in progress locks Confirm and Dismiss; an expired plan cannot be confirmed.
+    // "Running" is the live shared-worker lease, not a stored flag.
+    env.state.owehWorker = { owner: "surplus", phase: "discard 1/2", leaseUntil: env.clock.now + 30_000 };
+    await env.api.update();
+    assert.match(env.surplusPreview.textContent, /discarding now$/);
+    assert.equal(env.surplusConfirm.disabled, true);
+    assert.equal(env.surplusDismiss.disabled, true);
+    assert.ok(env.jobs.children.some(chip => chip.textContent.includes("Discard surplus")));
+    env.state.owehWorker = null;
+    env.state.owehSurplusPreview.createdAt = env.clock.now - 16 * 60_000;
+    await env.api.update();
+    assert.match(env.surplusPreview.textContent, /expired/);
+    assert.equal(env.surplusConfirm.disabled, true);
+    assert.equal(env.surplusDismiss.disabled, false);
+  }
+
   // A live shared-worker lease is the source of truth for straight-line job activity.
   {
     const env = setup();

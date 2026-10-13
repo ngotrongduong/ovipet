@@ -470,7 +470,8 @@
   font-size: 11px;
 }
 
-#ovipets-hatchery-helper input {
+#ovipets-hatchery-helper input,
+#ovipets-hatchery-helper select {
   box-sizing: border-box;
   width: 62px;
   padding: 4px 5px;
@@ -551,6 +552,58 @@
   padding: 3px 5px;
   border-radius: 4px;
   font: 11px Arial, sans-serif;
+}
+
+/* Best-egg marks sit on the OviPets Hatchery's own egg cards (features/best-eggs.js), so they
+   are not scoped under the panel either. */
+[data-oweh-best-egg] {
+  position: relative;
+  outline: 3px solid #ffd166;
+  outline-offset: -3px;
+  border-radius: 6px;
+  background: rgba(255, 209, 102, 0.18);
+}
+
+.oweh-egg-rank {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: #ffd166;
+  color: #20242b;
+  font: bold 11px Arial, sans-serif;
+  pointer-events: auto;
+  cursor: help;
+}
+
+#ovipets-hatchery-helper .oweh-best-eggs-list {
+  margin-top: 5px;
+}
+
+#ovipets-hatchery-helper .oweh-best-egg-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0;
+  color: #c5ced7;
+  font-size: 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#ovipets-hatchery-helper .oweh-best-egg-line b {
+  min-width: 24px;
+  color: #ffd166;
+}
+
+#ovipets-hatchery-helper .oweh-best-egg-line .oweh-swatch {
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1px solid #5c6875;
 }
 
 .oweh-recommended { background: #ffd166; color: #20242b; }
@@ -716,16 +769,25 @@
   font-weight: 700;
 }
 
-.oweh-plan-view .oweh-cull-moved .oweh-plan-status {
+.oweh-plan-view .oweh-surplus-discarded .oweh-plan-status {
   color: #7fcf97;
 }
 
-.oweh-plan-view .oweh-cull-error .oweh-plan-status {
+.oweh-plan-view .oweh-surplus-error .oweh-plan-status {
   color: #ef7f7f;
 }
 
-.oweh-plan-view .oweh-cull-skipped {
+.oweh-plan-view .oweh-surplus-skipped {
   opacity: 0.5;
+}
+
+.oweh-plan-view .oweh-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 2px;
+  border: 1px solid #5c6875;
+  vertical-align: -1px;
 }
 
 .oweh-plan-view .oweh-plan-done .oweh-plan-status {

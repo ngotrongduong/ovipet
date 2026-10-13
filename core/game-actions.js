@@ -13,7 +13,7 @@
   }
 
   const { storageGet } = OWEH.core.storage;
-  const { sendGameCommand, sendOwnHatchCommand } = OWEH.core.gameBridge;
+  const { sendGameCommand, sendOwnHatchCommand, sendDiscardCommand } = OWEH.core.gameBridge;
   const { overviewEnclosureForPet } = OWEH.dom.overview;
   const { normalizeEnclosureLabel } = OWEH.domain.breedingPlan;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,6 +76,14 @@
     return sendOwnHatchCommand(petId, 3000);
   }
 
+  // Confirmed live 2026-10-05: Edit > Send To > Discard calls
+  // ui_action_cmdExec('pet_sendto', `PetID=${id}`, form) with select[name="SendTo"] = "discard",
+  // the same for a hatched pet and an egg. Permanent, so the caller owns every safety check.
+  async function discardPet(petId) {
+    if (!/^\d+$/.test(String(petId))) return { ok: false, reason: "invalid-pet" };
+    return sendDiscardCommand(petId);
+  }
+
   async function requestFriend(userId) {
     if (!/^\d+$/.test(String(userId))) return { ok: false, reason: "invalid-user" };
     return sendGameCommand("friend_request", userId, {}, 3000, true);
@@ -102,6 +110,7 @@
     namePet,
     feedPet,
     hatchOwnEgg,
+    discardPet,
     requestFriend,
     removeFriendDirect,
     breedPairDirect

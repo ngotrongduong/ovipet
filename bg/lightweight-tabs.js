@@ -9,15 +9,17 @@
 // resource types for tabs explicitly registered here. Scripts, HTML, CSS, XHR/fetch and forms
 // remain untouched, so the real OviPets UI logic still runs.
 //
-// Name-the-Species remains functional because its visual fingerprint is fetched through the
-// guarded background species-image service; that extension request has no matching owned page
-// tabId and therefore is not blocked by this tab-scoped rule.
+// Name-the-Species remains functional AND fast: a higher-priority tab-scoped allow rule lets
+// only /credit-challenge images load normally. Every other page image/media/font stays blocked.
+// The guarded background species-image service remains a fallback if that one image fails.
 (() => {
   globalThis.OWEH_BG ||= {};
   if (OWEH_BG.lightweightTabs) return;
 
   const RULE_ID = 5311001;
+  const CHALLENGE_ALLOW_RULE_ID = 5311002;
   const BLOCKED_RESOURCE_TYPES = Object.freeze(["image", "media", "font"]);
+  const CHALLENGE_IMAGE_REGEX = "^https://app\\.ovipets\\.com/img/pet/[0-9]+/credit-challenge(?:\\?.*)?$";
   let updateChain = Promise.resolve();
 
   const diag = (level, event, data = {}) =>
@@ -80,8 +82,17 @@
 
   async function writeOwnedTabIds(tabIds) {
     const ids = [...new Set((tabIds || []).map(validTabId).filter(id => id != null))].sort((a, b) => a - b);
-    const removeRuleIds = [RULE_ID];
+    const removeRuleIds = [RULE_ID, CHALLENGE_ALLOW_RULE_ID];
     const addRules = ids.length ? [{
+      id: CHALLENGE_ALLOW_RULE_ID,
+      priority: 2,
+      action: { type: "allow" },
+      condition: {
+        tabIds: ids,
+        regexFilter: CHALLENGE_IMAGE_REGEX,
+        resourceTypes: ["image"]
+      }
+    }, {
       id: RULE_ID,
       priority: 1,
       action: { type: "block" },
@@ -129,6 +140,8 @@
 
   OWEH_BG.lightweightTabs = Object.freeze({
     RULE_ID,
+    CHALLENGE_ALLOW_RULE_ID,
+    CHALLENGE_IMAGE_REGEX,
     BLOCKED_RESOURCE_TYPES,
     enable,
     disable,

@@ -27,7 +27,7 @@ assert.match(friendEggs, /POLL_FALLBACK_MS = 2000/);
 assert.match(friendEggs, /one final Hatchery verification/i);
 assert.match(eggTurn, /POST_CLICK_SETTLE_MS = 250/);
 assert.match(eggTurn, /species-incorrect" \? 400 : 750/);
-assert.match(species, /Date\.now\(\) \+ 600/);
+assert.match(species, /Date\.now\(\) \+ 500/);
 assert.match(workerControl, /message\?\.type === "eggBatchProgress"/);
 assert.match(sweep, /await sleep\(250\)/);
 

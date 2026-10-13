@@ -198,7 +198,9 @@
     for (const pet of Object.values(pets || {})) {
       if (pet?.present === false || !pet?.owned || pet.gender !== "Male" || pet.onCooldown || isCullEnclosure(pet.enclosure)
         || !completeForTarget(pet, target)) continue;
-      if (!sameFf && normalizeEnclosureLabel(pet.enclosure) !== normalizeEnclosureLabel(MALES_ENCLOSURE)) continue;
+      // Pure-line and Same-FF both need OviPets' real partner lists from every enclosure
+      // that contains a usable male. Restricting Pure-line to the "Males" enclosure can hide
+      // perfectly breedable partners before ranking even begins.
       if (pet.enclosure) labels.add(String(pet.enclosure));
     }
     return [...labels];
@@ -228,6 +230,30 @@
     decorated.sort((a, b) => comparePetPureMetrics(a.keyed, b.keyed));
     decorated.forEach((item, index) => { pets[index] = item.pet; });
     return pets;
+  }
+
+  // Pair-limit selection must rank the finished Female + best-Male rows, not the female alone.
+  // This lets a less-pure-looking female outrank a prettier female when her compatible male makes
+  // Body 1 (or the full target) materially more reachable. Unpaired rows always sort last.
+  function comparePlannedPureRows(a, b) {
+    const aPairable = Boolean(a?.maleId && a?.pure);
+    const bPairable = Boolean(b?.maleId && b?.pure);
+    if (aPairable !== bPairable) return Number(bPairable) - Number(aPairable);
+    if (!aPairable) return String(a?.id || "").localeCompare(String(b?.id || ""));
+    return comparePairPureMetrics(
+      {
+        pure: a.pure,
+        usageCount: a.maleUsageBefore || 0,
+        lineageUse: a.maleLineageUseBefore || 0,
+        otherId: a.id
+      },
+      {
+        pure: b.pure,
+        usageCount: b.maleUsageBefore || 0,
+        lineageUse: b.maleLineageUseBefore || 0,
+        otherId: b.id
+      }
+    ) || String(a.id || "").localeCompare(String(b.id || ""));
   }
 
   function buildSameFfTargetPlan(pets, target, history, options, now) {
@@ -437,20 +463,13 @@
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Female" && !pet.onCooldown
         && pedigreeUsable(pet, eligible) && isBreedingFemaleEnclosure(pet.enclosure)
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
-    const speciesCounts = breedableFemales.reduce((counts, pet) => {
-      const key = pet.species || "Unknown";
-      counts.set(key, (counts.get(key) || 0) + 1);
-      return counts;
-    }, new Map());
-    const focusSpecies = [...speciesCounts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    const females = sortByPureMetrics(breedableFemales
-      .filter(pet => (pet.species || "Unknown") === focusSpecies), target);
+    // Pure-line is female-first across the entire breeding program. Do not pick one
+    // "focus species" and silently ignore the rest: each female gets her own same-species pool.
+    const focusSpecies = null;
+    const females = sortByPureMetrics(breedableFemales, target);
     const males = Object.values(pets)
       .filter(pet => pet?.present !== false && pet?.owned && pet.gender === "Male" && !pet.onCooldown
-        && (pet.pedigreeVerified === true || eligible.size > 0)
-        && normalizeEnclosureLabel(pet.enclosure) === normalizeEnclosureLabel(MALES_ENCLOSURE)
-        && (pet.species || "Unknown") === focusSpecies
+        && !isCullEnclosure(pet.enclosure)
         && petPureMetrics(pet, target).usedChannels === STRICT_TARGET_CHANNELS);
     const usage = recentMaleUsage(history, now);
     const lineageUsage = new Map();
@@ -461,48 +480,38 @@
     }
     let unpaired = 0;
     const queue = females.map(female => {
-      const shortlist = shortlistMales(female, males, target, shortlistSize);
+      // Critical ordering: establish the real compatible pool first, THEN apply the colour
+      // shortlist. The old order could fill all 40 shortlist slots with related/not-offered
+      // males and miss a valid OviPets-listed male ranked 41st+ by colour.
+      const compatible = males
+        .filter(male => (male.species || "Unknown") === (female.species || "Unknown"))
+        .map(male => ({ male, pedigree: pairCompatibility(female, male, eligible) }))
+        .filter(item => item.pedigree.safe);
+      const pedigreeByMaleId = new Map(compatible.map(item => [String(item.male.id), item.pedigree]));
+      const shortlist = shortlistMales(female, compatible.map(item => item.male), target, shortlistSize);
       const ranked = shortlist.map(male => ({
         male,
         pure: pairPureMetrics(female, male, target),
         secondary: bestSecondaryTargetDistance(male, target),
-        pedigree: pairCompatibility(female, male, eligible),
+        pedigree: pedigreeByMaleId.get(String(male.id)) || pairCompatibility(female, male, eligible),
         usageCount: usage.get(String(male.id)) || 0,
         lineageUse: lineageUsage.get(lineageKey(male)) || 0
-      })).filter(item => item.pedigree.safe && Number.isFinite(item.pure.distance))
+      })).filter(item => Number.isFinite(item.pure.distance))
         .sort((a, b) => comparePairPureMetrics(
           { ...a, otherId: a.male.id },
           { ...b, otherId: b.male.id }
         ));
 
-      // Start from the male the legacy ranking would have selected. If other males
-      // carry the same Body-1 endpoint mask and differ by no more than 15 RGB points
-      // on the remaining Body-1 channel(s), treat that Body-1 quality as equivalent.
-      // Within that pool, use the user's requested secondary rule: compare Body 2,
-      // Scales, Extra 1 and Extra 2 independently and take each male's LOWEST slot
-      // distance to target. Lower wins (e.g. 12 beats 14). Existing recent-use and
-      // lineage-use tie-breaks only apply when that best secondary distance is equal.
+      // Near-equivalent Body-1 males stay in the shortlist so diversity is still available,
+      // but Pure-line no longer lets one unusually good secondary slot override the quality of
+      // the complete Female + Male pair. The full pair comparator already prioritizes Body 1
+      // reachability/probability, then full-target reachability/probability, locked/reachable
+      // channels, range width and distance before stable tie-breaks.
       const baseline = ranked[0];
       const equivalentPool = baseline
         ? ranked.filter(item => body1NearEquivalent(baseline.male, item.male, target))
         : [];
-      const preferredPool = (equivalentPool.length > 1 ? equivalentPool : ranked)
-        .slice()
-        .sort((a, b) => {
-          if (equivalentPool.length > 1) {
-            const secondary = Number(a.secondary?.bestDistance ?? Infinity)
-              - Number(b.secondary?.bestDistance ?? Infinity);
-            if (secondary) return secondary;
-            const usageDelta = Number(a.usageCount || 0) - Number(b.usageCount || 0);
-            if (usageDelta) return usageDelta;
-            const lineageDelta = Number(a.lineageUse || 0) - Number(b.lineageUse || 0);
-            if (lineageDelta) return lineageDelta;
-          }
-          return comparePairPureMetrics(
-            { ...a, otherId: a.male.id },
-            { ...b, otherId: b.male.id }
-          );
-        });
+      const preferredPool = ranked.slice();
       const preferredIds = new Set(preferredPool.map(item => String(item.male.id)));
       const orderedCandidates = preferredPool.concat(
         ranked.filter(item => !preferredIds.has(String(item.male.id)))
@@ -524,6 +533,8 @@
         maleName: chosen?.male.name || null,
         pure: chosen?.pure || null,
         maleCandidates,
+        compatibleMaleCount: compatible.length,
+        sameSpeciesMaleCount: males.filter(male => (male.species || "Unknown") === (female.species || "Unknown")).length,
         maleCandidateIndex: 0,
         rejectedMaleIds: [],
         maleUsageBefore: chosen?.usageCount || 0,
@@ -533,6 +544,10 @@
         maleBody1EquivalentPoolSize: equivalentPool.length || (chosen ? 1 : 0)
       };
     });
+    queue.sort(comparePlannedPureRows);
+    let pairRank = 0;
+    for (const row of queue) row.globalPairRank = row.maleId ? ++pairRank : null;
+
     return {
       queue,
       strategy: BREEDING_STRATEGIES.PURE_LINE,

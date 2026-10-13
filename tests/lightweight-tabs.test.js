@@ -31,16 +31,24 @@ const api = context.OWEH_BG.lightweightTabs;
   assert.equal(api.dnrAvailable(), true);
   await api.enable(101, "sweep-coordinator");
   await api.enable(102, "sweep-egg");
-  assert.equal(sessionRules.length, 1, "all lightweight tabs should share one session rule");
-  assert.deepEqual(Array.from(sessionRules[0].condition.tabIds), [101, 102]);
-  assert.deepEqual(Array.from(sessionRules[0].condition.resourceTypes), ["image", "media", "font"]);
-  assert.equal(sessionRules[0].action.type, "block");
+  assert.equal(sessionRules.length, 2, "lightweight tabs should share block + challenge-image allow rules");
+  const blockRule = () => sessionRules.find(rule => rule.id === api.RULE_ID);
+  const allowRule = () => sessionRules.find(rule => rule.id === api.CHALLENGE_ALLOW_RULE_ID);
+  assert.deepEqual(Array.from(blockRule().condition.tabIds), [101, 102]);
+  assert.deepEqual(Array.from(blockRule().condition.resourceTypes), ["image", "media", "font"]);
+  assert.equal(blockRule().action.type, "block");
+  assert.equal(allowRule().action.type, "allow");
+  assert.equal(allowRule().priority, 2);
+  assert.deepEqual(Array.from(allowRule().condition.tabIds), [101, 102]);
+  assert.deepEqual(Array.from(allowRule().condition.resourceTypes), ["image"]);
+  assert.match(allowRule().condition.regexFilter, /credit-challenge/);
 
   await api.disable(101);
-  assert.deepEqual(Array.from(sessionRules[0].condition.tabIds), [102]);
+  assert.deepEqual(Array.from(blockRule().condition.tabIds), [102]);
+  assert.deepEqual(Array.from(allowRule().condition.tabIds), [102]);
 
   await api.disable(102, "test-close");
-  assert.equal(sessionRules.length, 0, "disabling the final owned tab should remove the block rule");
+  assert.equal(sessionRules.length, 0, "disabling the final owned tab should remove both rules");
 
   assert.ok(diagnosticEvents.some(entry => entry.event === "tab.lightweight-enabled"));
   console.log("lightweight tab resource-rule tests passed");
