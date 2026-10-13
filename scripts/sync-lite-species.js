@@ -1,13 +1,14 @@
 "use strict";
 
-// Copies the Name-the-Species files Friend Sweep Lite shares with the full extension into
-// friend-sweep-lite/, byte for byte, from a checkout of the full extension's working branch:
+// Copies the files Friend Sweep Lite shares with the full extension into friend-sweep-lite/,
+// byte for byte, from a checkout of the full extension's working branch:
 //
 //   node scripts/sync-lite-species.js <path-to-full-extension-checkout>
 //
 // Lite keeps the same relative layout (domain/, data/, bg/, review/) so the files need no edits:
-// the silhouette matcher, the built-in library, the wrong-case store, the learned overlay with
-// the safety pause, and the review page. Lite's own background.js / content.js only wire them.
+// Name the Species (the silhouette matcher, the built-in library, the wrong-case store, the
+// learned overlay with the safety pause, the review page) and the self-update module. Lite's
+// own background.js / content.js only wire them.
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
@@ -17,6 +18,7 @@ const SHARED = [
   "data/species-static.js",
   "bg/species-stats.js",
   "bg/species-learned.js",
+  "bg/self-update.js",
   "review/species-review.html",
   "review/species-review.js",
   "review/species-review.css"
@@ -39,5 +41,5 @@ for (const file of SHARED) {
 let commit = "unknown";
 try { commit = execFileSync("git", ["-C", source, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim(); } catch {}
 fs.writeFileSync(path.join(target, "SHARED_FROM.txt"),
-  `Shared Name-the-Species files copied from the full extension at commit ${commit}:\n${SHARED.map(file => `- ${file}`).join("\n")}\nRefresh them with: node scripts/sync-lite-species.js <full-extension-checkout>\n`);
+  `Files shared with the full extension, copied unchanged from its commit ${commit}:\n${SHARED.map(file => `- ${file}`).join("\n")}\nRefresh them with: node scripts/sync-lite-species.js <full-extension-checkout>\n`);
 console.log(`synced ${SHARED.length} shared files from ${source} (${commit})`);

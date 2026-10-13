@@ -3,9 +3,13 @@
 // Name the Species is shared with the full extension, file for file (scripts/sync-lite-species.js):
 // the silhouette matcher, the totals and wrong-case store, and the learned overlay with the
 // safety pause. This file only wires them to the sweep.
-importScripts("domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js");
+importScripts("domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/self-update.js");
 const speciesStats = globalThis.OWEH_BG.speciesStats;
 const speciesLearned = globalThis.OWEH_BG.speciesLearned;
+const selfUpdate = globalThis.OWEH_BG.selfUpdate;
+// A new version is loaded only in a quiet moment; with a running sweep that is the wait between
+// two passes, and only while this much of it is left.
+const UPDATE_QUIET_MS = 90 * 1000;
 
 const STATE_KEY = "owehLiteSweep";
 // Lite 0.1 kept its totals and wrong cases under these keys; they are moved once.
@@ -559,14 +563,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (type === "liteGetState") {
-    speciesReady.then(() => Promise.all([getState(), getBatch(), readSpeed(), speciesStats.read(), speciesLearned.readGuard()]))
-      .then(([state,batch,speed,stats,guard]) => sendResponse({
+    speciesReady.then(() => Promise.all([getState(), getBatch(), readSpeed(), speciesStats.read(), speciesLearned.readGuard(), selfUpdate.status()]))
+      .then(([state,batch,speed,stats,guard,update]) => sendResponse({
         ok: true,
         state,
         batch: batchSummary(batch),
         speed,
         stats,
         paused: guard.paused,
+        update: { pending: update.pending?.version || "", waitingFor: update.waitingFor },
         isWorker: state.active && Number(state.workerTabId) === Number(sender.tab?.id)
       }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
@@ -641,3 +646,39 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 chrome.alarms.create(WATCHDOG_ALARM, { periodInMinutes: 0.5 });
 updateNetworkRules().catch(() => {});
+
+// The alarm that starts the next pass does not survive an extension reload: without it a sweep
+// reloaded during its wait would wait forever.
+async function ensureResumeAlarm() {
+  const state = await getState();
+  if (!state.active || state.phase !== "wait") return;
+  if (await chrome.alarms.get(RESUME_ALARM)) return;
+  await chrome.alarms.create(RESUME_ALARM, { when: Math.max(Number(state.waitingUntil || 0), Date.now() + 5000) });
+}
+ensureResumeAlarm().catch(() => {});
+
+// Self-update (bg/self-update.js, shared): a newer version in this folder — put there by
+// auto-update.ps1 or by hand — is loaded when no sweep runs, or in the wait between two passes.
+// The reload keeps the sweep's state; the worker tab is refreshed and carries on from it.
+const REVIEW_PAGE_URL = chrome.runtime.getURL("review/species-review.html");
+async function sweepBusy() {
+  const front = await chrome.tabs.query({ active: true }).catch(() => []);
+  if (front.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL))) return "the review page (close it or switch tabs)";
+  const state = await getState();
+  if (!state.active) return "";
+  const quiet = state.phase === "wait" && !(await getBatch())
+    && Number(state.waitingUntil || 0) - Date.now() > UPDATE_QUIET_MS;
+  return quiet ? "" : "the sweep (it loads between two passes)";
+}
+selfUpdate.start({
+  busy: sweepBusy,
+  tabUrls: ["https://ovipets.com/*", "https://app.ovipets.com/*"],
+  beforeReload: async () => {
+    const tabs = await chrome.tabs.query({}).catch(() => []);
+    return { review: tabs.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL)) };
+  },
+  onApplied: async ({ resume }) => {
+    await ensureResumeAlarm().catch(() => {});
+    if (resume?.review) await speciesLearned.openReview({ focus: false }).catch(() => null);
+  }
+});

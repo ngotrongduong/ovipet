@@ -41,9 +41,10 @@
     panel = document.createElement("section");
     panel.id = PANEL_ID;
     panel.innerHTML = `
-      <strong>Friend Sweep Lite</strong>
+      <strong>Friend Sweep Lite <small>v${chrome.runtime.getManifest().version}</small></strong>
       <div id="oweh-lite-status">Ready</div>
       <div id="oweh-lite-progress">${IDLE_PROGRESS}</div>
+      <div id="oweh-lite-update" hidden></div>
       <div class="row">
         <button id="oweh-lite-start" class="primary" type="button">Start</button>
         <button id="oweh-lite-stop" class="stop" type="button">Stop</button>
@@ -67,6 +68,18 @@
 
   // The safety pause (too many wrong Name the Species answers) keeps the sweep stopped until
   // the owner presses Resume; the status line says so on every OviPets tab.
+  // A newer version in the extension's folder loads by itself (bg/self-update.js); this line
+  // says so while it is waiting for a quiet moment.
+  function showUpdate(update) {
+    const node = document.querySelector("#oweh-lite-update");
+    if (!node) return;
+    const text = update?.pending
+      ? `v${update.pending} is ready — ${update.waitingFor ? `waiting for ${update.waitingFor}` : "loading it shortly"}`
+      : "";
+    if (node.textContent !== text) node.textContent = text;
+    if (node.hidden !== !text) node.hidden = !text;
+  }
+
   let pauseShown = false;
   function showPause(paused) {
     const resume = document.querySelector("#oweh-lite-resume");
@@ -283,6 +296,7 @@
       if (!snapshot?.ok) return;
       const { state, batch, speed, stats } = snapshot;
       showPause(snapshot.paused || null);
+      showUpdate(snapshot.update);
       if (state?.active && !snapshot.isWorker) return;
       if (!state?.active || Number(state.workerTabId) <= 0) {
         setProgress(`Name Species: ${stats?.correct || 0} correct · ${stats?.wrong || 0} wrong`);
@@ -729,6 +743,7 @@
       const stats = snapshot.stats || {};
       setProgress(`Name Species: ${stats.correct || 0} correct · ${stats.wrong || 0} wrong`);
       showPause(snapshot.paused || null);
+      showUpdate(snapshot.update);
       if (snapshot.isWorker) scheduleWorker(150);
     }
   })().catch(error => console.error("[Friend Sweep Lite] startup failed", error));

@@ -25,20 +25,34 @@ const area = store => ({
   async set(values) { Object.assign(store, clone(values)); },
   async remove(keys) { for (const key of [].concat(keys)) delete store[key]; }
 });
+const alarms = {};
 const chrome = {
   storage: { local: area(local), session: area(session) },
-  runtime: { onMessage: { addListener(fn) { listener = fn; } }, getURL: file => `chrome-extension://lite/${file}` },
+  runtime: {
+    onMessage: { addListener(fn) { listener = fn; } },
+    getURL: file => `chrome-extension://lite/${file}`,
+    getManifest: () => ({ version: "0.3.0" }),
+    reload() { throw new Error("the service worker must not reload itself in this test"); }
+  },
+  management: { getSelf: async () => ({ installType: "development" }) },
   tabs: {
-    async query() { return tabs; },
+    async query(filter = {}) { return filter.active ? tabs.filter(tab => tab.active) : tabs; },
     async get(id) { const tab = tabs.find(entry => entry.id === id); if (!tab) throw new Error("no tab"); return tab; },
     async create(props) { const tab = { id: tabs.length + 10, windowId: 3, ...props }; tabs.push(tab); return tab; },
     async update(id, props) { const tab = tabs.find(entry => entry.id === id); if (tab) Object.assign(tab, props); return tab; },
     async remove() {},
+    async reload() {},
     async sendMessage(id, message) { sent.push([id, message.type, message.reason || ""]); },
     onRemoved: { addListener() {} }
   },
-  windows: { async update() { return {}; } },
-  alarms: { async create() {}, async clear() {}, onAlarm: { addListener() {} } },
+  windows: { async update() { return {}; }, async get() { return { focused: false }; } },
+  idle: { queryState: async () => "idle" },
+  alarms: {
+    async create(name, info) { alarms[name] = clone(info); },
+    async clear(name) { delete alarms[name]; },
+    async get(name) { return alarms[name]; },
+    onAlarm: { addListener() {} }
+  },
   declarativeNetRequest: { async updateSessionRules() {} }
 };
 const sandbox = vm.createContext({
@@ -113,6 +127,35 @@ const shape = "f".repeat(16) + "0".repeat(240);
   const saved = local.owehSpeciesWrongCases.find(item => item.eggId === "9");
   assert.equal((await send({ type: "speciesOwnerLabel", id: saved.id, species: "Lotor" })).reason, "rejected-by-game");
   assert.equal((await send({ type: "speciesOwnerLabel", id: saved.id, species: "Lepus" })).ok, true);
+
+  // Self-update: never under an active pass; in the wait between two passes only while enough
+  // of it is left; and the alarm that starts the next pass is put back after a reload.
+  assert.deepEqual(clone((await send({ type: "liteGetState" })).update), { pending: "", waitingFor: "" });
+  assert.ok((await sandbox.sweepBusy()).includes("review page"), "not while the owner is on the review page");
+  for (const tab of tabs) tab.active = false;
+  assert.equal(await sandbox.sweepBusy(), "", "no sweep: a reload is safe");
+  assert.equal((await send({ type: "liteStartSweep", queue })).ok, true);
+  assert.ok((await sandbox.sweepBusy()).includes("the sweep"), "a pass is running");
+  local.owehLiteSweep = { ...local.owehLiteSweep, phase: "wait", waitingUntil: Date.now() + 5 * 60 * 1000 };
+  assert.equal(await sandbox.sweepBusy(), "", "waiting for the next pass with minutes to spare");
+  session.owehLiteBatch = { id: "b", queue: [], active: {} };
+  assert.ok((await sandbox.sweepBusy()).includes("the sweep"), "a batch is still open");
+  delete session.owehLiteBatch;
+  local.owehLiteSweep.waitingUntil = Date.now() + 30 * 1000;
+  assert.ok((await sandbox.sweepBusy()).includes("the sweep"), "the next pass is about to start");
+
+  delete alarms["oweh-lite-resume"];
+  const resumeAt = Date.now() + 4 * 60 * 1000;
+  local.owehLiteSweep.waitingUntil = resumeAt;
+  await sandbox.ensureResumeAlarm();
+  assert.deepEqual(alarms["oweh-lite-resume"], { when: resumeAt }, "the next pass still starts on time after a reload");
+  alarms["oweh-lite-resume"] = { when: 1 };
+  await sandbox.ensureResumeAlarm();
+  assert.deepEqual(alarms["oweh-lite-resume"], { when: 1 }, "an alarm that exists is left alone");
+  local.owehLiteSweep = { ...local.owehLiteSweep, active: false, phase: "idle" };
+  delete alarms["oweh-lite-resume"];
+  await sandbox.ensureResumeAlarm();
+  assert.equal("oweh-lite-resume" in alarms, false, "no alarm without a waiting sweep");
 
   console.log("Friend Sweep Lite species wiring tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,8 +1,9 @@
-Shared Name-the-Species files copied from the full extension at commit ae15dc1:
+Files shared with the full extension, copied unchanged from its commit b042cbb:
 - domain/species-shape.js
 - data/species-static.js
 - bg/species-stats.js
 - bg/species-learned.js
+- bg/self-update.js
 - review/species-review.html
 - review/species-review.js
 - review/species-review.css

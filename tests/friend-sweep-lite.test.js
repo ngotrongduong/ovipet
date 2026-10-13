@@ -15,7 +15,7 @@ const dbSource = read("data/species-static.js");
 
 assert.equal(manifest.name, "OviPets Friend Sweep Lite");
 assert.equal(manifest.manifest_version, 3);
-assert.deepEqual(manifest.permissions.sort(), ["alarms","declarativeNetRequest","storage","tabs","unlimitedStorage"].sort());
+assert.deepEqual(manifest.permissions.sort(), ["alarms","declarativeNetRequest","idle","storage","tabs","unlimitedStorage"].sort());
 assert.equal(manifest.content_scripts.length, 1);
 assert.deepEqual(manifest.content_scripts[0].js, ["data/species-static.js","domain/species-shape.js","content.js"]);
 for (const file of [...manifest.content_scripts[0].js, ...manifest.content_scripts[0].css, manifest.background.service_worker]) {
@@ -51,7 +51,7 @@ assert.ok(css.length < 2500, "Lite UI CSS should remain tiny");
 // Name the Species is the full extension's, file for file: the service worker imports the
 // shared modules and the page code talks to them with the shared message names.
 const imports = background.match(/importScripts\(([^;]+)\);/)[1];
-for (const file of ["domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js"]) {
+for (const file of ["domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/self-update.js"]) {
   assert.ok(imports.includes(`"${file}"`), `service worker must import ${file}`);
   assert.ok(fs.existsSync(path.join(root, file)), `shared file missing: ${file}`);
 }
@@ -78,7 +78,36 @@ const learnedModule = read("bg/species-learned.js");
 for (const key of ["owehSpeciesLearned_", "owehSpeciesGuard"]) {
   assert.ok(learnedModule.includes(`"${key}"`) && content.includes(`"${key}"`), `storage key must match on both sides: ${key}`);
 }
-for (const id of ["oweh-lite-review", "oweh-lite-resume"]) assert.ok(content.includes(`id="${id}"`), `panel control missing: ${id}`);
+for (const id of ["oweh-lite-review", "oweh-lite-resume", "oweh-lite-update"]) assert.ok(content.includes(`id="${id}"`), `panel control missing: ${id}`);
+
+// Self-update: the shared module is started, and the GitHub updater that feeds the folder can
+// neither delete anything here nor replace the scripts the scheduled task runs.
+assert.match(background, /selfUpdate\.start\(\{/);
+assert.match(background, /ensureResumeAlarm\(\)/);
+const updater = read("auto-update.ps1");
+const enable = fs.readFileSync(path.join(root, "Enable auto-update.bat"), "utf8");
+const disable = fs.readFileSync(path.join(root, "Disable auto-update.bat"), "utf8");
+assert.ok(updater.includes('[string]$Branch = "feat/friend-sweep-lite"') && updater.includes('[string]$ExpectedName = "OviPets Friend Sweep Lite"'));
+assert.deepEqual([...updater.matchAll(/Remove-Item[^\n]*/g)].map(match => match[0]), ["Remove-Item -LiteralPath $work -Recurse -Force } catch {}"],
+  "the updater removes only its own temporary download");
+assert.equal(/robocopy|\/MIR|Clear-Content|rmdir|rd \/s/i.test(updater), false, "the updater must never purge the extension folder");
+const allowed = updater.match(/\$Allowed = @\(([^)]*)\)/)[1].split(",").map(item => item.trim().replace(/"/g, ""));
+assert.ok(allowed.includes(".js") && allowed.includes(".json") && allowed.includes(".html") && allowed.includes(".css"));
+for (const never of [".ps1", ".bat", ".cmd", ".vbs", ".exe", ".com", ".wsf", ".lnk", ".dll"]) {
+  assert.equal(allowed.includes(never), false, `the updater must never copy ${never} files from a download`);
+}
+assert.ok(updater.includes("if ($Allowed -notcontains $item.Extension.ToLowerInvariant()) { continue }"), "only allowed kinds of file are copied");
+for (const tool of ["schtasks", "powershell", "conhost"]) {
+  assert.equal(new RegExp(`(^|[\\s"(])${tool}(\\.exe)?[\\s"]`, "im").test(enable.replace(/%SYS%\\\w+\.exe|%PS%|"%SystemRoot%[^"]*"/g, "")), false,
+    `${tool} is called by its full Windows path, not by name from the extension folder`);
+}
+assert.match(updater, /if \(\$local\.name -ne \$ExpectedName\) \{ throw/);
+assert.ok(updater.lastIndexOf("Copy-Item") > updater.indexOf("foreach ($item in"), "manifest.json is copied after everything else");
+assert.equal(/[^\x00-\x7f]/.test(updater + enable + disable), false, "scripts stay plain ASCII for Windows PowerShell 5 and cmd");
+assert.ok(enable.includes("\r\n") && !/[^\r]\n/.test(enable), "batch files keep CRLF line endings");
+assert.ok(enable.includes('"%SYS%\\schtasks.exe" /Create /F /TN "%TASK%" /SC MINUTE /MO 30') && enable.includes("auto-update.ps1"));
+assert.ok(disable.includes('"%SystemRoot%\\System32\\schtasks.exe" /Delete /F /TN "OviPets Friend Sweep Lite update"'));
+assert.ok(enable.includes('set "TASK=OviPets Friend Sweep Lite update"'), "both batch files name the same task");
 
 const sandbox = vm.createContext({ console, Object, Array, Set, Number, String, Boolean, Math, globalThis: null });
 sandbox.globalThis = sandbox;
