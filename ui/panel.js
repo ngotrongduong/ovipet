@@ -135,6 +135,13 @@ OWEH.register("ui-panel", helpers => {
     storageGet("owehSpeciesAlertSound", true).then(value => { speciesSoundInput.checked = value !== false; });
     speciesSoundInput.addEventListener("change", () => storageSet({ owehSpeciesAlertSound: speciesSoundInput.checked }));
 
+    // Self-update switch (bg/self-update.js keeps it and answers with the current state).
+    const autoUpdateInput = panel.querySelector("#oweh-auto-update");
+    autoUpdateInput?.addEventListener("change", async () => {
+      const response = await runtimeRequest({ type: "selfUpdateEnabled", enabled: autoUpdateInput.checked });
+      if (response?.ok) showSelfUpdate(response);
+    });
+
     // Name-the-Species safety pause limits (kept by the background, bg/species-learned.js).
     const speciesStreakInput = panel.querySelector("#oweh-species-streak");
     const speciesHourInput = panel.querySelector("#oweh-species-hour");
@@ -342,7 +349,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.10.2</span>
+          <span class="oweh-version">v5.11.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -516,6 +523,11 @@ OWEH.register("ui-panel", helpers => {
             <div class="oweh-row" data-tip="Females with no FF/00 color pair and an average target distance at or below this value are routed to Breeding Stock."><label for="oweh-stock-distance">Stock distance</label><input id="oweh-stock-distance" type="number" min="0" max="765" step="1" value="96"><span>max</span></div>
             <div class="oweh-row" data-tip="Most egg tabs Full sweep and own-Hatchery turning may open at once. Lower it (4–8) to save CPU; 15 lets the adaptive 10 → 12 → 15 speed run uncapped."><label for="oweh-egg-tab-cap">Egg tabs</label><input id="oweh-egg-tab-cap" type="number" min="1" max="15" step="1" value="15"><span>max</span></div>
             <label class="oweh-check" data-tip="Play a sound and focus the exact tab whenever an unknown Name the Species verification needs your answer."><input id="oweh-species-sound" type="checkbox" checked> Species verification alert</label>
+            <label class="oweh-check" data-tip="When a newer version is in the extension's folder, load it automatically as soon as no job is running, then refresh the OviPets tabs. No visit to the browser's extensions page is needed."><input id="oweh-auto-update" type="checkbox" checked> Update the extension by itself</label>
+            <div id="oweh-update-status" class="oweh-inline-meta">Extension version: checking…</div>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-update-now" class="oweh-link-button" type="button" data-tip="A newer version is waiting for a running job to finish: stop every job and load it now. Start your job again afterwards." disabled>Update now</button>
+            </div>
             <div class="oweh-target-title">Fixed pure target</div>
             <div class="oweh-grid" data-tip="The breeding score is fixed to this project's target colors.">
               <label>Body 1<input id="oweh-body1" value="#FFFFFF" maxlength="7" readonly></label>
@@ -590,6 +602,15 @@ OWEH.register("ui-panel", helpers => {
       if (!response?.ok) throw new Error(response?.error || "pause state unavailable");
       showSpeciesGuard(response.guard, null, true);
       setStatus("Name the Species answering resumed — start the friend sweep or the Hatchery run again");
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-update-now", "Updating the extension", async () => {
+      await stopAllAutomation();
+      const response = await runtimeRequest({ type: "selfUpdateNow" });
+      if (!response?.ok) throw new Error(response?.error || "update unavailable");
+      setStatus(response.action === "reloading"
+        ? `Loading v${response.version} — this tab refreshes in a moment; start your job again afterwards`
+        : "No newer version is waiting in the extension folder");
+      await updateSelfUpdate(true);
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
@@ -731,6 +752,50 @@ OWEH.register("ui-panel", helpers => {
     }
   }
 
+  let selfUpdateAt = 0;
+  let selfUpdatePending = false;
+  let announcedUpdate = "";
+
+  // The version line under Settings. A release that has to wait for a running job is also
+  // announced once on the status line, so it is seen without opening Settings.
+  function showSelfUpdate(status) {
+    const line = document.querySelector("#oweh-update-status");
+    if (!line || !status) return;
+    const enabled = status.enabled !== false;
+    const box = document.querySelector("#oweh-auto-update");
+    if (box && document.activeElement !== box && box.checked !== enabled) box.checked = enabled;
+    const pending = status.supported && enabled ? String(status.pending?.version || "") : "";
+    let text = `Extension v${status.loaded} · up to date`;
+    if (!status.supported) text = `Extension v${status.loaded} · the browser updates this install`;
+    else if (!enabled) text = `Extension v${status.loaded} · self-update is off`;
+    else if (pending) text = `v${pending} is ready — ${status.waitingFor ? `waiting for ${status.waitingFor}` : "loading it shortly"}`;
+    else if (status.applied?.at) text += ` · updated itself ${new Date(status.applied.at).toLocaleString()}`;
+    if (line.textContent !== text) line.textContent = text;
+    line.classList?.toggle("oweh-alert", Boolean(pending));
+    const button = document.querySelector("#oweh-update-now");
+    if (button && button.disabled !== !pending) button.disabled = !pending;
+    if (pending && status.waitingFor && announcedUpdate !== pending) {
+      announcedUpdate = pending;
+      setStatus(`Extension v${pending} is ready — it loads by itself once ${status.waitingFor} is done (or Settings → Update now)`);
+    }
+  }
+
+  async function updateSelfUpdate(force = false) {
+    if (!document.querySelector("#oweh-update-status")) return;
+    const now = Date.now();
+    if (!force && (selfUpdatePending || now - selfUpdateAt < 10000)) return;
+    selfUpdatePending = true;
+    try {
+      const response = await runtimeRequest({ type: "selfUpdateStatus" });
+      selfUpdateAt = Date.now();
+      if (response?.ok) showSelfUpdate(response);
+    } catch {
+      // The line keeps its last text; a dead extension context is reported elsewhere.
+    } finally {
+      selfUpdatePending = false;
+    }
+  }
+
   let diagnosticStatsAt = 0;
   let diagnosticStatsPending = false;
   async function updateDiagnosticStats(force = false) {
@@ -765,6 +830,7 @@ OWEH.register("ui-panel", helpers => {
     updatePetNameSuggestion();
     updateSpeciesWrongCount();
     updateSpeciesGuard();
+    updateSelfUpdate();
     updateDiagnosticStats();
   }
 

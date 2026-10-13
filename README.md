@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.10.2**
+Current release: **v5.11.0**
 
 ## Engineering objective
 
@@ -17,7 +17,19 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
-## Unreleased — Confirmed breeding plans are sent much faster (2026-10-13)
+## v5.11.0 — The extension updates itself (2026-10-14)
+
+No more visit to the browser's extensions page after a change:
+
+- The extension looks at its own folder once a minute. When the `manifest.json` there carries another version than the one that is running, it reloads itself and then refreshes the open OviPets tabs.
+- It never does that under a running job (friend sweep, Hatchery run, breeding, newborn pass, any background job) or while the review page is in front. The new version then waits, the Settings section says what it is waiting for, and **Update now** stops every job and loads it at once.
+- A tab refreshed by an update starts nothing by itself: a Hatchery run you stopped stays stopped.
+- Switch: Settings → **Update the extension by itself** (on by default). Only for an unpacked install; a store install is updated by the browser.
+- The version number is the signal: a change goes live when the version in `manifest.json` is raised, not while files are still being edited.
+
+One manual reload is still needed once, to load the version that contains this.
+
+## v5.11.0 — Confirmed breeding plans are sent much faster (2026-10-13)
 
 After **Confirm**, each pair used to take seconds for reasons that had nothing to do with the game:
 
@@ -26,7 +38,7 @@ After **Confirm**, each pair used to take seconds for reasons that had nothing t
 
 Still one command at a time, each confirmed by the game before the next. A female the game refuses with 8 males in a row is skipped (before: every listed male was tried, one server round trip each).
 
-## Unreleased — Name the Species learns, pauses and can be reviewed (2026-10-13)
+## v5.11.0 — Name the Species learns, pauses and can be reviewed (2026-10-13)
 
 The quiz now draws from about 39 species (10 before); the built-in library is thin for the new ones.
 
@@ -35,14 +47,14 @@ The quiz now draws from about 39 species (10 before); the built-in library is th
 - **Review wrongs** (panel → Species) opens a page with one card per missed picture: the real quiz picture, the answers the game rejected (struck out) and the remaining options. Click the right species and the helper learns it at once; click another to change it, or remove the label. A label the game contradicts is refused. If the egg already shows a newer question, you label the picture you see instead.
 - The built-in library was rebuilt with the owner's 196 labels of 2026-10-13 (8 refused because the game itself contradicted them): 1,691 silhouettes in 39 species.
 
-## Unreleased — Highlight best eggs (2026-10-05)
+## v5.11.0 — Highlight best eggs (2026-10-05)
 
 - **Highlight best eggs** (Hatchery section) marks the eggs closest to the pure target, 10 by default (**Best eggs to mark**, 1–50). Each gets a gold frame and its rank on the Hatchery page, and the panel lists them with their colours; hover a mark for the score.
 - **Scoring:** each of the 15 colour channels is worth `1/(distance+1)` (exact = 1, one step off = 0.5), and slots are weighted **Body 1 ×5, Body 2 ×4, Scales ×3, Extra 1 ×2, Extra 2 ×1**. A perfect egg scores 45.
 - **Fast scan:** colours already saved by the newborn pass are reused, the rest are fetched 5 at a time (profile only) and remembered, so a second scan only reads new eggs. It reads only: nothing is sent to the game and no pet record is written.
 - The marks come back by themselves whenever OviPets redraws the Hatchery, until you press **Clear marks** or scan again.
 
-## Unreleased — Discard surplus pets and eggs (2026-10-05)
+## v5.11.0 — Discard surplus pets and eggs (2026-10-05)
 
 - **One flow replaces Male cull and Discard poor eggs.** Under Breeding: **Plan discard** lists every surplus hatched pet and egg, **View discard list** shows them with their colours and the kept pets that replace each one, and **Confirm & discard** sends OviPets' own **Send To → Discard** command for the list. **Discarding is permanent** — nothing is moved to Males discard any more.
 - **New rule, colours only.** A channel is worth `1/(distance+1)` (measured on 2,718 bred pets: exact when both parents are exact, about 1 in `d+1` when one parent is exact and the other is `d` off). A pet is surplus when at least **Spares** (default 10) kept pets of its own sex are at least as good in all 15 channels of Body 1, Body 2, Scales, Extra 1 and Extra 2, with 5 percentage points of slack. An egg needs that many males **and** that many females. Pedigree is not considered. The old rule (better on every channel by exact distance, two lineages) listed 1 egg out of 975.

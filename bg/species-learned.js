@@ -224,10 +224,15 @@
     return { ok: true, guard, learned };
   }
 
-  async function openReview() {
+  // focus: false puts the page back quietly (an extension reload closes it).
+  async function openReview({ focus = true } = {}) {
     const url = chrome.runtime.getURL(REVIEW_PAGE);
     const tabs = await chrome.tabs.query({}).catch(() => []);
     const existing = tabs.find(tab => String(tab.url || "").split("#")[0] === url);
+    if (!focus) {
+      const tab = existing || await chrome.tabs.create({ url, active: false });
+      return { ok: true, tabId: tab?.id ?? null, reused: Boolean(existing) };
+    }
     const tab = existing
       ? await chrome.tabs.update(existing.id, { active: true })
       : await chrome.tabs.create({ url, active: true });

@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/state-health.js", "bg/self-update.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -87,6 +87,43 @@ function dropRetentionRanking() {
     "owehRetentionRanking", "owehRetentionReview", "owehRetentionSummary", "owehRetentionLastFullScanAt"
   ]).catch(() => {});
 }
+
+// Self-update (bg/self-update.js): a newer version in the extension's folder is loaded by the
+// extension itself, but never under a running job. What it waits for is shown in the panel.
+const selfUpdate = globalThis.OWEH_BG?.selfUpdate;
+const REVIEW_PAGE_URL = chrome.runtime.getURL("review/species-review.html");
+
+async function automationBusy() {
+  const task = await readSharedWorkerTask();
+  if (isWorkerLeaseLive(task)) return `"${task.owner || "a job"}" running in the background tab`;
+  const state = await chrome.storage.local.get({
+    owehSweep: { active: false }, owehEggRun: { active: false }, owehBreedCampaign: { active: false },
+    owehHatchlingRun: { active: false }, owehFriendRemoval: { active: false }
+  });
+  if (state.owehSweep?.active) return "the friend sweep";
+  if (state.owehEggRun?.active) return "the Hatchery run";
+  if (state.owehBreedCampaign?.active) return "the breeding campaign";
+  if (state.owehHatchlingRun?.active) return "the newborn pass";
+  if (state.owehFriendRemoval?.active) return "a friend removal";
+  // A reload closes extension pages: not while the owner is looking at the review page.
+  const front = await chrome.tabs.query({ active: true }).catch(() => []);
+  if (front.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL))) return "the review page (close it or switch tabs)";
+  return "";
+}
+
+selfUpdate?.start({
+  busy: automationBusy,
+  tabUrls: ["https://ovipets.com/*", "https://app.ovipets.com/*"],
+  // A review page left open in the background is put back afterwards, without taking focus.
+  beforeReload: async () => {
+    const tabs = await chrome.tabs.query({}).catch(() => []);
+    return { review: tabs.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL)) };
+  },
+  onApplied: async ({ from, to, resume }) => {
+    diagnostic("info", "runtime", "self-update.applied", { from, to });
+    if (resume?.review) await speciesLearned.openReview({ focus: false }).catch(() => null);
+  }
+});
 
 chrome.runtime.onInstalled.addListener(dropRetentionRanking);
 chrome.runtime.onInstalled.addListener(disableLegacyDailyAlarm);
@@ -293,6 +330,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "speciesWrongReviewOpen") {
     speciesLearned.openReview().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateStatus") {
+    selfUpdate.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateEnabled") {
+    selfUpdate.setEnabled(message.enabled).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateNow") {
+    // The owner pressed "Update now": the panel has stopped every job before sending this.
+    selfUpdate.check({ force: true }).then(result => sendResponse({ ok: true, ...result }))
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

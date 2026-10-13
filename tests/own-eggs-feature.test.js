@@ -211,6 +211,22 @@ function setup({ hash = "#!/?src=pets&sub=hatchery", eggs = [], hatchable = [], 
     assert.equal(env.log.claims.length, 1, "Start works again after Resume");
   }
 
+  // The extension updated itself and refreshed this tab: that page load starts nothing, also
+  // not later in the same tab; the button still works.
+  {
+    const env = setup({ eggs: [{ id: "65", href: "?pet=65" }] });
+    env.store.owehSelfUpdateReloadAt = env.clock.now - 5000;
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, 0, "a refresh caused by an update must not auto-start a run");
+    env.clock.now += 10 * 60 * 1000;
+    await env.api.maybeAutoStart();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.log.claims.length, 0, "and it stays that way for this page load");
+    await env.api.start();
+    assert.equal(env.log.claims.length, 1);
+  }
+
   // A run stopped from another tab (the pause is seen in an egg tab) must not auto-start again
   // on this Hatchery tab's next refresh.
   {

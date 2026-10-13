@@ -21,6 +21,7 @@ OWEH.register("feature-own-eggs", helpers => {
   const HATCH_BATCH_SIZE = 50;
   const HATCH_DISPATCH_DELAY_MS = 100;
   const HATCH_SETTLE_MS = 800;
+  const SELF_UPDATE_HOLD_MS = 2 * 60 * 1000;
 
   let processing = false;
   let autoStarting = false;
@@ -300,6 +301,13 @@ OWEH.register("feature-own-eggs", helpers => {
       const run = await read();
       if (run.active || processing || autoStartSuppressed) return;
       if (await speciesPaused()) return;
+      // The extension updated itself and refreshed this tab (bg/self-update.js): that is not the
+      // owner opening the Hatchery, so it starts nothing — a run they stopped stays stopped.
+      const refreshedAt = Number(await storageGet("owehSelfUpdateReloadAt", 0)) || 0;
+      if (Date.now() - refreshedAt < SELF_UPDATE_HOLD_MS) {
+        autoStartSuppressed = true;
+        return;
+      }
       start();
     } finally {
       autoStarting = false;
