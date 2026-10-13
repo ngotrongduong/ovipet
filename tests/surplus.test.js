@@ -40,7 +40,7 @@ const egg = (id, colors, extra) => pet(id, "", colors, {
 });
 const ids = rows => rows.map(row => row.id);
 
-test("surplus domain: channel worth, tolerance and replacement counts", () => {
+test("surplus domain: channel worth, tolerance and replacement counts (females)", () => {
   const { surplus, colors } = load().domain;
   const target = { ...colors.STRICT_PURE_TARGET };
 
@@ -55,49 +55,109 @@ test("surplus domain: channel worth, tolerance and replacement counts", () => {
   assert.equal(surplus.covers([1 / 21], [1 / 10], 0.05), false);
 
   const pets = {
-    1: male("1", { body1: "#FFFFFF" }),
-    2: male("2", { body1: "#FFFFFF" }),
-    // Nothing exact, far everywhere: both Body-1 males replace it.
-    3: male("3"),
+    1: female("1", { body1: "#FFFFFF" }),
+    2: female("2", { body1: "#FFFFFF" }),
+    // Nothing exact, far everywhere: both Body-1 females replace it.
+    3: female("3"),
     // Exact Scales that nobody else has: worse on Body 1, but not replaceable.
-    4: male("4", { scales: "#000000" }),
-    // One step off on Body 1 red: the exact males still replace it.
-    5: male("5", { body1: "#FEFFFF" })
+    4: female("4", { scales: "#000000" }),
+    // One step off on Body 1 red: the exact females still replace it.
+    5: female("5", { body1: "#FEFFFF" })
   };
   const result = surplus.planSurplus(pets, target, { minReplacements: 2 });
   assert.deepEqual(ids(result.rows), ["3", "5"], "worst first");
-  assert.equal(result.rows[0].replacements, 3, "every kept male that is at least as good is counted");
+  assert.equal(result.rows[0].replacements, 3, "every kept female that is at least as good is counted");
   assert.deepEqual(result.rows[1].examples.map(item => item.id), ["1", "2"]);
   assert.equal(result.rows[1].colors, "FEFFFF-808080-808080-808080-808080");
-  assert.deepEqual(clone(result.summary.surplus), { egg: 0, female: 0, male: 2 });
-  assert.deepEqual(clone(result.summary.kept), { egg: 0, female: 0, male: 3 });
+  assert.equal(result.rows[1].reason, undefined);
+  assert.deepEqual(clone(result.summary.surplus), { egg: 0, female: 2, male: 0 });
+  assert.deepEqual(clone(result.summary.kept), { egg: 0, female: 3, male: 0 });
 
-  // Asking for more spares keeps more: at 4 only the far male still has enough, at 5 nobody.
+  // Asking for more spares keeps more: at 4 only the far female still has enough, at 5 nobody.
   assert.deepEqual(ids(surplus.planSurplus(pets, target, { minReplacements: 4 }).rows), ["3"]);
   assert.equal(surplus.planSurplus(pets, target, { minReplacements: 5 }).rows.length, 0);
   // The default asks for 10.
   assert.equal(surplus.planSurplus(pets, target).summary.minReplacements, 10);
 
   // Identical pets replace each other: the first two stay, later copies can go.
-  const twins = { 1: male("1"), 2: male("2"), 3: male("3"), 4: male("4") };
+  const twins = { 1: female("1"), 2: female("2"), 3: female("3"), 4: female("4") };
   assert.deepEqual(ids(surplus.planSurplus(twins, target, { minReplacements: 2 }).rows), ["3", "4"]);
 
-  // Sexes are never compared with each other.
+  // Males never replace a female.
   const mixed = { 1: male("1", { body1: "#FFFFFF" }), 2: male("2", { body1: "#FFFFFF" }), 3: female("3") };
   assert.equal(surplus.planSurplus(mixed, target, { minReplacements: 2 }).rows.length, 0);
+  // A gone female replaces nobody.
+  const gone = { 1: female("1", { body1: "#FFFFFF" }), 2: female("2", { body1: "#FFFFFF" }, { present: false }), 3: female("3") };
+  assert.equal(surplus.planSurplus(gone, target, { minReplacements: 2 }).rows.length, 0);
 });
 
-test("surplus domain: Generated, unchecked, protected, species and Males discard", () => {
+test("surplus domain: the fixed male rule", () => {
+  const { surplus, colors } = load().domain;
+  const target = { ...colors.STRICT_PURE_TARGET };
+  const keeps = patch => surplus.keepsAsMale(surplus.channelDistances({ colors: { ...FAR, ...patch } }, target));
+
+  // Body 1 needs two exact FF pairs.
+  assert.equal(keeps({ body1: "#FFFFFF" }), true);
+  assert.equal(keeps({ body1: "#FFFF80" }), true);
+  assert.equal(keeps({ body1: "#FF80FF" }), true);
+  assert.equal(keeps({ body1: "#FF8080" }), false, "one FF pair in Body 1 is not enough");
+  assert.equal(keeps({ body1: "#FEFEFE" }), false, "near is not exact");
+  // Any other slot needs one pair that equals the target's pair in that position.
+  assert.equal(keeps({ body2: "#FF8080" }), true, "FF where Body 2 wants FF");
+  assert.equal(keeps({ body2: "#800080" }), true, "00 where Body 2 wants 00");
+  assert.equal(keeps({ body2: "#008080" }), false, "00 where Body 2 wants FF is the far end, not a match");
+  assert.equal(keeps({ body2: "#80FF80" }), false, "FF where Body 2 wants 00 is not a match either");
+  assert.equal(keeps({ scales: "#008080" }), true);
+  assert.equal(keeps({ scales: "#FF8080" }), false);
+  assert.equal(keeps({ extra1: "#808000" }), true);
+  assert.equal(keeps({ extra2: "#800080" }), true);
+  assert.equal(keeps({ body1: "#FF8080", body2: "#FE0101" }), false, "one Body 1 pair and a near Body 2 still goes");
+  assert.equal(keeps({ body1: "#FF8080", extra2: "#808000" }), true);
+  assert.equal(keeps({}), false);
+
+  const males = {
+    1: male("1", { body1: "#FFFF80" }),
+    2: male("2", { scales: "#008080" }),
+    3: male("3", { body1: "#FF8080" }),
+    4: male("4"),
+    5: male("5", { body1: "#FEFEFE", body2: "#FE0101" }),
+    // Held whatever their colours: Generated, never checked for Generated, in a breeding plan.
+    6: male("6", {}, { generated: true }),
+    7: male("7", {}, { generated: undefined }),
+    8: male("8"),
+    // Already in Males discard: judged by the same rule.
+    9: male("9", {}, { enclosure: "Males discard" }),
+    10: male("10", { body1: "#FFFFFF" }, { enclosure: "Males discard" })
+  };
+  let result = surplus.planSurplus(males, target, { minReplacements: 2, protectedIds: ["8"] });
+  assert.deepEqual(ids(result.rows).sort((a, b) => a - b), ["3", "4", "5", "9"]);
+  assert.ok(result.rows.every(row => row.reason === surplus.MALE_RULE && row.replacements === 0 && row.examples.length === 0));
+  assert.deepEqual(clone(result.summary.maleRule), { body1Pairs: 2, otherPairs: 1 });
+  assert.equal(result.summary.generated, 1, "a Generated male is never listed");
+  assert.equal(result.summary.unchecked, 1, "a male never checked for Generated is held");
+  assert.equal(result.summary.protected, 1, "a male in a breeding plan is held");
+  assert.deepEqual(clone(result.summary.kept), { egg: 0, female: 0, male: 6 });
+  // The rule does not count replacements: the number of spares changes nothing for males,
+  // and a failing male goes even when no other male is left.
+  assert.deepEqual(ids(surplus.planSurplus(males, target, { minReplacements: 99, protectedIds: ["8"] }).rows).sort((a, b) => a - b), ["3", "4", "5", "9"]);
+  assert.deepEqual(ids(surplus.planSurplus({ 4: males[4] }, target).rows), ["4"]);
+
+  // The same colours on females are judged by replacements, not by this rule.
+  const females = Object.fromEntries(Object.entries(males).map(([id, pet]) => [id, { ...pet, gender: "Female", enclosure: "Breeding Stock" }]));
+  assert.equal(surplus.planSurplus(females, target, { minReplacements: 99 }).rows.length, 0);
+});
+
+test("surplus domain: Generated, protected, species and incomplete records", () => {
   const { surplus, breedingPlan, colors } = load().domain;
   const target = { ...colors.STRICT_PURE_TARGET };
-  const base = { 1: male("1", { body1: "#FFFFFF" }), 2: male("2", { body1: "#FFFFFF" }) };
+  const base = { 1: female("1", { body1: "#FFFFFF" }), 2: female("2", { body1: "#FFFFFF" }) };
 
   let result = surplus.planSurplus({
     ...base,
-    3: male("3", {}, { generated: true }),
-    4: male("4", {}, { generated: undefined }),
-    5: male("5"),
-    6: male("6")
+    3: female("3", {}, { generated: true }),
+    4: female("4", {}, { generated: undefined }),
+    5: female("5"),
+    6: female("6")
   }, target, { minReplacements: 2, protectedIds: ["5"] });
   assert.deepEqual(ids(result.rows), ["6"]);
   assert.equal(result.summary.generated, 1, "a Generated pet is never listed");
@@ -106,9 +166,8 @@ test("surplus domain: Generated, unchecked, protected, species and Males discard
   assert.deepEqual([...surplus.protectedIdsFromQueues([{ id: "f", maleId: "m", maleCandidates: [{ maleId: "n" }] }], null)].sort(), ["f", "m", "n"]);
 
   // Owner rule: every Generated pet stays as backup stock, however many better pets exist
-  // and whichever sex it is — and it still counts as a replacement for others.
+  // and whichever sex it is — and a Generated female still counts as a replacement.
   const generated = {};
-  for (let index = 1; index <= 12; index += 1) generated[index] = male(String(index), { body1: "#FFFFFF" });
   for (let index = 21; index <= 32; index += 1) generated[index] = female(String(index), { body1: "#FFFFFF" });
   generated[40] = male("40", {}, { generated: true });
   generated[41] = female("41", {}, { generated: true });
@@ -116,110 +175,39 @@ test("surplus domain: Generated, unchecked, protected, species and Males discard
   result = surplus.planSurplus(generated, target);
   assert.equal(result.rows.some(row => ["40", "41", "42"].includes(row.id)), false);
   assert.equal(result.summary.generated, 3);
-  result = surplus.planSurplus({ 1: male("1", {}, { generated: true }), 2: male("2", {}, { generated: true }), 3: male("3") }, target, { minReplacements: 2 });
+  result = surplus.planSurplus({ 1: female("1", {}, { generated: true }), 2: female("2", {}, { generated: true }), 3: female("3") }, target, { minReplacements: 2 });
   assert.deepEqual(ids(result.rows), ["3"]);
 
   // Only species already in the breeding program are reviewed, each against its own kind.
-  // A record without a species is never compared with anything.
+  // A record without a species is never judged.
   result = surplus.planSurplus({
     ...base,
-    7: male("7", {}, { species: "Stray", enclosure: "Random" }),
-    8: male("8", {}, { species: "Other" }),
-    9: male("9"),
-    10: male("10", {}, { species: "" }),
-    11: male("11", {}, { species: "" }),
-    12: male("12", {}, { species: "" })
+    7: female("7", {}, { species: "Stray", enclosure: "Random" }),
+    8: female("8", {}, { species: "Other" }),
+    9: female("9"),
+    10: female("10", {}, { species: "" }),
+    11: male("11", {}, { species: "" })
   }, target, { minReplacements: 2 });
-  assert.deepEqual(ids(result.rows), ["9"]);
+  assert.deepEqual(ids(result.rows), ["9"], "the female of another species has no replacement of her own kind");
   assert.deepEqual([...result.summary.species], ["Draconis", "Other"]);
-  assert.equal(result.summary.incomplete, 3);
+  assert.equal(result.summary.incomplete, 2);
 
-  // A pet already moved to Males discard is reviewed, but never counts as a replacement.
-  result = surplus.planSurplus({
-    1: male("1", { body1: "#FFFFFF" }, { enclosure: "Males discard" }),
-    2: male("2", { body1: "#FFFFFF" }, { enclosure: "males discard" }),
-    3: male("3"),
-    4: male("4")
-  }, target, { minReplacements: 2 });
-  assert.deepEqual(ids(result.rows), [], "replacements that sit in Males discard do not count");
-  result = surplus.planSurplus({ ...base, 3: male("3", {}, { enclosure: "Males discard" }) }, target, { minReplacements: 2 });
-  assert.deepEqual(ids(result.rows), ["3"]);
-
-  // Gone or incomplete records are never judged, and a gone pet replaces nobody.
+  // Gone or incomplete records are never judged.
   result = surplus.planSurplus({
     ...base,
-    3: male("3", {}, { present: false }),
-    4: { ...male("4"), colors: { body1: "#808080" } },
-    5: male("5", {}, { owned: false })
+    3: female("3", {}, { present: false }),
+    4: { ...female("4"), colors: { body1: "#808080" } },
+    5: female("5", {}, { owned: false }),
+    6: male("6", {}, { present: false })
   }, target, { minReplacements: 2 });
   assert.equal(result.rows.length, 0);
   assert.equal(result.summary.incomplete, 1);
-  result = surplus.planSurplus({ 1: base[1], 2: { ...base[2], present: false }, 3: male("3") }, target, { minReplacements: 2 });
-  assert.equal(result.rows.length, 0);
 
   // Routing guards kept from the male cull: Sort never pulls a discarded male back.
   assert.equal(breedingPlan.desiredProgramEnclosure({ gender: "Male", enclosure: "males discard" }), null);
   assert.equal(breedingPlan.desiredProgramEnclosure({ gender: "Male", enclosure: "Random" }), "Males");
   assert.deepEqual(breedingPlan.plannableMaleEnclosures(
     { m: male("m", {}, { enclosure: "Males discard" }), a: male("a") }, target, breedingPlan.BREEDING_STRATEGIES.SAME_FF_TARGET), ["Males"]);
-});
-
-test("surplus domain: males stay only for exact channels or a clearly strong slot", () => {
-  const { surplus, colors } = load().domain;
-  const target = { ...colors.STRICT_PURE_TARGET };
-  const entry = patch => {
-    const worth = surplus.channelWorth(surplus.channelDistances({ colors: { ...FAR, ...patch } }, target));
-    return { worth, slots: surplus.slotScores(worth) };
-  };
-  const strict = (better, worse) => surplus.coversStrict(entry(better), entry(worse), surplus.DEFAULT_MALE_SLOT_TOLERANCE);
-  assert.deepEqual(surplus.slotScores(surplus.channelWorth([0, 0, 0, 1, 1, 1, 3, 3, 3, 9, 9, 9, 19, 19, 19])).map(value => Math.round(value * 100)),
-    [300, 150, 75, 30, 15]);
-
-  // An exact channel is replaced only by the same exact channel.
-  assert.equal(strict({ body1: "#80FF80" }, { body1: "#80FF80" }), true);
-  assert.equal(strict({ body1: "#80FF80" }, { body1: "#FF8080" }), false, "green exact does not replace red exact");
-  assert.equal(strict({ body1: "#80FFFF" }, { body1: "#80FF80" }), true, "more exact channels replace fewer");
-  // A shade nearer on a far channel is no reason to stay ...
-  assert.equal(strict({}, { body2: "#F08080" }), true);
-  assert.equal(surplus.covers(entry({}).worth, entry({ body2: "#F08080" }).worth, surplus.DEFAULT_TOLERANCE), false,
-    "... although the per-channel rule used for females would keep it");
-  // ... but a clearly strong slot is: nothing exact, Body 2 one step off in every channel.
-  assert.equal(strict({}, { body2: "#FE0101" }), false);
-  assert.equal(strict({ body2: "#FF8080" }, { body2: "#FE0101" }), false, "one exact channel is not as strong as three near ones");
-  assert.equal(strict({ body2: "#FF0000" }, { body2: "#FE0101" }), true);
-
-  const males = {
-    // Exact Body 1 green and pure Scales: the two really good males.
-    1: male("1", { body1: "#80FF80", scales: "#000000" }),
-    2: male("2", { body1: "#80FF80", scales: "#000000" }),
-    // The same exact Body 1 channel plus a shade on Body 2: 1 and 2 replace him.
-    3: male("3", { body1: "#80FF80", body2: "#F08080" }),
-    // Nothing exact, but Body 2 almost pure: a high score in another slot keeps him.
-    5: male("5", { body2: "#FE0101" }),
-    // An exact channel nobody else has: kept.
-    6: male("6", { body1: "#FF8080" }),
-    // Nothing exact, nothing strong: goes.
-    7: male("7")
-  };
-  let result = surplus.planSurplus(males, target, { minReplacements: 2 });
-  assert.deepEqual(ids(result.rows), ["7", "3"]);
-  assert.equal(result.summary.maleSlotTolerance, 0.25);
-  assert.deepEqual(clone(result.summary.kept), { egg: 0, female: 0, male: 4 });
-
-  // The same pets as females are judged channel by channel: the shade keeps number 3.
-  const females = Object.fromEntries(Object.entries(males).map(([id, pet]) => [id, { ...pet, gender: "Female", enclosure: "Breeding Stock" }]));
-  result = surplus.planSurplus(females, target, { minReplacements: 2 });
-  assert.deepEqual(ids(result.rows), ["7"]);
-
-  // An egg is judged under each sex's own rule: as a male the shaded egg is replaceable, as a
-  // female it is not, so it stays; the plain one goes.
-  result = surplus.planSurplus({
-    1: males[1], 2: males[2],
-    11: female("11", { body1: "#80FF80" }), 12: female("12", { body1: "#80FF80" }),
-    20: egg("20", { body1: "#80FF80", body2: "#F08080" }),
-    21: egg("21", { body1: "#80FF80" })
-  }, target, { minReplacements: 2, eggIds: ["20", "21"] });
-  assert.deepEqual(ids(result.rows), ["21"]);
 });
 
 test("surplus domain: an egg needs replacements among males and females", () => {
@@ -232,7 +220,7 @@ test("surplus domain: an egg needs replacements among males and females", () => 
   const pets = {
     ...stock,
     10: egg("10"),
-    // Exact Scales: nobody replaces it.
+    // Exact Scales: as a male it would stay, so the egg stays.
     11: egg("11", { scales: "#000000" }),
     // In the database as an egg, but the Hatchery no longer lists it: not reviewed.
     12: egg("12"),
@@ -242,13 +230,14 @@ test("surplus domain: an egg needs replacements among males and females", () => 
   let result = surplus.planSurplus(pets, target, { minReplacements: 2, eggIds: ["10", "11", "13", "99"] });
   assert.deepEqual(ids(result.rows), ["10"]);
   assert.equal(result.rows[0].kind, "egg");
-  assert.equal(result.rows[0].replacementMales, 2);
+  assert.equal(result.rows[0].reason, surplus.MALE_RULE, "as a male it would fail the male rule");
   assert.equal(result.rows[0].replacementFemales, 2);
+  assert.equal(result.rows[0].replacements, 2);
   assert.deepEqual(clone(result.summary.considered), { egg: 2, female: 2, male: 2 });
   assert.equal(result.summary.incomplete, 1);
   assert.equal(result.summary.eggsNotIndexed, 2, "listed eggs without a usable record are reported");
 
-  // Enough males but too few females: the egg may hatch female, so it stays.
+  // Too few females to replace it: the egg may hatch female, so it stays.
   const { 4: dropped, ...fewFemales } = pets;
   result = surplus.planSurplus(fewFemales, target, { minReplacements: 2, eggIds: ["10"] });
   assert.equal(result.rows.filter(row => row.kind === "egg").length, 0);
@@ -370,19 +359,26 @@ test("surplus feature: plan is read-only and takes presence from the live game",
   assert.equal(store.owehSurplusPreview.confirmedPlan, undefined);
   assert.match(log.status.at(-1), /3 can go \(1 egg\(s\), 1 female\(s\), 1 male\(s\)\)/);
 
-  // More spares asked for than exist: nothing is listed.
+  // More spares asked for than exist: no female or egg is listed; the male rule does not
+  // depend on spares.
   store.owehSurplusMinReplacements = 5;
   await feature.api.plan();
-  assert.deepEqual(store.owehSurplusPreview.rows, []);
-  assert.match(log.status.at(-1), /nothing to discard/);
+  assert.deepEqual(statuses(store), { 5: "queued" });
+  assert.match(log.status.at(-1), /1 can go \(0 egg\(s\), 0 female\(s\), 1 male\(s\)\)/);
 
-  // A male the database still has but OviPets no longer lists (sold, discarded by hand) is
-  // not a replacement: the far male now has only two better males and stays. Kept, he is one
-  // of the three males that replace the far egg.
+  // A female the database still has but OviPets no longer lists (sold, discarded by hand) is
+  // not a replacement: the far female now has only two better females and stays. Kept, she is
+  // one of the three females that replace the far egg.
   store.owehSurplusMinReplacements = 3;
-  world.pets.delete("7");
+  world.pets.delete("11");
   await feature.api.plan();
-  assert.deepEqual(statuses(store), { 10: "queued", 6: "queued" });
+  assert.deepEqual(statuses(store), { 10: "queued", 5: "queued" });
+
+  // Nothing at all to list.
+  const none = featureSetup({ pets: { 1: male("1", { body1: "#FFFFFF" }), 3: female("3") } });
+  await none.feature.api.plan();
+  assert.deepEqual(none.store.owehSurplusPreview.rows, []);
+  assert.match(none.log.status.at(-1), /nothing to discard/);
 
   // The live lists cannot be trusted: nothing is planned.
   for (const broken of [{ partial: true }, { hatcherySeen: false }]) {
@@ -546,14 +542,16 @@ test("surplus feature: a row that changed since the plan is skipped, never sent"
 });
 
 test("surplus feature: a row is sent only while its replacements still exist in the game", async () => {
-  // Reviewed with three exact males; one of them was sold before Confirm ran. The far male is
-  // left with two replacements and stays; the egg and the female still have three each.
+  // Reviewed with three exact females; one of them was sold before Confirm ran. The far female
+  // is left with two replacements and stays; the egg still has three (she is one of them), and
+  // the male goes by the male rule whatever happened to the others.
   const { store, log, world, run } = await confirmedSetup();
+  world.pets.delete("11");
   world.pets.delete("7");
   await run();
-  assert.deepEqual(log.sent, ["10", "6"]);
-  assert.deepEqual(statuses(store), { 10: "discarded", 6: "discarded", 5: "skipped:no-longer-surplus" });
-  assert.equal(store.owehPets["5"].present, true);
+  assert.deepEqual(log.sent, ["10", "5"]);
+  assert.deepEqual(statuses(store), { 10: "discarded", 6: "skipped:no-longer-surplus", 5: "discarded" });
+  assert.equal(store.owehPets["6"].present, true);
 
   // Two exact females sold: neither the far female nor the egg (sex unknown) may go.
   const females = await confirmedSetup();

@@ -16,22 +16,24 @@
 // replacements among the kept males AND among the kept females. Pedigree is deliberately left
 // out (owner decision): with this many replacements a related pair always has an alternative.
 //
-// Males are judged more strictly (owner decision 2026-10-13: only the really good males and
-// the ones clearly strong in some colour slot stay, most go). See coversStrict below.
+// Males follow a fixed owner rule instead (2026-10-13, the Males enclosure is over capacity):
+// see keepsAsMale below. Replacements are not counted for them.
 (() => {
   if (!globalThis.OWEH?.domain?.colors || !OWEH.domain?.breedingPlan) {
     throw new Error("colors and breeding-plan must load before domain/surplus.js");
   }
 
   const { TARGET_KEYS, rgb } = OWEH.domain.colors;
-  const { isBreedingProgramEnclosure, isCullEnclosure } = OWEH.domain.breedingPlan;
+  const { isBreedingProgramEnclosure } = OWEH.domain.breedingPlan;
 
   const DEFAULT_MIN_REPLACEMENTS = 10;
   // 0.05 = five percentage points of pass-on chance: an exact channel must be matched by an
   // exact one, and anything 19 or more off the target counts as equally far.
   const DEFAULT_TOLERANCE = 0.05;
-  // A quarter of an exact channel: a slot has to be clearly stronger, not a shade nearer.
-  const DEFAULT_MALE_SLOT_TOLERANCE = 0.25;
+  const MALE_MIN_BODY1_PAIRS = 2;
+  const MALE_MIN_OTHER_PAIRS = 1;
+  // Row reason: listed by the male rule, not for having replacements.
+  const MALE_RULE = "male-rule";
   const KIND_ORDER = Object.freeze({ egg: 0, female: 1, male: 2 });
   const EXAMPLES_SHOWN = 3;
 
@@ -58,22 +60,22 @@
     return true;
   }
 
-  // The five slot scores (0..3 each): the sum of a slot's three channel worths.
-  const slotScores = worth => TARGET_KEYS.map((_, slot) => worth[slot * 3] + worth[slot * 3 + 1] + worth[slot * 3 + 2]);
-
-  // The male rule. What a male gives the program is the exact channels he can hand on, and
-  // being clearly strong in some colour slot (Body 1, Body 2, Scales, Extra 1, Extra 2). So a
-  // kept male replaces another when he is exact on every channel the other is exact on, and
-  // his score in each slot is no more than `slotTolerance` lower. Unlike the per-channel rule,
-  // a small edge on one far channel no longer makes a male irreplaceable.
-  function coversStrict(better, worse, slotTolerance) {
-    for (let index = 0; index < worse.worth.length; index += 1) {
-      if (worse.worth[index] === 1 && better.worth[index] !== 1) return false;
-    }
-    for (let slot = 0; slot < worse.slots.length; slot += 1) {
-      if (better.slots[slot] < worse.slots[slot] - slotTolerance) return false;
-    }
-    return true;
+  // The owner's rule for males. A male stays only when
+  //   - at least two of his three Body 1 pairs are exact (FF FF **, FF ** FF, ** FF FF), or
+  //   - at least one pair of another slot (Body 2, Scales, Extra 1, Extra 2) is exact.
+  // "Exact" means the pair equals the target's pair in that position: FF where the target has
+  // FF, 00 where it has 00 — a 00 where the target wants FF is the far end, not a match.
+  // Every other male is surplus however few males are left; Generated males are held as
+  // always. `distances` is the 15-channel vector of channelDistances.
+  function keepsAsMale(distances) {
+    let body1 = 0;
+    let other = 0;
+    distances.forEach((distance, index) => {
+      if (distance !== 0) return;
+      if (index < 3) body1 += 1;
+      else other += 1;
+    });
+    return body1 >= MALE_MIN_BODY1_PAIRS || other >= MALE_MIN_OTHER_PAIRS;
   }
 
   const sexOf = pet => {
@@ -139,19 +141,13 @@
     const minReplacements = Math.max(1, Math.floor(Number(options.minReplacements) || DEFAULT_MIN_REPLACEMENTS));
     const tolerance = Number.isFinite(Number(options.tolerance)) && Number(options.tolerance) >= 0
       ? Number(options.tolerance) : DEFAULT_TOLERANCE;
-    const maleSlotTolerance = Number.isFinite(Number(options.maleSlotTolerance)) && Number(options.maleSlotTolerance) >= 0
-      ? Number(options.maleSlotTolerance) : DEFAULT_MALE_SLOT_TOLERANCE;
     const protectedIds = new Set([...(options.protectedIds || [])].map(String));
     const eggIds = new Set([...(options.eggIds || [])].map(String));
     const species = options.species ? new Set(options.species) : programSpecies(pets);
     const count = () => ({ egg: 0, female: 0, male: 0 });
-    // Which kept pets replace `entry`, judged as a male or as a female.
-    const replacing = {
-      female: (kept, entry) => kept.filter(other => covers(other.worth, entry.worth, tolerance)),
-      male: (kept, entry) => kept.filter(other => coversStrict(other, entry, maleSlotTolerance))
-    };
     const summary = {
-      minReplacements, tolerance, maleSlotTolerance, species: [...species].sort(),
+      minReplacements, tolerance, species: [...species].sort(),
+      maleRule: { body1Pairs: MALE_MIN_BODY1_PAIRS, otherPairs: MALE_MIN_OTHER_PAIRS },
       considered: count(), surplus: count(), kept: count(),
       generated: 0, unchecked: 0, protected: 0, incomplete: 0, eggsNotIndexed: 0
     };
@@ -180,7 +176,7 @@
       const worth = channelWorth(distances);
       if (!groups.has(pet.species)) groups.set(pet.species, { egg: [], female: [], male: [] });
       groups.get(pet.species)[isEgg ? "egg" : sex].push({
-        pet, id, kind: isEgg ? "egg" : sex, worth, slots: slotScores(worth),
+        pet, id, kind: isEgg ? "egg" : sex, worth, keepsAsMale: keepsAsMale(distances),
         score: worth.reduce((sum, value) => sum + value, 0),
         exactChannels: distances.filter(value => value === 0).length,
         distance: distances.reduce((sum, value) => sum + value, 0)
@@ -209,36 +205,40 @@
     };
 
     for (const group of groups.values()) {
-      const kept = { female: [], male: [] };
-      for (const sex of ["female", "male"]) {
-        // Best first, so everything that could replace a pet was already decided. Pets already
-        // moved to Males discard are reviewed last and never count as a replacement.
-        const inProgram = group[sex].filter(entry => !isCullEnclosure(entry.pet.enclosure)).sort(byScore);
-        const penned = group[sex].filter(entry => isCullEnclosure(entry.pet.enclosure)).sort(byScore);
-        for (const entry of [...inProgram, ...penned]) {
-          summary.considered[sex] += 1;
-          const penPet = isCullEnclosure(entry.pet.enclosure);
-          const replacements = replacing[sex](kept[sex], entry);
-          const hold = holdReason(entry.pet, sex, protectedIds);
-          if (replacements.length >= minReplacements && !hold) {
-            addRow(entry, replacements.length, replacements);
-            continue;
-          }
-          if (replacements.length >= minReplacements) summary[hold] += 1;
-          if (!penPet) kept[sex].push(entry);
-          summary.kept[sex] += 1;
+      // Males: the fixed rule, no counting of replacements.
+      for (const entry of group.male) {
+        summary.considered.male += 1;
+        const hold = holdReason(entry.pet, "male", protectedIds);
+        if (!entry.keepsAsMale && !hold) {
+          addRow(entry, 0, [], { reason: MALE_RULE });
+          continue;
         }
+        if (!entry.keepsAsMale) summary[hold] += 1;
+        summary.kept.male += 1;
       }
+      // Females: best first, so everything that could replace one was already decided.
+      const keptFemales = [];
+      for (const entry of group.female.sort(byScore)) {
+        summary.considered.female += 1;
+        const replacements = keptFemales.filter(other => covers(other.worth, entry.worth, tolerance));
+        const hold = holdReason(entry.pet, "female", protectedIds);
+        if (replacements.length >= minReplacements && !hold) {
+          addRow(entry, replacements.length, replacements);
+          continue;
+        }
+        if (replacements.length >= minReplacements) summary[hold] += 1;
+        keptFemales.push(entry);
+        summary.kept.female += 1;
+      }
+      // An egg's sex is unknown, so it has to be surplus under each sex's own rule: it would
+      // be discarded as a male and has enough replacements as a female.
       for (const entry of group.egg.sort(byScore)) {
         summary.considered.egg += 1;
-        // Its sex is unknown, so it has to be surplus under each sex's own rule.
-        const males = replacing.male(kept.male, entry);
-        const females = replacing.female(kept.female, entry);
-        const enough = males.length >= minReplacements && females.length >= minReplacements;
+        const females = keptFemales.filter(other => covers(other.worth, entry.worth, tolerance));
+        const enough = !entry.keepsAsMale && females.length >= minReplacements;
         const hold = holdReason(entry.pet, "egg", protectedIds);
         if (enough && !hold) {
-          addRow(entry, Math.min(males.length, females.length), [...females.slice(0, 2), ...males.slice(0, 2)],
-            { replacementMales: males.length, replacementFemales: females.length });
+          addRow(entry, females.length, females, { reason: MALE_RULE, replacementFemales: females.length });
           continue;
         }
         if (enough) summary[hold] += 1;
@@ -255,12 +255,11 @@
   OWEH.domain.surplus = Object.freeze({
     DEFAULT_MIN_REPLACEMENTS,
     DEFAULT_TOLERANCE,
-    DEFAULT_MALE_SLOT_TOLERANCE,
+    MALE_RULE,
     channelDistances,
     channelWorth,
-    slotScores,
     covers,
-    coversStrict,
+    keepsAsMale,
     colorKey,
     isJudgeable,
     programSpecies,

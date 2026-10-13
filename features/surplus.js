@@ -131,9 +131,9 @@ OWEH.register("feature-surplus", helpers => {
     return view;
   }
 
-  function planFromLive(pets, live, { target, minReplacements, tolerance, maleSlotTolerance, protectedIds }) {
+  function planFromLive(pets, live, { target, minReplacements, tolerance, protectedIds }) {
     return surplus.planSurplus(liveView(pets, live), target, {
-      eggIds: [...live.eggs], minReplacements, tolerance, maleSlotTolerance, protectedIds
+      eggIds: [...live.eggs], minReplacements, tolerance, protectedIds
     });
   }
 
@@ -217,7 +217,7 @@ OWEH.register("feature-surplus", helpers => {
       const next = result.rows.length
         ? " — nothing sent yet. Open View discard list, then press Confirm & discard."
         : " — nothing to discard.";
-      setStatus(`Discard plan: ${result.rows.length} can go (${kindCounts(s.surplus)}) out of ${kindCounts(s.considered)}, each with ≥${minReplacements} kept pets at least as good in every colour channel${held ? ` · ${held}` : ""}${next}`);
+      setStatus(`Discard plan: ${result.rows.length} can go (${kindCounts(s.surplus)}) out of ${kindCounts(s.considered)} — males stay only with ≥2 FF pairs in Body 1 or a target FF/00 pair in another slot (${Number(s.kept.male || 0)} stay); females and eggs go when ≥${minReplacements} kept females are at least as good in every colour channel${held ? ` · ${held}` : ""}${next}`);
     } finally {
       planning = false;
     }
@@ -306,7 +306,6 @@ OWEH.register("feature-surplus", helpers => {
         target: preview.target,
         minReplacements: preview.minReplacements,
         tolerance: preview.summary?.tolerance,
-        maleSlotTolerance: preview.summary?.maleSlotTolerance,
         protectedIds
       }).rows.map(row => String(row.id)));
 

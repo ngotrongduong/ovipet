@@ -100,42 +100,44 @@ On the 2026-10-05 stock (1,898 pets, 975 eggs) with 10 replacements this lists 4
 kept pet unchanged. The rule it replaces (at least as close on all 15 channels by exact
 distance, two lineages) listed 1 egg.
 
-### Males: only exact channels and strong slots count (2026-10-13)
+### Males: a fixed rule (owner decision, 2026-10-13)
 
-Owner decision: keep only the really good males and those with a high score in another colour
-slot; most males have to go (the Males enclosure was full at 1,000 and newborn males were
-piling up in Newborn and Unnamed). For males the per-channel comparison is replaced by
-`coversStrict`: a kept male replaces another when
+The Males enclosure was over capacity (1,000 pets, with newborn males piling up in Newborn and
+Unnamed), so the owner set an absolute rule for males instead of counting replacements. A
+male stays only if
 
-- he is exact on every channel the other is exact on (channel by channel, so a green-exact
-  male never replaces a red-exact one), and
-- each of his five slot scores (the sum of a slot's three channel worths, 0..3) is no more
-  than 0.25 lower.
+- at least **two of his three Body 1 pairs are FF** (`FF FF **`, `FF ** FF`, `** FF FF`), or
+- at least **one pair of Body 2, Scales, Extra 1 or Extra 2 is exact**, or
+- he is **Generated**.
 
-Under the per-channel rule a male that was merely a shade nearer on one far channel had no
-replacement and stayed. Measured on the 2026-10-13 stock read from the game (1,255 males and
-1,250 females, 398 of them still unnamed newborns, and 354 eggs) with 10 replacements:
+Every other male is listed, whatever "Spares needed" says and however few males are left.
+"Exact" means the pair equals the target's pair in that position: FF where the target has FF,
+00 where it has 00. A 00 where the target wants FF is the far end, not a match (on the stock
+of that day no male depended on this distinction). `domain/surplus.js` `keepsAsMale`.
 
-| rule | males listed | males kept |
-|---|---|---|
-| per channel, 0.05 | 85 | 1,170 |
-| exact channels + slots, 0.25 | 1,098 | 157 |
+Read from the game on 2026-10-13, after the owner's first discards:
 
-The 157 kept: none with zero exact channels (402 such males go), 9 of 521 with one, 64 of 199
-with two, 22 of 44 with three, 8 of 11 with four, 39 of 63 with five and all 15 with six or
-seven; the 35 Generated males are among them. Every one of the
-15 channels still has at least 14 exact kept males (the scarcest, Extra 2 blue, has 23 in
-all). For each of the 1,250 females the best mate among the kept males is as good as among
-all males (largest loss 0.05 expected exact channels), and 9–10 of the 10 highest-scoring
-males of every slot are kept. With 5 replacements 104 males stay, with 3, 86.
+| males in | total | stay | listed |
+|---|---|---|---|
+| Males | 837 | 422 | 415 |
+| Males discard | 207 | 2 | 205 |
+| Newborn | 30 | 9 | 21 |
 
-Females keep the per-channel rule. An egg has to be surplus under each sex's own rule: 66 of
-354 eggs are listed (46 before).
+Of the 191 unnamed newborn males, 64 would stay; they are judged once the newborn pass has
+named them. 46 of the males that stay do so on Body 1 alone.
+
+Females keep the replacement rule above. An egg has no sex yet, so it is listed only when it
+would fail the male rule **and** has enough female replacements: 176 of the 305 eggs fail the
+male rule, 26 are listed at 10 replacements.
+
+A rule tried earlier the same day (exact channels matched one by one plus slot scores within
+0.25, 10 replacements) kept 157 of 1,255 males without lowering any female's best mate; the
+owner replaced it with the fixed rule, which is simpler to check by eye from a pet's name.
 
 Pedigree is deliberately not part of the rule (owner decision 2026-10-05): with ten
 replacements a related pair always has an unrelated alternative. **Generated** pets (wand
 icon), pets whose Generated flag was never read, and pets in a breeding plan are never listed.
-Pets already in Males discard are reviewed but never count as a replacement.
+Males already in Males discard are judged by the same male rule.
 
 Lock groups explain the stock: the 136 Generated founders are exact on one channel in all
 five slots (R, G or B: 5 exact channels each). Progress means stacking exact channels from two
