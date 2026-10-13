@@ -30,12 +30,19 @@ OWEH.register("feature-surplus", helpers => {
   // A command that timed out may still have landed: it counts as sent until OviPets' own
   // lists say otherwise. Any other failure was refused before reaching the game.
   const UNANSWERED = /^(?:bridge-timeout|command-timeout)$/;
+  // Plan discard reads and saves profiles the database lacks. These shared-worker jobs write
+  // pet records too, so a plan waits for them instead of racing them.
+  const PET_WRITERS = new Set(["surplus", "maintain", "hatchlings", "breed"]);
+  const SCAN_CONCURRENCY = 3;
+  const SCAN_SAVE_EVERY = 10;
   let planning = false;
 
-  async function runIsLive() {
+  async function liveWorkerOwner() {
     const worker = await storageGet("owehWorker", null);
-    return Boolean(worker) && worker.owner === "surplus" && Date.now() < Number(worker.leaseUntil || 0);
+    return worker && Date.now() < Number(worker.leaseUntil || 0) ? String(worker.owner || "") : "";
   }
+
+  const runIsLive = async () => (await liveWorkerOwner()) === "surplus";
 
   async function readMinReplacements() {
     const stored = Number(await storageGet("owehSurplusMinReplacements", surplus.DEFAULT_MIN_REPLACEMENTS));
@@ -53,7 +60,52 @@ OWEH.register("feature-surplus", helpers => {
       storageGet("owehBreedQueue", []),
       storageGet("owehBreedCampaign", { active: false })
     ]);
-    return surplus.protectedIdsFromQueues(preview?.queue, campaign?.active ? queue : []);
+    // A breeding plan older than this can no longer be confirmed, so it protects nobody. A
+    // forgotten Newborn outcross plan would otherwise keep every Newborn female off the list.
+    const fresh = Boolean(preview) && Date.now() - Number(preview.createdAt || 0) <= PREVIEW_MAX_AGE_MS;
+    return surplus.protectedIdsFromQueues(fresh ? preview.queue : [], campaign?.active ? queue : []);
+  }
+
+  // Hatched pets OviPets lists that the database cannot judge: never read (a pet that reached
+  // an enclosure such as Newborn outside the newborn pass), read incompletely, or read before
+  // the Generated flag was recorded (Update database re-reads only males for that flag). Their
+  // profiles are read and saved here, so the review covers every enclosure and not just what
+  // the database last saw. `pets` is updated in place.
+  async function readUnjudged(pets, live) {
+    const queue = [...live.pets].filter(id => !surplus.isJudgeable(pets[id]));
+    const tally = { queued: queue.length, read: 0, failed: 0 };
+    if (!queue.length) return tally;
+    const ownUserId = await storageGet("owehOwnUserId", null);
+    const changed = {};
+    const flush = async () => {
+      const batch = { ...changed };
+      for (const id of Object.keys(batch)) delete changed[id];
+      if (Object.keys(batch).length) await storageSet({ owehPets: batch });
+    };
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < queue.length) {
+        const id = queue[cursor];
+        cursor += 1;
+        const read = await petFetch.readAndMerge(pets[id] || { id }, ownUserId).catch(() => null);
+        if (read?.ok) {
+          pets[id] = read.pet;
+          changed[id] = read.pet;
+        }
+        if (read?.ok && surplus.isJudgeable(read.pet)) tally.read += 1;
+        else tally.failed += 1;
+        const done = tally.read + tally.failed;
+        if (done % 10 === 0) setStatus(`Discard plan: reading pets the database does not know yet ${done}/${queue.length}...`);
+        if (Object.keys(changed).length >= SCAN_SAVE_EVERY) await flush();
+        await sleep(settings.DEFAULT_REQUEST_DELAY);
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, worker));
+    } finally {
+      await flush();
+    }
+    return tally;
   }
 
   // What OviPets lists right now, or null when any part of it cannot be trusted (an enclosure
@@ -115,11 +167,18 @@ OWEH.register("feature-surplus", helpers => {
     if (planning) return;
     planning = true;
     try {
-      if (await runIsLive()) {
+      const busy = await liveWorkerOwner();
+      if (busy === "surplus") {
         setStatus("Discard is running right now — press Stop first");
         return;
       }
+      if (PET_WRITERS.has(busy)) {
+        setStatus(`Discard plan: the shared background tab is busy with "${busy}", which also writes pet records — wait for it or stop it, then plan again`);
+        return;
+      }
       const pets = await storageGet("owehPets", {});
+      // An empty database would mean reading every profile from this page: that is Update
+      // database's job. Pets it has not seen since are read below.
       if (!Object.keys(pets).length) {
         setStatus("Discard plan: the pet database is empty — run Update database first");
         return;
@@ -133,6 +192,7 @@ OWEH.register("feature-surplus", helpers => {
       // Rows an earlier run sent but never verified are settled before their plan is replaced.
       const previous = await storageGet("owehSurplusPreview", null);
       if (previous?.rows?.some(row => row.status === "sent")) await settleSent(previous.rows, live);
+      const scan = await readUnjudged(pets, live);
       const minReplacements = await readMinReplacements();
       const target = { ...colors.STRICT_PURE_TARGET };
       const result = planFromLive(pets, live, { target, minReplacements, protectedIds: await readProtectedIds() });
@@ -147,8 +207,10 @@ OWEH.register("feature-surplus", helpers => {
       });
       const s = result.summary;
       const held = [
+        scan.read ? `${scan.read} pet(s) read that the database did not know yet` : "",
+        scan.failed ? `${scan.failed} pet(s) could not be read and are left out` : "",
         s.generated ? `${s.generated} Generated kept` : "",
-        s.unchecked ? `${s.unchecked} not yet checked for Generated — run Update database, then plan again` : "",
+        s.unchecked ? `${s.unchecked} kept because not fully read yet (Generated flag, or an egg's parents)` : "",
         s.protected ? `${s.protected} kept for the breed queue` : "",
         s.eggsNotIndexed ? `${s.eggsNotIndexed} egg(s) not in the database yet — run Newborns only to index them` : ""
       ].filter(Boolean).join(" · ");

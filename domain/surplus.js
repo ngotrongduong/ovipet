@@ -58,6 +58,14 @@
     return gender === "female" || gender === "male" ? gender : null;
   };
 
+  // Whether a hatched pet's record holds everything the review needs. A record that fails this
+  // (never read, read incompletely, or read before the Generated flag was recorded) is skipped
+  // or held by planSurplus, so the caller reads its profile first.
+  function isJudgeable(pet) {
+    return Boolean(pet && pet.owned !== false && sexOf(pet) && pet.species
+      && typeof pet.generated === "boolean" && TARGET_KEYS.every(key => pet.colors?.[key]));
+  }
+
   // Species in the breeding program (any pet in Males / Breeding Stock / pure-line enclosures).
   function programSpecies(pets) {
     const species = new Set();
@@ -220,6 +228,7 @@
     channelWorth,
     covers,
     colorKey,
+    isJudgeable,
     programSpecies,
     protectedIdsFromQueues,
     holdReason,

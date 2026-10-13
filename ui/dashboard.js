@@ -236,7 +236,7 @@ OWEH.register("ui-dashboard", helpers => {
     const summary = preview.summary || {};
     const held = [
       summary.generated ? `${summary.generated} Generated kept` : "",
-      summary.unchecked ? `${summary.unchecked} unchecked — run Update database` : "",
+      summary.unchecked ? `${summary.unchecked} not fully read yet` : "",
       summary.eggsNotIndexed ? `${summary.eggsNotIndexed} egg(s) not indexed — run Newborns only` : ""
     ].filter(Boolean).join(", ");
     return `${state.rows.length} can go: ${surplusKindText(summary.surplus)} · each replaced by ≥${Number(preview.minReplacements || summary.minReplacements || 0)} kept`

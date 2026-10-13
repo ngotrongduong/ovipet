@@ -236,9 +236,10 @@ function featureSetup({ pets = STOCK(), discardResult = () => ({ ok: true }), la
     unnamed: new Set(),
     partial: false,
     hatcherySeen: true,
-    owner: true
+    owner: true,
+    profiles: {}
   };
-  const log = { status: [], sent: [], claims: 0, done: 0 };
+  const log = { status: [], sent: [], reads: [], claims: 0, done: 0 };
   const helpers = {
     storageGet: async (key, fallback) => key in store ? clone(store[key]) : clone(fallback),
     storageGetMany: async () => ({}),
@@ -272,7 +273,14 @@ function featureSetup({ pets = STOCK(), discardResult = () => ({ ok: true }), la
     settings: { DEFAULT_REQUEST_DELAY: 0 },
     petFetch: {
       readHatchery: async () => ({ hatcherySeen: world.hatcherySeen, eggIds: [...world.eggs], turnable: [], hatchable: [], unnamedIds: [...world.unnamed] }),
-      readOwnedPetIds: async () => ({ ids: [...world.pets], partial: world.partial })
+      readOwnedPetIds: async () => ({ ids: [...world.pets], partial: world.partial }),
+      readAndMerge: async (cached, usr) => {
+        log.reads.push([cached.id, usr]);
+        const profile = world.profiles[cached.id];
+        return profile
+          ? { ok: true, pet: { ...cached, ...clone(profile), id: cached.id, owned: true, present: true } }
+          : { ok: false, reason: "profile:fetch" };
+      }
     }
   };
   const modules = OWEH.boot(helpers);
@@ -326,6 +334,61 @@ test("surplus feature: plan is read-only and takes presence from the live game",
     assert.equal(env.store.owehSurplusPreview, undefined);
     assert.match(env.log.status.at(-1), /could not be read completely/);
   }
+});
+
+test("surplus feature: plan reads the pets the database cannot judge, Newborn included", async () => {
+  const env = featureSetup();
+  const newborn = (id, extra) => ({ ...female(id), enclosure: "Newborn", enclosureId: "0", ...extra });
+  // In the Newborn enclosure: 30 was never seen by the database, 31 was read before the
+  // Generated flag existed, 32 is known from the catalog only, 33 cannot be read.
+  env.store.owehPets["31"] = newborn("31", { generated: undefined });
+  env.store.owehPets["32"] = { id: "32", owned: true, present: true, name: "P32", enclosure: "Newborn", enclosureId: "0" };
+  for (const id of ["30", "31", "32", "33"]) env.world.pets.add(id);
+  env.world.profiles = { 30: newborn("30"), 31: newborn("31"), 32: newborn("32", { generated: true }) };
+  await env.feature.api.plan();
+  assert.deepEqual(env.log.reads.map(read => read[0]).sort(), ["30", "31", "32", "33"]);
+  assert.deepEqual(statuses(env.store), { 10: "queued", 6: "queued", 30: "queued", 31: "queued", 5: "queued" });
+  assert.equal(env.store.owehSurplusPreview.rows.find(row => row.id === "30").enclosure, "Newborn");
+  assert.equal(env.store.owehPets["30"].enclosure, "Newborn", "the newly read pet is saved");
+  assert.equal(env.store.owehPets["31"].generated, false);
+  assert.equal(env.store.owehPets["32"].generated, true, "a Generated pet found this way is kept");
+  assert.equal(env.store.owehPets["33"], undefined);
+  assert.match(env.log.status.at(-1), /3 pet\(s\) read that the database did not know yet/);
+  assert.match(env.log.status.at(-1), /1 pet\(s\) could not be read and are left out/);
+  assert.equal(env.log.sent.length, 0);
+
+  // The next plan reads only what is still unknown.
+  env.log.reads.length = 0;
+  await env.feature.api.plan();
+  assert.deepEqual(env.log.reads.map(read => read[0]), ["33"]);
+
+  // A breeding plan that can no longer be confirmed protects nobody; a fresh one, or a
+  // running campaign, does.
+  env.world.pets.delete("33");
+  env.store.owehBreedPreview = { createdAt: Date.now() - 16 * 60 * 1000, queue: [{ id: "30", maleId: "5" }, { id: "31", maleId: "5" }] };
+  await env.feature.api.plan();
+  assert.deepEqual(statuses(env.store), { 10: "queued", 6: "queued", 30: "queued", 31: "queued", 5: "queued" });
+  env.store.owehBreedPreview.createdAt = Date.now();
+  await env.feature.api.plan();
+  assert.deepEqual(statuses(env.store), { 10: "queued", 6: "queued" });
+  assert.equal(env.store.owehSurplusPreview.summary.protected, 3);
+  env.store.owehBreedPreview = null;
+  env.store.owehBreedCampaign = { active: true };
+  env.store.owehBreedQueue = [{ id: "6", maleId: "5" }];
+  await env.feature.api.plan();
+  assert.deepEqual(statuses(env.store), { 10: "queued", 30: "queued", 31: "queued" });
+
+  // Another job that writes pet records holds the shared worker: the plan waits. A job that
+  // does not (the friend sweep) is no reason to wait.
+  const stamp = env.store.owehSurplusPreview.createdAt;
+  env.store.owehWorker = { owner: "maintain", leaseUntil: Date.now() + 30_000 };
+  await env.feature.api.plan();
+  assert.equal(env.store.owehSurplusPreview.createdAt, stamp);
+  assert.match(env.log.status.at(-1), /busy with "maintain"/);
+  env.store.owehWorker = { owner: "sweep", leaseUntil: Date.now() + 30_000 };
+  await new Promise(resolve => setTimeout(resolve, 2));
+  await env.feature.api.plan();
+  assert.notEqual(env.store.owehSurplusPreview.createdAt, stamp);
 });
 
 test("surplus feature: confirm sends the reviewed rows and records only verified discards", async () => {
@@ -416,7 +479,7 @@ test("surplus feature: a row that changed since the plan is skipped, never sent"
 
   const second = await confirmedSetup();
   second.world.pets.delete("5");                    // not in any enclosure any more
-  second.store.owehBreedPreview = { queue: [{ id: "6", maleId: "1" }] };
+  second.store.owehBreedPreview = { createdAt: Date.now(), queue: [{ id: "6", maleId: "1" }] };
   await second.run();
   assert.deepEqual(second.log.sent, ["10"]);
   assert.deepEqual(statuses(second.store), { 10: "discarded", 6: "skipped:in-breeding-plan", 5: "skipped:gone" });
