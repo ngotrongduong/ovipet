@@ -111,6 +111,20 @@ async function automationBusy() {
   return "";
 }
 
+// "Update now": the panel has just asked every job to stop. Those stops finish a moment later
+// (the worker tab is closed on a short timer), and one of them may have failed, so the reload
+// waits until nothing is left running and is refused otherwise.
+async function updateNow() {
+  let waitingFor = "";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    waitingFor = await automationBusy().catch(() => "the automation state could not be read");
+    if (!waitingFor) break;
+  }
+  if (waitingFor) return { ok: true, action: "waiting", waitingFor };
+  return { ok: true, ...(await selfUpdate.check({ force: true })) };
+}
+
 selfUpdate?.start({
   busy: automationBusy,
   tabUrls: ["https://ovipets.com/*", "https://app.ovipets.com/*"],
@@ -344,8 +358,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "selfUpdateNow") {
-    // The owner pressed "Update now": the panel has stopped every job before sending this.
-    selfUpdate.check({ force: true }).then(result => sendResponse({ ok: true, ...result }))
+    updateNow().then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

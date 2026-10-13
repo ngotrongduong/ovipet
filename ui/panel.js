@@ -607,9 +607,9 @@ OWEH.register("ui-panel", helpers => {
       await stopAllAutomation();
       const response = await runtimeRequest({ type: "selfUpdateNow" });
       if (!response?.ok) throw new Error(response?.error || "update unavailable");
-      setStatus(response.action === "reloading"
-        ? `Loading v${response.version} — this tab refreshes in a moment; start your job again afterwards`
-        : "No newer version is waiting in the extension folder");
+      if (response.action === "reloading") setStatus(`Loading v${response.version} — this tab refreshes in a moment; start your job again afterwards`);
+      else if (response.action === "waiting") setStatus(`Not updated: ${response.waitingFor} is still running — stop it and press Update now again`);
+      else setStatus("No newer version is waiting in the extension folder");
       await updateSelfUpdate(true);
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {

@@ -39,9 +39,16 @@ function boot(world, { busy = () => "", beforeReload = null } = {}) {
       onAlarm: { addListener(fn) { alarmListeners.push(fn); } }
     },
     tabs: {
-      async query(filter) { log.query = clone(filter); return world.tabs; },
+      async query(filter) {
+        // "Is the owner on a game tab?" asks for the focused window's active tab.
+        if (filter.active) return world.frontTab ? [world.frontTab] : [];
+        log.query = clone(filter);
+        return world.tabs;
+      },
       async reload(id) { log.tabReloads.push(id); }
-    }
+    },
+    windows: { get: async () => ({ focused: world.windowFocused !== false }) },
+    idle: { queryState: async () => world.idleState || "idle" }
   };
   const fetch = async url => {
     assert.equal(url, "chrome-extension://self/manifest.json");
@@ -150,14 +157,60 @@ function boot(world, { busy = () => "", beforeReload = null } = {}) {
     assert.equal(await next.check(), "reloading", "tried again after the hold");
   }
 
-  // "Update now": the owner stopped everything, so neither the settle time nor busy() holds it.
+  // "Update now" skips the settle time and the owner's own presence, never a running job.
   {
-    const world = newWorld();
-    const run = boot(world, { busy: () => "the friend sweep" });
+    let job = "the friend sweep";
+    const world = newWorld({ frontTab: { id: 7, windowId: 1 }, idleState: "active" });
+    const run = boot(world, { busy: () => job });
     await run.started;
     world.disk = "1.0.1";
+    const refused = await run.api.check({ force: true });
+    assert.deepEqual([refused.action, refused.waitingFor], ["waiting", "the friend sweep"]);
+    assert.equal(run.log.reloads, 0);
+    job = "";
     assert.equal(await run.check({ force: true }), "reloading");
     assert.equal(run.log.reloads, 1);
+  }
+
+  // The owner is in a game tab right now: the refresh would throw away what they are typing.
+  {
+    const world = newWorld({ frontTab: { id: 7, windowId: 1 }, idleState: "active" });
+    const run = boot(world);
+    await run.started;
+    world.disk = "1.0.1";
+    await run.check();
+    world.now = T + 60_000;
+    const held = await run.api.check();
+    assert.equal(held.action, "waiting");
+    assert.ok(held.waitingFor.includes("pause for a minute"));
+    world.windowFocused = false;
+    assert.equal(await run.check(), "reloading", "the browser is not the window in use");
+
+    for (const away of [{ idleState: "idle" }, { idleState: "locked" }, { frontTab: null }]) {
+      const quiet = newWorld({ frontTab: { id: 7, windowId: 1 }, idleState: "active", ...away });
+      const other = boot(quiet);
+      await other.started;
+      quiet.disk = "1.0.1";
+      await other.check();
+      quiet.now = T + 60_000;
+      assert.equal(await other.check(), "reloading", `not held: ${JSON.stringify(away)}`);
+    }
+  }
+
+  // An older version in the folder is not a release.
+  {
+    const world = newWorld({ loaded: "5.11.0", disk: "5.11.0" });
+    const run = boot(world);
+    await run.started;
+    for (const disk of ["5.10.2", "5.9.9", "4.99.99", "5.11"]) {
+      world.disk = disk;
+      world.now += 100_000;
+      assert.equal(await run.check(), "current", `not loaded: ${disk}`);
+      assert.equal(await run.check({ force: true }), "current");
+    }
+    assert.equal(run.log.reloads, 0);
+    world.disk = "5.11.0.1";
+    assert.equal(await run.check({ force: true }), "reloading", "a fourth number counts");
   }
 
   // Switched off, a store install, or an unreadable folder: never a reload.
@@ -203,6 +256,9 @@ function boot(world, { busy = () => "", beforeReload = null } = {}) {
     }
     assert.ok(/await stopAllAutomation\(\);\s+const response = await runtimeRequest\(\{ type: "selfUpdateNow" \}\)/.test(panel),
       "Update now stops every job before it asks for the reload");
+    assert.ok(/async function updateNow\(\) \{[\s\S]*?await automationBusy\(\)[\s\S]*?selfUpdate\.check\(\{ force: true \}\)/.test(background),
+      "the background waits until nothing is running before the forced reload");
+    assert.ok(JSON.parse(read("manifest.json")).permissions.includes("idle"), "the owner's presence is read through chrome.idle");
     assert.ok(SOURCE.includes('"owehSelfUpdateReloadAt"') && read("features/own-eggs.js").includes('"owehSelfUpdateReloadAt"'));
   }
 

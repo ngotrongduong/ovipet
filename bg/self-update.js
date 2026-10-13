@@ -82,8 +82,34 @@
     return next;
   }
 
-  // One look at the folder. force: the owner pressed "Update now" after stopping everything,
-  // so neither the settle time nor busy() holds it back.
+  // Only a higher version is a release. The folder showing an older one (a developer looking at
+  // an old branch for a minute) must not swap the running extension for a build without this.
+  function isNewer(candidate, current) {
+    const a = String(candidate).split(".").map(Number);
+    const b = String(current).split(".").map(Number);
+    for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+      const delta = (a[index] || 0) - (b[index] || 0);
+      if (delta) return delta > 0;
+    }
+    return false;
+  }
+
+  // The reload refreshes every game tab. If the owner is in one right now — typing a message,
+  // answering a quiz by hand — that would throw it away, so it waits for a pause.
+  async function ownerIsOnGameTab() {
+    try {
+      if (!hooks.tabUrls.length || !chrome.idle?.queryState) return false;
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true, url: hooks.tabUrls });
+      if (!tab) return false;
+      if (!(await chrome.windows.get(tab.windowId))?.focused) return false;
+      return (await chrome.idle.queryState(60)) === "active";
+    } catch {
+      return false;
+    }
+  }
+
+  // One look at the folder. force: the owner pressed "Update now", so neither the settle time,
+  // the retry hold nor their own presence holds it back. A running job always does.
   function check({ force = false, now = clock() } = {}) {
     return serialized(async () => {
       const state = await readState();
@@ -96,7 +122,7 @@
       }
       const loaded = loadedVersion();
       const disk = await diskVersion();
-      if (!disk || disk === loaded) {
+      if (!disk || !isNewer(disk, loaded)) {
         if (state.pending || state.waitingFor || state.supported !== true || state.loaded !== loaded) {
           await writeState({ pending: null, waitingFor: "", supported: true, loaded });
         }
@@ -112,17 +138,18 @@
         await hold("the last reload did not load it — reload the extension by hand once");
         return { action: "held", version: disk };
       }
-      if (!force) {
-        let waitingFor = "";
-        try {
-          waitingFor = String(await hooks.busy() || "");
-        } catch {
-          waitingFor = "the automation state could not be read";
-        }
-        if (waitingFor) {
-          await hold(waitingFor);
-          return { action: "waiting", version: disk, waitingFor };
-        }
+      let waitingFor = "";
+      try {
+        waitingFor = String(await hooks.busy() || "");
+      } catch {
+        waitingFor = "the automation state could not be read";
+      }
+      if (!waitingFor && !force && await ownerIsOnGameTab()) {
+        waitingFor = "you to pause for a minute in the OviPets tab (or switch tabs)";
+      }
+      if (waitingFor) {
+        await hold(waitingFor);
+        return { action: "waiting", version: disk, waitingFor };
       }
       let resume = null;
       try { resume = await hooks.beforeReload?.() ?? null; } catch {}

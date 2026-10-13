@@ -84,6 +84,7 @@
     "unlimitedStorage",
     "tabs",
     "alarms",
+    "idle",
     "offscreen",
     "declarativeNetRequest"
   ],
