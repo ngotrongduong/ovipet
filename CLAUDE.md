@@ -37,6 +37,14 @@ Complete Phase 1 from docs/ROADMAP.md before broad modularization: worker start 
 
 Extraction order: pure domain -> core adapters -> DOM adapters -> feature state machines -> UI -> background services. Never perform a big-bang rewrite.
 
+## A version bump is a live release
+
+This checkout is the copy the owner's browser runs (loaded unpacked), and since v5.11.0 the extension reloads itself when `manifest.json` here carries a higher version than the loaded one (`bg/self-update.js`). So:
+
+- Bump the version (`bump-version` skill) only as the last step, with the tree consistent and every test passing. Until then the browser keeps running what it loaded.
+- Never leave a bumped tree half-edited, and never switch this checkout to another branch with a higher version unless that is meant to go live.
+- Friend Sweep Lite (`C:\ovipet-lite`, branch `feat/friend-sweep-lite`) is released the same way: bump `friend-sweep-lite/manifest.json` and push; installs with `Enable auto-update.bat` pull it from GitHub.
+
 ## Verification
 
 Run node scripts/verify-js.js and every tests/*.test.js file. Do not claim safety from syntax alone.
