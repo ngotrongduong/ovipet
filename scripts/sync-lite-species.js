@@ -18,6 +18,7 @@ const SHARED = [
   "data/species-static.js",
   "bg/species-stats.js",
   "bg/species-learned.js",
+  "bg/species-shared.js",
   "bg/self-update.js",
   "review/species-review.html",
   "review/species-review.js",

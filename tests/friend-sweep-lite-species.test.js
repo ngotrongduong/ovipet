@@ -157,5 +157,10 @@ const shape = "f".repeat(16) + "0".repeat(240);
   await sandbox.ensureResumeAlarm();
   assert.equal("oweh-lite-resume" in alarms, false, "no alarm without a waiting sweep");
 
+  // The shared database answers through the same channel the review page uses.
+  const shared = await send({ type: "speciesSharedStatus" });
+  assert.deepEqual([shared.ok, shared.owner, shared.contributing], [true, "ngotrongduong", false]);
+  assert.equal((await send({ type: "speciesSharedToken", token: "not a token" })).ok, false);
+
   console.log("Friend Sweep Lite species wiring tests passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

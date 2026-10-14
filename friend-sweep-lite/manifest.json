@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OviPets Friend Sweep Lite",
-  "version": "0.3.0",
-  "description": "Minimal low-resource OviPets friend egg sweep. Name the Species learns as it runs, with a safety pause and a review page; the extension updates itself.",
+  "version": "0.4.0",
+  "description": "Minimal low-resource OviPets friend egg sweep. Name the Species learns as it runs and shares one database with the full extension, with a safety pause and a review page; the extension updates itself.",
   "background": {
     "service_worker": "background.js"
   },
@@ -16,7 +16,9 @@
   ],
   "host_permissions": [
     "https://ovipets.com/*",
-    "https://app.ovipets.com/*"
+    "https://app.ovipets.com/*",
+    "https://api.github.com/*",
+    "https://gist.githubusercontent.com/*"
   ],
   "content_scripts": [
     {

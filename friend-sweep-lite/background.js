@@ -3,9 +3,10 @@
 // Name the Species is shared with the full extension, file for file (scripts/sync-lite-species.js):
 // the silhouette matcher, the totals and wrong-case store, and the learned overlay with the
 // safety pause. This file only wires them to the sweep.
-importScripts("domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/self-update.js");
+importScripts("domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/self-update.js");
 const speciesStats = globalThis.OWEH_BG.speciesStats;
 const speciesLearned = globalThis.OWEH_BG.speciesLearned;
+const speciesShared = globalThis.OWEH_BG.speciesShared;
 const selfUpdate = globalThis.OWEH_BG.selfUpdate;
 // A new version is loaded only in a quiet moment; with a running sweep that is the wait between
 // two passes, and only while this much of it is left.
@@ -514,7 +515,10 @@ function speciesRequest(message) {
     speciesLearnedGet: () => speciesLearned.readAll().then(library => ({ ok: true, library })),
     speciesGuardGet: () => speciesLearned.status(),
     speciesGuardResume: () => speciesLearned.resume(),
-    speciesWrongReviewOpen: () => speciesLearned.openReview()
+    speciesWrongReviewOpen: () => speciesLearned.openReview(),
+    speciesSharedStatus: () => speciesShared.status(),
+    speciesSharedToken: () => speciesShared.setToken(message),
+    speciesSharedSync: () => speciesShared.sync({ force: true })
   };
   const handler = handlers[message?.type];
   return handler ? speciesReady.then(handler) : null;
@@ -656,6 +660,11 @@ async function ensureResumeAlarm() {
   await chrome.alarms.create(RESUME_ALARM, { when: Math.max(Number(state.waitingUntil || 0), Date.now() + 5000) });
 }
 ensureResumeAlarm().catch(() => {});
+
+// The Name-the-Species database shared with the full extension and every other install
+// (bg/species-shared.js): read every hour, sent too once a token is saved on the review page.
+// Started at the top level: its alarm listener must exist when an alarm wakes this worker.
+speciesShared.start();
 
 // Self-update (bg/self-update.js, shared): a newer version in this folder — put there by
 // auto-update.ps1 or by hand — is loaded when no sweep runs, or in the wait between two passes.

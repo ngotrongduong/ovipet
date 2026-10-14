@@ -51,7 +51,11 @@ assert.ok(css.length < 2500, "Lite UI CSS should remain tiny");
 // Name the Species is the full extension's, file for file: the service worker imports the
 // shared modules and the page code talks to them with the shared message names.
 const imports = background.match(/importScripts\(([^;]+)\);/)[1];
-for (const file of ["domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/self-update.js"]) {
+for (const host of ["https://api.github.com/*", "https://gist.githubusercontent.com/*"]) {
+  assert.ok(manifest.host_permissions.includes(host), `the shared species database needs ${host}`);
+}
+assert.match(background, /^speciesShared\.start\(\);$/m, "the shared database starts at the top level of the service worker");
+for (const file of ["domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/self-update.js"]) {
   assert.ok(imports.includes(`"${file}"`), `service worker must import ${file}`);
   assert.ok(fs.existsSync(path.join(root, file)), `shared file missing: ${file}`);
 }

@@ -26,6 +26,10 @@ The quiz draws from about 39 species since 2026-10. Lite now carries the same fi
 
 Totals and wrong cases saved by Lite 0.1 are kept (moved to the shared storage keys on first start). What the full extension learned on its own is not copied: Lite is a separate extension with its own storage and learns for itself.
 
+## One database with the full extension (0.4.0)
+
+Lite and the full extension, on any PC, share one list of Name-the-Species silhouettes: a public GitHub gist of the repository owner (masks only, no ids or pictures). Every install reads it every hour and takes what it lacks, so what one learns, all answer. To let this install also **send** what it learns (and what the game rejects), open **Review wrongs** → **Shared database** and save a GitHub token with only the `gist` permission — the box explains how. Without a token Lite still receives.
+
 ## Automatic updates (0.3.0)
 
 Two parts, so that nothing has to be clicked after the first setup:

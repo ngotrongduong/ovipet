@@ -314,6 +314,42 @@
     $("reload").textContent = "Reload";
   }
 
+  // The shared database box: what every install reads, and whether this one also sends.
+  function renderShared(status) {
+    if (!status?.ok) return;
+    const when = status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString() : "not yet";
+    let summary;
+    if (status.lastError) summary = `⚠ ${status.lastError}`;
+    else if (status.hubExamples) summary = `${status.hubExamples} silhouettes in ${status.hubSpecies} species · this install ${status.contributing ? "sends and receives" : "receives only (no token)"} · checked ${when}`;
+    else summary = status.contributing ? `empty so far — this install creates it at the next sync · checked ${when}` : "not created yet: the first install with a token creates it";
+    $("shared-summary").textContent = summary;
+    $("shared").classList.toggle("problem", Boolean(status.lastError));
+    $("shared-owner").textContent = status.owner || "";
+    const detail = [
+      `Received ${status.totalReceived} silhouette(s), sent ${status.totalSent}.`,
+      status.contributing ? `Token saved (…${status.tokenEnd}).` : "No token: this install only receives."
+    ];
+    $("shared-detail").replaceChildren(detail.join(" "));
+    if (status.url) {
+      $("shared-detail").append(" ", el("a", { href: status.url, target: "_blank", rel: "noopener", text: "Open the shared database" }));
+    }
+    $("shared-remove").disabled = !status.contributing;
+  }
+
+  async function sharedAction(message, done) {
+    for (const id of ["shared-save", "shared-remove", "shared-sync"]) $(id).disabled = true;
+    try {
+      const response = await request(message);
+      if (!response.ok) toast(response.error || "The shared database could not be reached", "error");
+      else toast(done(response), "ok");
+      renderShared(await request({ type: "speciesSharedStatus" }));
+      await load();
+      renderHeader();
+    } finally {
+      for (const id of ["shared-save", "shared-sync"]) $(id).disabled = false;
+    }
+  }
+
   async function load() {
     const [cases, learned, status, stored] = await Promise.all([
       request({ type: "speciesWrongCasesGet" }),
@@ -407,6 +443,20 @@
     render();
   });
 
+  $("shared-save").addEventListener("click", () => {
+    const token = $("shared-token").value.trim();
+    if (!token) return toast("Paste the token first", "error");
+    $("shared-token").value = "";
+    return sharedAction({ type: "speciesSharedToken", token }, response =>
+      `Token saved — ${response.sync?.ok === false ? `but the first sync failed: ${response.sync.error}` : `sent ${response.sync?.sent || 0}, received ${response.sync?.received || 0}`}`);
+  });
+  $("shared-remove").addEventListener("click", () => {
+    if (!confirm("Remove the token? This install keeps receiving the shared silhouettes but stops sending its own.")) return null;
+    return sharedAction({ type: "speciesSharedToken", token: "" }, () => "Token removed — this install only receives now");
+  });
+  $("shared-sync").addEventListener("click", () => sharedAction({ type: "speciesSharedSync" },
+    response => `Synced — received ${response.received || 0}, sent ${response.sent || 0}`));
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.owehSpeciesGuard || changes.owehSpeciesStats) {
@@ -419,4 +469,5 @@
   });
 
   load().then(render);
+  request({ type: "speciesSharedStatus" }).then(renderShared);
 })();
