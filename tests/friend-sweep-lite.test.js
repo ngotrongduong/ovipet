@@ -97,15 +97,25 @@ for (const never of [".ps1", ".bat", ".cmd", ".vbs", ".exe", ".com", ".wsf", ".l
   assert.equal(allowed.includes(never), false, `the updater must never copy ${never} files from a download`);
 }
 assert.ok(updater.includes("if ($Allowed -notcontains $item.Extension.ToLowerInvariant()) { continue }"), "only allowed kinds of file are copied");
-for (const tool of ["schtasks", "powershell", "conhost"]) {
-  assert.equal(new RegExp(`(^|[\\s"(])${tool}(\\.exe)?[\\s"]`, "im").test(enable.replace(/%SYS%\\\w+\.exe|%PS%|"%SystemRoot%[^"]*"/g, "")), false,
-    `${tool} is called by its full Windows path, not by name from the extension folder`);
+// A program named like a Windows tool could sit in the extension folder: none is called by name.
+for (const script of [enable, disable]) {
+  assert.equal(/^\s*(call\s+)?"?(schtasks|powershell|conhost|ping|timeout|findstr|wscript|cscript|cmd)(\.exe)?"?(\s|$)/im.test(script), false,
+    "Windows tools are called by their full path");
 }
+assert.ok(updater.includes("Set-Content -LiteralPath $checkFile"), "every run leaves its mark, which the installer waits for");
+assert.ok(updater.includes('$Own = @("manifest.json", "auto-update.log", "auto-update-last-check.txt")'));
+assert.equal(/\bexit\b/.test(updater), false, "no early exit: the mark is written on every path");
 assert.match(updater, /if \(\$local\.name -ne \$ExpectedName\) \{ throw/);
 assert.ok(updater.lastIndexOf("Copy-Item") > updater.indexOf("foreach ($item in"), "manifest.json is copied after everything else");
 assert.equal(/[^\x00-\x7f]/.test(updater + enable + disable), false, "scripts stay plain ASCII for Windows PowerShell 5 and cmd");
 assert.ok(enable.includes("\r\n") && !/[^\r]\n/.test(enable), "batch files keep CRLF line endings");
-assert.ok(enable.includes('"%SYS%\\schtasks.exe" /Create /F /TN "%TASK%" /SC MINUTE /MO 30') && enable.includes("auto-update.ps1"));
+assert.ok(enable.includes('set "SCHTASKS=%SYS%\\schtasks.exe"') && enable.includes('set "SYS=%SystemRoot%\\System32"'));
+assert.ok(enable.includes('call "%SCHTASKS%" /Create /F /TN "%TASK%" /SC MINUTE /MO 30 /TR "%ACTION%"') && enable.includes("auto-update.ps1"));
+// The installer starts the task through the scheduler and falls back to the standard launcher
+// when the windowless one leaves no mark.
+assert.ok(enable.includes('call "%SCHTASKS%" /Run /TN "%TASK%"') && enable.includes('if exist "%BEAT%" exit /b 0'));
+assert.ok(enable.indexOf('set "ACTION=%QUIET%"') < enable.indexOf('set "ACTION=%PLAIN%"'));
+assert.ok(/set "PLAIN=%PS% [^\r\n]*-WindowStyle Hidden/.test(enable) && /set "QUIET=%SYS%\\conhost\.exe --headless %PS% /.test(enable));
 assert.ok(disable.includes('"%SystemRoot%\\System32\\schtasks.exe" /Delete /F /TN "OviPets Friend Sweep Lite update"'));
 assert.ok(enable.includes('set "TASK=OviPets Friend Sweep Lite update"'), "both batch files name the same task");
 

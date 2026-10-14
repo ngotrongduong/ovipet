@@ -13,6 +13,9 @@
 #     from the internet;
 #   - a download that is not a complete, newer release of this extension is thrown away;
 #   - manifest.json is copied last: its version is the "release is complete" signal.
+#
+# auto-update-last-check.txt holds the time and outcome of the last run; auto-update.log the
+# last 200 updates and failures.
 param(
   [string]$Repo = "ngotrongduong/ovipet",
   [string]$Branch = "feat/friend-sweep-lite",
@@ -22,8 +25,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Allowed = @(".js", ".json", ".css", ".html", ".md", ".txt", ".png", ".jpg", ".svg", ".ico", ".webp")
+$Own = @("manifest.json", "auto-update.log", "auto-update-last-check.txt")
 $target = $PSScriptRoot
 $logFile = Join-Path $target "auto-update.log"
+$checkFile = Join-Path $target "auto-update-last-check.txt"
 
 function Write-Log([string]$text) {
   try {
@@ -35,6 +40,7 @@ function Write-Log([string]$text) {
 }
 
 $work = $null
+$outcome = "failed"
 try {
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   $manifestPath = Join-Path $target "manifest.json"
@@ -46,45 +52,52 @@ try {
   $client.Headers["User-Agent"] = "oweh-lite-updater"
   $stamp = [DateTime]::UtcNow.Ticks
   $remote = $client.DownloadString("https://raw.githubusercontent.com/$Repo/$Branch/$Subfolder/manifest.json?t=$stamp") | ConvertFrom-Json
-  if ([version]$remote.version -le [version]$local.version) { exit 0 }
+  if ([version]$remote.version -le [version]$local.version) {
+    $outcome = "up to date (v$($local.version))"
+  } else {
+    $work = Join-Path ([IO.Path]::GetTempPath()) ("oweh-lite-update-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $work | Out-Null
+    $zip = Join-Path $work "release.zip"
+    $client.DownloadFile("https://github.com/$Repo/archive/refs/heads/$Branch.zip", $zip)
+    Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work "unpacked")
+    $new = Get-ChildItem -LiteralPath (Join-Path $work "unpacked") -Directory |
+      ForEach-Object { Join-Path $_.FullName $Subfolder } |
+      Where-Object { Test-Path -LiteralPath (Join-Path $_ "manifest.json") } | Select-Object -First 1
+    if (-not $new) { throw "the download does not contain $Subfolder/manifest.json" }
 
-  $work = Join-Path ([IO.Path]::GetTempPath()) ("oweh-lite-update-" + [Guid]::NewGuid().ToString("N"))
-  New-Item -ItemType Directory -Path $work | Out-Null
-  $zip = Join-Path $work "release.zip"
-  $client.DownloadFile("https://github.com/$Repo/archive/refs/heads/$Branch.zip", $zip)
-  Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work "unpacked")
-  $new = Get-ChildItem -LiteralPath (Join-Path $work "unpacked") -Directory |
-    ForEach-Object { Join-Path $_.FullName $Subfolder } |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_ "manifest.json") } | Select-Object -First 1
-  if (-not $new) { throw "the download does not contain $Subfolder/manifest.json" }
+    $manifest = Get-Content -LiteralPath (Join-Path $new "manifest.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($manifest.name -ne $ExpectedName) { throw "the download holds '$($manifest.name)'" }
+    if ([version]$manifest.version -le [version]$local.version) { throw "the download ($($manifest.version)) is not newer than $($local.version)" }
+    $needed = @($manifest.background.service_worker)
+    foreach ($entry in @($manifest.content_scripts)) { $needed += @($entry.js) + @($entry.css) }
+    foreach ($file in $needed) {
+      if ($file -and -not (Test-Path -LiteralPath (Join-Path $new $file))) { throw "the download lacks $file" }
+    }
 
-  $manifest = Get-Content -LiteralPath (Join-Path $new "manifest.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-  if ($manifest.name -ne $ExpectedName) { throw "the download holds '$($manifest.name)'" }
-  if ([version]$manifest.version -le [version]$local.version) { throw "the download ($($manifest.version)) is not newer than $($local.version)" }
-  $needed = @($manifest.background.service_worker)
-  foreach ($entry in @($manifest.content_scripts)) { $needed += @($entry.js) + @($entry.css) }
-  foreach ($file in $needed) {
-    if ($file -and -not (Test-Path -LiteralPath (Join-Path $new $file))) { throw "the download lacks $file" }
+    $root = (Resolve-Path -LiteralPath $new).Path.TrimEnd('\')
+    $copied = 0
+    foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -File) {
+      $relative = $item.FullName.Substring($root.Length).TrimStart('\')
+      if ($Own -contains $relative) { continue }
+      if ($Allowed -notcontains $item.Extension.ToLowerInvariant()) { continue }
+      $destination = Join-Path $target $relative
+      $folder = Split-Path -Parent $destination
+      if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
+      Copy-Item -LiteralPath $item.FullName -Destination $destination -Force
+      $copied += 1
+    }
+    Copy-Item -LiteralPath (Join-Path $root "manifest.json") -Destination $manifestPath -Force
+    $outcome = "updated v$($local.version) -> v$($manifest.version) ($copied files); the extension reloads itself when it is idle"
+    Write-Log $outcome
   }
-
-  $root = (Resolve-Path -LiteralPath $new).Path.TrimEnd('\')
-  $copied = 0
-  foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -File) {
-    $relative = $item.FullName.Substring($root.Length).TrimStart('\')
-    if ($relative -eq "manifest.json" -or $relative -eq "auto-update.log") { continue }
-    if ($Allowed -notcontains $item.Extension.ToLowerInvariant()) { continue }
-    $destination = Join-Path $target $relative
-    $folder = Split-Path -Parent $destination
-    if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
-    Copy-Item -LiteralPath $item.FullName -Destination $destination -Force
-    $copied += 1
-  }
-  Copy-Item -LiteralPath (Join-Path $root "manifest.json") -Destination $manifestPath -Force
-  Write-Log "updated $($local.version) -> $($manifest.version) ($copied files); the extension reloads itself when it is idle"
 } catch {
-  Write-Log "update failed: $($_.Exception.Message)"
+  $outcome = "failed: $($_.Exception.Message)"
+  Write-Log "update $outcome"
 } finally {
   if ($work -and (Test-Path -LiteralPath $work)) {
     try { Remove-Item -LiteralPath $work -Recurse -Force } catch {}
   }
+  try {
+    Set-Content -LiteralPath $checkFile -Value ("{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $outcome) -Encoding UTF8
+  } catch {}
 }
