@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/state-health.js", "bg/self-update.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/state-health.js", "bg/self-update.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -20,8 +20,9 @@ const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
 const speciesStats = globalThis.OWEH_BG?.speciesStats;
 const speciesLearned = globalThis.OWEH_BG?.speciesLearned;
+const speciesShared = globalThis.OWEH_BG?.speciesShared;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !speciesShared || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -87,6 +88,10 @@ function dropRetentionRanking() {
     "owehRetentionRanking", "owehRetentionReview", "owehRetentionSummary", "owehRetentionLastFullScanAt"
   ]).catch(() => {});
 }
+
+// Name the Species database shared with every other install (bg/species-shared.js): read and
+// merged every hour; sent too once the owner has saved a GitHub token on the review page.
+speciesShared.start();
 
 // Self-update (bg/self-update.js): a newer version in the extension's folder is loaded by the
 // extension itself, but never under a running job. What it waits for is shown in the panel.
@@ -344,6 +349,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "speciesWrongReviewOpen") {
     speciesLearned.openReview().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedStatus") {
+    speciesShared.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedToken") {
+    speciesShared.setToken(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedSync") {
+    speciesShared.sync({ force: true }).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

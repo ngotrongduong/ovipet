@@ -349,7 +349,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.11.0</span>
+          <span class="oweh-version">v5.12.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -475,6 +475,7 @@ OWEH.register("ui-panel", helpers => {
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
             <div id="oweh-species-guard" class="oweh-inline-meta">Auto-answer: checking…</div>
+            <div id="oweh-species-shared" class="oweh-inline-meta" data-tip="One database of silhouettes shared by every install (this helper and Friend Sweep Lite, on any PC), checked every hour. Its settings are on the review page.">Shared database: checking…</div>
             <div id="oweh-species-wrong-count" class="oweh-inline-meta">Wrong review: loading…</div>
             <div class="oweh-actions">
               <button id="oweh-wrongs-review" type="button" data-tip="Open the review page: every saved wrong answer with its quiz image. Pick the right species and the helper learns it at once.">Review wrongs</button>
@@ -752,6 +753,33 @@ OWEH.register("ui-panel", helpers => {
     }
   }
 
+  let speciesSharedAt = 0;
+  let speciesSharedPending = false;
+
+  // The shared Name-the-Species database (bg/species-shared.js); settings on the review page.
+  async function updateSpeciesShared(force = false) {
+    const line = document.querySelector("#oweh-species-shared");
+    if (!line) return;
+    const now = Date.now();
+    if (!force && (speciesSharedPending || now - speciesSharedAt < 30000)) return;
+    speciesSharedPending = true;
+    try {
+      const status = await runtimeRequest({ type: "speciesSharedStatus" });
+      speciesSharedAt = Date.now();
+      if (!status?.ok) return;
+      let text;
+      if (status.lastError) text = `Shared database: ⚠ ${status.lastError}`;
+      else if (status.hubExamples) text = `Shared database: ${status.hubExamples} silhouettes · ${status.contributing ? "sending and receiving" : "receiving only (save a token on the review page to send)"}`;
+      else text = status.contributing ? "Shared database: created at the next sync" : "Shared database: none yet — save a token on the review page to start it";
+      if (line.textContent !== text) line.textContent = text;
+      line.classList?.toggle("oweh-alert", Boolean(status.lastError));
+    } catch {
+      // The line keeps its last text.
+    } finally {
+      speciesSharedPending = false;
+    }
+  }
+
   let selfUpdateAt = 0;
   let selfUpdatePending = false;
   let announcedUpdate = "";
@@ -830,6 +858,7 @@ OWEH.register("ui-panel", helpers => {
     updatePetNameSuggestion();
     updateSpeciesWrongCount();
     updateSpeciesGuard();
+    updateSpeciesShared();
     updateSelfUpdate();
     updateDiagnosticStats();
   }

@@ -62,14 +62,27 @@ button, select { font: inherit; }
 .pause strong { color: var(--open); font-size: 16px; }
 .pause p { margin: 4px 0 0; max-width: 80ch; }
 
+.shared { margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.shared summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.shared.problem { border-color: var(--bad); }
+.shared.problem summary .muted { color: var(--bad); }
+.shared-body p, .shared-body ol { max-width: 80ch; }
+.shared-body ol { padding-left: 20px; }
+.shared-body a { color: var(--manual); }
+.token-row { flex-wrap: wrap; max-width: 760px; }
+.token-row input {
+  flex: 1; min-width: 220px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+
 .toolbar {
   position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
   padding: 10px 0; margin-bottom: 12px; background: var(--bg); border-bottom: 1px solid var(--border);
 }
-.toolbar > button, .card button.plain, .pause button {
+.toolbar > button, .card button.plain, .pause button, .shared button.plain {
   padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); cursor: pointer;
 }
-.toolbar > button:hover, .card button.plain:hover { border-color: var(--manual); }
+.toolbar > button:hover, .card button.plain:hover, .shared button.plain:hover { border-color: var(--manual); }
 .toolbar > button.attention { border-color: var(--open); background: var(--open-bg); color: var(--open); font-weight: 600; }
 button.primary { border-color: var(--ok) !important; background: var(--ok) !important; color: #fff !important; font-weight: 600; }
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface); }

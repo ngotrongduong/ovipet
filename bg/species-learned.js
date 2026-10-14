@@ -16,6 +16,10 @@
 
   const PREFIX = "owehSpeciesLearned_";
   const INDEX_KEY = "owehSpeciesLearnedIndex";
+  // Masks the game rejected for a species, { species: [mask] }: a learned near-duplicate of one
+  // is wrong, here and in the shared database (bg/species-shared.js) that other installs read.
+  const REFUTED_KEY = "owehSpeciesRefuted";
+  const MAX_REFUTED = 300;
   const GUARD_KEY = "owehSpeciesGuard";
   const LIMITS_KEY = "owehSpeciesGuardLimits";
   const DEFAULT_LIMITS = Object.freeze({ streak: 3, perHour: 10 });
@@ -92,14 +96,92 @@
     });
   }
 
+  async function readRefuted() {
+    const stored = (await chrome.storage.local.get({ [REFUTED_KEY]: null }))[REFUTED_KEY];
+    const refuted = {};
+    for (const [species, shapes] of Object.entries(stored && typeof stored === "object" ? stored : {})) {
+      const clean = (Array.isArray(shapes) ? shapes : []).map(cleanShape).filter(Boolean);
+      if (cleanSpecies(species) && clean.length) refuted[species] = clean;
+    }
+    return refuted;
+  }
+
+  // Inside a serialized task only. Newest last; the oldest go beyond MAX_REFUTED.
+  async function addRefutedNow(species, shapes) {
+    const refuted = await readRefuted();
+    const known = new Set(refuted[species] || []);
+    const fresh = shapes.map(cleanShape).filter(shape => shape && !known.has(shape));
+    if (!fresh.length) return 0;
+    refuted[species] = [...(refuted[species] || []), ...fresh].slice(-MAX_REFUTED);
+    await chrome.storage.local.set({ [REFUTED_KEY]: refuted });
+    return fresh.length;
+  }
+
+  // Masks rejected elsewhere (the shared database) count as rejected here too.
+  function addRefuted(message = {}) {
+    return serialized(async () => {
+      const species = cleanSpecies(message.species);
+      if (!species) return { ok: false, reason: "invalid-species" };
+      return { ok: true, added: await addRefutedNow(species, Array.isArray(message.shapes) ? message.shapes : []) };
+    });
+  }
+
+  const nearAny = (shape, list) => list.some(other => shapeApi().hamming(shape, other) <= shapeApi().DEDUPE_DISTANCE);
+
+  // Many silhouettes of one species in one write (the shared database). A mask the game
+  // rejected for that species is not taken.
+  function learnMany(message = {}) {
+    return serialized(async () => {
+      const species = cleanSpecies(message.species);
+      if (!species) return { ok: false, reason: "invalid-species" };
+      const shapes = (Array.isArray(message.shapes) ? message.shapes : []).map(cleanShape).filter(Boolean);
+      const refuted = (await readRefuted())[species] || [];
+      const record = await readSpecies(species);
+      const library = { [species]: record };
+      let added = 0;
+      for (const shape of shapes) {
+        if (nearAny(shape, refuted)) continue;
+        if (shapeApi().addExample(library, species, shape, Date.now()).added) added += 1;
+      }
+      if (!added) return { ok: true, added: 0, count: record.examples.length };
+      const index = await readIndex();
+      index[species] = library[species].examples.length;
+      await chrome.storage.local.set({ [PREFIX + species]: library[species], [INDEX_KEY]: index });
+      return { ok: true, added, count: index[species] };
+    });
+  }
+
+  // Rejections of a species reported by the shared database: remembered, and every learned
+  // near-duplicate of them under that species goes, in one write.
+  function refute(message = {}) {
+    return serialized(async () => {
+      const species = cleanSpecies(message.species);
+      if (!species) return { ok: false, reason: "invalid-species" };
+      const shapes = (Array.isArray(message.shapes) ? message.shapes : []).map(cleanShape).filter(Boolean);
+      const recorded = await addRefutedNow(species, shapes);
+      const record = await readSpecies(species);
+      const examples = record.examples.filter(example => !nearAny(example, shapes));
+      const removed = record.examples.length - examples.length;
+      if (removed) {
+        const index = await readIndex();
+        if (examples.length) index[species] = examples.length;
+        else delete index[species];
+        await chrome.storage.local.set({ [PREFIX + species]: { examples, updatedAt: Date.now() }, [INDEX_KEY]: index });
+      }
+      return { ok: true, recorded, removed };
+    });
+  }
+
   // Takes back one exact silhouette (the owner changed or removed a label). With `refuted`, the
   // game has just rejected that species for this image, so every learned near-duplicate of it
   // under that species goes too: a wrong label can not keep producing the same wrong answer.
+  // The rejection is also remembered, so the shared database and its other readers drop it.
   function forget(message = {}) {
     return serialized(async () => {
       const species = cleanSpecies(message.species);
       const shape = cleanShape(message.shape);
       if (!species || !shape) return { ok: false, reason: "invalid-example" };
+      if (message.refuted) await addRefutedNow(species, [shape]);
       const record = await readSpecies(species);
       const { hamming, DEDUPE_DISTANCE } = shapeApi();
       const examples = record.examples.filter(example => message.refuted
@@ -241,8 +323,8 @@
   }
 
   OWEH_BG.speciesLearned = Object.freeze({
-    learn, forget, labelCase, readAll, readIndex,
+    learn, learnMany, forget, refute, labelCase, readAll, readIndex, readRefuted, addRefuted,
     readGuard, noteAnswers, resume, setLimits, status, openReview,
-    PREFIX, INDEX_KEY, GUARD_KEY, LIMITS_KEY, DEFAULT_LIMITS
+    PREFIX, INDEX_KEY, REFUTED_KEY, GUARD_KEY, LIMITS_KEY, DEFAULT_LIMITS
   });
 })();

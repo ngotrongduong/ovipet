@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.11.0**
+Current release: **v5.12.0**
 
 ## Engineering objective
 
@@ -16,6 +16,16 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.12.0 — One Name-the-Species database for every install (2026-10-14)
+
+The helper and Friend Sweep Lite, on any PC, now share what they learn:
+
+- One shared list of silhouettes lives in a public GitHub gist of the repository owner (one file per species; 32x32 masks only, no ids or pictures).
+- Every install reads it every hour and takes the silhouettes it lacks, so a species one install learned is answered by all of them. No account is needed for that.
+- An install that has a GitHub token (gist permission only — it can not touch any repository) also sends what it learned and what the game rejected. A rejected silhouette is removed from the shared list and from every install.
+- Review page → **Shared database**: status, where to create the token (step by step), **Save token**, **Remove token**, **Sync now**. The panel's Species section shows one status line.
+- Two installs writing at the same moment lose nothing for long: the next sync sends again what is missing.
 
 ## v5.11.0 — The extension updates itself (2026-10-14)
 

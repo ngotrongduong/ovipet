@@ -41,7 +41,19 @@ assert.ok(imports.indexOf('"domain/species-shape.js"') >= 0, "the service worker
 assert.ok(imports.indexOf('"domain/species-shape.js"') < imports.indexOf('"bg/species-stats.js"'));
 assert.ok(imports.indexOf('"bg/species-stats.js"') < imports.indexOf('"bg/species-learned.js"'));
 
-for (const id of ["oweh-species-guard", "oweh-wrongs-review", "oweh-species-resume", "oweh-species-streak", "oweh-species-hour"]) {
+for (const type of ["speciesSharedStatus", "speciesSharedToken", "speciesSharedSync"]) {
+  assert.ok(pageScript.includes(`type: "${type}"`), `review page should use ${type}`);
+}
+for (const id of ["shared", "shared-summary", "shared-token", "shared-save", "shared-remove", "shared-sync", "shared-detail", "shared-owner"]) {
+  assert.ok(page.includes(`id="${id}"`), `review page control missing: ${id}`);
+}
+assert.ok(page.includes('type="password"'), "the token is never shown in clear");
+assert.ok(background.match(/importScripts\(([^;]+)\);/s)[1].includes('"bg/species-shared.js"'));
+const manifest = JSON.parse(read("manifest.json"));
+for (const host of ["https://api.github.com/*", "https://gist.githubusercontent.com/*"]) {
+  assert.ok(manifest.host_permissions.includes(host), `host permission missing: ${host}`);
+}
+for (const id of ["oweh-species-guard", "oweh-species-shared", "oweh-wrongs-review", "oweh-species-resume", "oweh-species-streak", "oweh-species-hour"]) {
   assert.ok(panel.includes(`id="${id}"`), `panel control missing: ${id}`);
 }
 // The answerer reads the same storage keys the background writes.

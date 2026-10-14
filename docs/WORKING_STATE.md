@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-10-14
-Current release baseline: v5.11.0
+Current release baseline: v5.12.0
 Current repository phase: Phase 0 — baseline import/CI bootstrap
 Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
 
@@ -198,6 +198,13 @@ Diagnostic Logbook persistence changed from one monolithic 5,000-event value rew
 - Verification: syntax PASS, release consistency PASS, full suite **64/64 PASS**.
 - Second pass (2026-09-24): `services/status.js` (status line + worker-done notice), `services/partner-ranking.js` (Rank partners, breeding-candidate parsing, hatchling male metrics) and `services/worker-control.js` (Stop All, task heartbeat, shared-worker message routing, reload recovery of orphaned one-button jobs). content.js 652 -> 464 lines; new `tests/content-services.test.js`; full suite **65/65 PASS**. Not yet re-smoked live.
 - Live smoke (2026-09-24, reloaded extension, real account): panel renders "Ready · controls connected"; Diagnostics summary loads; Copy blacklist CSV (3); Copy retention CSV (25, nothing removed); profile suggested name + Save current pet (325 indexed); Update pet catalog via shared background tab saved 325 pets from 9 enclosures; no console errors. Not re-run live: Apply/rename, move to enclosure, Ninja chat scan, Scan friend list.
+
+### v5.12.0 — shared Name-the-Species database (2026-10-14)
+
+- `bg/species-shared.js` (shared with Lite): hub = public gist of `ngotrongduong` with description "OviPets Name the Species - shared silhouette database", files `species-<Name>.json` = { format "ovipets-species-shared/1", species, examples (≤150 masks), refuted (≤300 masks), updatedAt } plus about.md. Found by listing the owner's public gists (oldest match wins if two exist). Hourly sync (alarm created only when missing, plus a check on every service-worker start): read → merge into the learned overlay (`speciesLearned.refute` for the hub's rejections, `learnMany` for its masks; a species whose file is unchanged is skipped) → with a token, send local masks the hub lacks (not within 6 bits of a hub mask, not refuted) and local rejections, PATCHing only changed species files; the first install with a token creates the gist.
+- `bg/species-learned.js`: `owehSpeciesRefuted` keeps the masks the game rejected per species (`forget({ refuted: true })` records them); `learnMany` skips them; `refute` applies the hub's.
+- Token: classic token with only the `gist` scope (or fine-grained with Gists read/write), saved by the owner on the review page into `owehSpeciesShareToken`; checked with GET /user (must be the owner) and only ever sent to api.github.com. Host permissions api.github.com and gist.githubusercontent.com.
+- Verified: `tests/species-shared.test.js` (two and more installs against a fake GitHub: creation, discovery without token, both directions, rejection propagation, lost-write repair, junk files, truncated files via raw URL, token only to api.github.com, duplicate gists, deleted gist, revoked token); in an isolated headless Edge the real extension read the real GitHub API without error. **Not verified:** a real write (it needs the owner's token; nobody but the owner may create or enter it).
 
 ### v5.11.0 — self-update of the unpacked install (2026-10-14)
 
