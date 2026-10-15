@@ -44,6 +44,7 @@ jobs:
           Copy-Item manifest.json (Join-Path $dir 'manifest.json')
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $dir 'auto-update.ps1') -Rollback
           if ($LASTEXITCODE -ne 1) { throw 'Missing backup should fail safely' }
+          $global:LASTEXITCODE = 0 # Expected negative-path exit; GitHub powershell wrapper checks it.
           $status = Get-Content -LiteralPath (Join-Path $dir 'auto-update-last-check.txt') -Raw
           if ($status -notmatch 'No previous-version backup') { throw 'Safe rollback failure not reported' }
           $m = Get-Content -LiteralPath (Join-Path $dir 'manifest.json') -Raw | ConvertFrom-Json
