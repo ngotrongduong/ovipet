@@ -3,7 +3,12 @@ name: Package Friend Sweep Lite
 on:
   push:
     branches:
+      - main
       - feat/friend-sweep-lite
+    paths:
+      - 'friend-sweep-lite/**'
+      - 'scripts/sync-lite-species.js'
+      - '.github/workflows/package-lite.yml'
 
 permissions:
   contents: read
