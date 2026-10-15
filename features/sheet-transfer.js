@@ -183,7 +183,7 @@ OWEH.register("feature-sheet-transfer", helpers => {
       await storageSet({ [PLAN_KEY]: plan });
       showPlan(plan);
     } catch (error) {
-      await storageSet({ [PLAN_KEY]: null });
+      if (!(await workerBusy())) await storageSet({ [PLAN_KEY]: null });
       summary("ID list rejected: " + (error?.message || error));
       throw error;
     } finally {
