@@ -239,7 +239,12 @@ OWEH.register("ui-dashboard", helpers => {
       summary.unchecked ? `${summary.unchecked} not fully read yet` : "",
       summary.eggsNotIndexed ? `${summary.eggsNotIndexed} egg(s) not indexed — run Newborns only` : ""
     ].filter(Boolean).join(", ");
-    return `${state.rows.length} can go: ${surplusKindText(summary.surplus)} · each replaced by ≥${Number(preview.minReplacements || summary.minReplacements || 0)} kept`
+    const spares = Number(preview.minReplacements || summary.minReplacements || 0);
+    // A review made since the fixed male rule carries summary.maleRule.
+    const rule = summary.maleRule
+      ? `females and eggs replaced by ≥${spares} kept females · males by the FF/00 pair rule`
+      : `each replaced by ≥${spares} kept`;
+    return `${state.rows.length} can go: ${surplusKindText(summary.surplus)} · ${rule}`
       + ` · ${state.discarded} discarded · ${state.queued} queued${state.sent ? ` · ${state.sent} sent, not verified` : ""}${held ? ` · ${held}` : ""}`;
   }
 
@@ -303,11 +308,16 @@ OWEH.register("ui-dashboard", helpers => {
           const name = planViewCell("td", row.name || row.id);
           name.title = `ID ${row.id}`;
           const examples = (row.examples || []).map(item => item.name || item.id).join(", ");
-          const count = row.kind === "egg"
-            ? `${Number(row.replacementMales || 0)} males / ${Number(row.replacementFemales || 0)} females`
-            : String(Number(row.replacements || 0));
+          const byMaleRule = row.reason === "male-rule";
+          let count = String(Number(row.replacements || 0));
+          if (row.kind === "male" && byMaleRule) count = "fails the male rule";
+          else if (row.kind === "egg" && byMaleRule) count = `fails the male rule · ${Number(row.replacementFemales || 0)} females`;
+          else if (row.kind === "egg") count = `${Number(row.replacementMales || 0)} males / ${Number(row.replacementFemales || 0)} females`;
           const replaced = planViewCell("td", examples ? `${count} · e.g. ${examples}` : count);
-          replaced.title = (row.examples || []).map(item => `${item.name} (ID ${item.id})`).join(", ");
+          replaced.title = [
+            byMaleRule ? "Male rule: fewer than 2 FF pairs in Body 1 and no target FF/00 pair in Body 2, Scales or the Extras" : "",
+            (row.examples || []).map(item => `${item.name} (ID ${item.id})`).join(", ")
+          ].filter(Boolean).join(" — ");
           tr.append(
             planViewCell("td", String(index + 1), "oweh-plan-num"),
             planViewCell("td", SURPLUS_KIND_LABELS[row.kind] || String(row.kind || "")),

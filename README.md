@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.10.2**
+Current release: **v5.12.0**
 
 ## Engineering objective
 
@@ -17,19 +17,60 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
-## Unreleased — Highlight best eggs (2026-10-05)
+## v5.12.0 — One Name-the-Species database for every install (2026-10-14)
+
+The helper and Friend Sweep Lite, on any PC, now share what they learn:
+
+- One shared list of silhouettes lives in a public GitHub gist of the repository owner (one file per species; 32x32 masks only, no ids or pictures).
+- Every install reads it every hour and takes the silhouettes it lacks, so a species one install learned is answered by all of them. No account is needed for that.
+- An install that has a GitHub token (gist permission only — it can not touch any repository) also sends what it learned and what the game rejected. A rejected silhouette is removed from the shared list and from every install.
+- Review page → **Shared database**: status, where to create the token (step by step), **Save token**, **Remove token**, **Sync now**. The panel's Species section shows one status line.
+- Two installs writing at the same moment lose nothing for long: the next sync sends again what is missing.
+
+## v5.11.0 — The extension updates itself (2026-10-14)
+
+No more visit to the browser's extensions page after a change:
+
+- The extension looks at its own folder once a minute. When the `manifest.json` there carries another version than the one that is running, it reloads itself and then refreshes the open OviPets tabs.
+- It never does that under a running job (friend sweep, Hatchery run, breeding, newborn pass, any background job) or while the review page is in front. The new version then waits, the Settings section says what it is waiting for, and **Update now** stops every job and loads it at once.
+- A tab refreshed by an update starts nothing by itself: a Hatchery run you stopped stays stopped.
+- Switch: Settings → **Update the extension by itself** (on by default). Only for an unpacked install; a store install is updated by the browser.
+- The version number is the signal: a change goes live when the version in `manifest.json` is raised, not while files are still being edited.
+
+One manual reload is still needed once, to load the version that contains this.
+
+## v5.11.0 — Confirmed breeding plans are sent much faster (2026-10-13)
+
+After **Confirm**, each pair used to take seconds for reasons that had nothing to do with the game:
+
+- The plan kept every safe male for every female (hundreds each for Same-FF and Newborn outcross — about 70 MB for 300 females × 420 males), and that whole list was read and written again for every pair, and re-read by every open OviPets tab. The saved plan and the campaign now keep the planned male plus 7 fallbacks per female (about 1.5 MB for the same plan), and the list is no longer rewritten per pair.
+- The next pair waited on a page timer, which Chrome slows to once a second (or worse) in the hidden background tab. The next command now goes out as soon as the game has answered the previous one. The **Delay** setting is still honoured if you set one.
+
+Still one command at a time, each confirmed by the game before the next. A female the game refuses with 8 males in a row is skipped (before: every listed male was tried, one server round trip each).
+
+## v5.11.0 — Name the Species learns, pauses and can be reviewed (2026-10-13)
+
+The quiz now draws from about 39 species (10 before); the built-in library is thin for the new ones.
+
+- **Learns while it runs.** When the game accepts an answer, that picture's silhouette is confirmed: it is kept for every species the built-in library knows poorly, and for any species after a first wrong answer. The next eggs are matched against the built-in library plus these learned silhouettes.
+- **Safety pause.** After **3 wrong answers in a row**, or **more than 10 wrong within one hour**, the helper stops answering, stops the friend sweep / Hatchery run, plays the alert and opens the review page. Check the wrong answers, press **Resume answering** (panel → Species, or the review page) and start the run again. Both limits can be changed in the Species section (0 = off). Expect it to pause often until the new species are learned.
+- **Review wrongs** (panel → Species) opens a page with one card per missed picture: the real quiz picture, the answers the game rejected (struck out) and the remaining options. Click the right species and the helper learns it at once; click another to change it, or remove the label. A label the game contradicts is refused. If the egg already shows a newer question, you label the picture you see instead.
+- The built-in library was rebuilt with the owner's 196 labels of 2026-10-13 (8 refused because the game itself contradicted them): 1,691 silhouettes in 39 species.
+
+## v5.11.0 — Highlight best eggs (2026-10-05)
 
 - **Highlight best eggs** (Hatchery section) marks the eggs closest to the pure target, 10 by default (**Best eggs to mark**, 1–50). Each gets a gold frame and its rank on the Hatchery page, and the panel lists them with their colours; hover a mark for the score.
 - **Scoring:** each of the 15 colour channels is worth `1/(distance+1)` (exact = 1, one step off = 0.5), and slots are weighted **Body 1 ×5, Body 2 ×4, Scales ×3, Extra 1 ×2, Extra 2 ×1**. A perfect egg scores 45.
 - **Fast scan:** colours already saved by the newborn pass are reused, the rest are fetched 5 at a time (profile only) and remembered, so a second scan only reads new eggs. It reads only: nothing is sent to the game and no pet record is written.
 - The marks come back by themselves whenever OviPets redraws the Hatchery, until you press **Clear marks** or scan again.
 
-## Unreleased — Discard surplus pets and eggs (2026-10-05)
+## v5.11.0 — Discard surplus pets and eggs (2026-10-05)
 
 - **One flow replaces Male cull and Discard poor eggs.** Under Breeding: **Plan discard** lists every surplus hatched pet and egg, **View discard list** shows them with their colours and the kept pets that replace each one, and **Confirm & discard** sends OviPets' own **Send To → Discard** command for the list. **Discarding is permanent** — nothing is moved to Males discard any more.
 - **New rule, colours only.** A channel is worth `1/(distance+1)` (measured on 2,718 bred pets: exact when both parents are exact, about 1 in `d+1` when one parent is exact and the other is `d` off). A pet is surplus when at least **Spares** (default 10) kept pets of its own sex are at least as good in all 15 channels of Body 1, Body 2, Scales, Extra 1 and Extra 2, with 5 percentage points of slack. An egg needs that many males **and** that many females. Pedigree is not considered. The old rule (better on every channel by exact distance, two lineages) listed 1 egg out of 975.
-- **Never listed:** every Generated pet (kept as backup stock for the other colour slots), pets never checked for Generated, pets in a breeding plan, and eggs whose pedigree was not read or names no parents. Pets already in Males discard are reviewed but never count as a replacement.
+- **Never listed:** every Generated pet (kept as backup stock for the other colour slots), pets never checked for Generated, pets in a breeding plan, and eggs whose pedigree was not read or names no parents. Males already in Males discard are judged by the same male rule.
 - **The game decides, not the database.** Plan and Confirm both read the live Overview and Hatchery. A pet OviPets no longer lists (sold, discarded by hand) is neither listed nor counted as a replacement, and at Confirm a row is sent only if it is still surplus in the live game, still an egg / still there, and has the colours you reviewed. If any enclosure or the Hatchery cannot be read, nothing is sent.
+- **Males follow a fixed rule (owner decision, 2026-10-13 — the Males enclosure was over capacity).** A male stays only if he has **at least 2 FF pairs in Body 1**, or **at least one target FF/00 pair in Body 2, Scales, Extra 1 or Extra 2**, or is **Generated**. Every other male is listed, whatever "Spares needed" says and however few males are left. A pair counts only when it equals the target's pair in that position (FF where the target has FF, 00 where it has 00). On the stock read that day this lists 415 of the 837 males in Males, 205 of the 207 in Males discard and 21 of the 30 in Newborn. Females keep the replacement rule; an egg is listed when it would fail the male rule **and** has enough female replacements.
 - **Plan discard covers every enclosure, Newborn included (2026-10-13).** Any hatched pet OviPets lists that the database cannot judge — never read, read incompletely, or read before the Generated flag was recorded — has its profile read and saved by the plan itself, so nothing is left out for being "unchecked" and Update database is not needed first. A breeding plan older than 15 minutes (it can no longer be confirmed) no longer keeps its pets off the list; before, a forgotten Newborn outcross plan hid every Newborn female. While Update database, the newborn pass, breeding or a discard run holds the background tab, Plan discard waits.
 - **Confirm sends exactly the plan you looked at.** A plan rebuilt after the click is refused until you confirm it.
 - **"Sent" is not "discarded".** After sending, the lists are read again and the database marks a pet gone only when OviPets no longer lists it. A command that timed out is checked the same way and counts toward the limit. Rows left "sent" by Stop are checked at the next Confirm or Plan. Three unanswered commands in a row stop the run.

@@ -100,10 +100,44 @@ On the 2026-10-05 stock (1,898 pets, 975 eggs) with 10 replacements this lists 4
 kept pet unchanged. The rule it replaces (at least as close on all 15 channels by exact
 distance, two lineages) listed 1 egg.
 
+### Males: a fixed rule (owner decision, 2026-10-13)
+
+The Males enclosure was over capacity (1,000 pets, with newborn males piling up in Newborn and
+Unnamed), so the owner set an absolute rule for males instead of counting replacements. A
+male stays only if
+
+- at least **two of his three Body 1 pairs are FF** (`FF FF **`, `FF ** FF`, `** FF FF`), or
+- at least **one pair of Body 2, Scales, Extra 1 or Extra 2 is exact**, or
+- he is **Generated**.
+
+Every other male is listed, whatever "Spares needed" says and however few males are left.
+"Exact" means the pair equals the target's pair in that position: FF where the target has FF,
+00 where it has 00. A 00 where the target wants FF is the far end, not a match (on the stock
+of that day no male depended on this distinction). `domain/surplus.js` `keepsAsMale`.
+
+Read from the game on 2026-10-13, after the owner's first discards:
+
+| males in | total | stay | listed |
+|---|---|---|---|
+| Males | 837 | 422 | 415 |
+| Males discard | 207 | 2 | 205 |
+| Newborn | 30 | 9 | 21 |
+
+Of the 191 unnamed newborn males, 64 would stay; they are judged once the newborn pass has
+named them. 46 of the males that stay do so on Body 1 alone.
+
+Females keep the replacement rule above. An egg has no sex yet, so it is listed only when it
+would fail the male rule **and** has enough female replacements: 176 of the 305 eggs fail the
+male rule, 26 are listed at 10 replacements.
+
+A rule tried earlier the same day (exact channels matched one by one plus slot scores within
+0.25, 10 replacements) kept 157 of 1,255 males without lowering any female's best mate; the
+owner replaced it with the fixed rule, which is simpler to check by eye from a pet's name.
+
 Pedigree is deliberately not part of the rule (owner decision 2026-10-05): with ten
 replacements a related pair always has an unrelated alternative. **Generated** pets (wand
 icon), pets whose Generated flag was never read, and pets in a breeding plan are never listed.
-Pets already in Males discard are reviewed but never count as a replacement.
+Males already in Males discard are judged by the same male rule.
 
 Lock groups explain the stock: the 136 Generated founders are exact on one channel in all
 five slots (R, G or B: 5 exact channels each). Progress means stacking exact channels from two

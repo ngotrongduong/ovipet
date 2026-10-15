@@ -2,19 +2,24 @@
 
 // Builds data/species-static.js, the built-in Name-the-Species silhouette library.
 //
-//   node scripts/build-species-static.js [--source <learning-export.json>] [<wrongs-export.json> ...]
+//   node scripts/build-species-static.js [--source <learning-export.json>] [<cases.json> ...]
 //
-// --source  rebuild the base library from a Species learning/Inspector export (its `shapes` map).
-//           Without it the current data/species-static.js is the base.
-// wrongs    files from the panel's "Export wrongs" button. Every case OviPets resolved
-//           (correctSpecies set) is appended as a game-confirmed silhouette.
+// --source  rebuild the learned part from a Species learning/Inspector export (its `shapes` map,
+//           every species in it). Without it the current data/species-static.js is the base.
+// cases     files from the panel's "Export wrongs" button, or label files from the owner's
+//           verification page. Every case with a correctSpecies is appended as a confirmed
+//           silhouette (confirmed by the game after a rejected answer, or by the owner's eyes).
+//
+// The quiz offered 10 species until 2026-10; since then it offers about 39. A species is
+// whatever the inputs name: there is no fixed list.
 //
 // Learned labels are noisy: the old learner stored a few Vulpes under Canis and a Raptor under
 // Gekko, and with nearest-neighbour matching one mislabeled silhouette keeps beating the right
 // species by a bit or two. A learned silhouette is therefore dropped when none of its 5 nearest
-// neighbours share its label and at least 4 of them agree on one other species. Game-confirmed
-// silhouettes are never dropped; they sit at the end of each species and meta.gameConfirmed
-// counts them so the next build can tell them apart.
+// neighbours share its label and at least 4 of them agree on one other species — but only in
+// a species with enough learned silhouettes for "none of its neighbours" to mean something.
+// Confirmed silhouettes are never dropped; they sit at the end of each species and
+// meta.gameConfirmed counts them so the next build can tell them apart.
 //
 // Only color-independent 32x32 alpha masks are written: no ids, thumbnails or traces.
 
@@ -24,9 +29,46 @@ const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..");
 const TARGET = path.join(ROOT, "data", "species-static.js");
-const QUIZ_SPECIES = ["Canis", "Draconis", "Equus", "Feline", "Gekko", "Lupus", "Mantis", "Raptor", "Slime", "Vulpes"];
 const NEIGHBOURS = 5;
 const MIN_AGREEING = 4;
+// A species with a handful of silhouettes has no "own" neighbours to be found among.
+const MIN_CLASS_FOR_NOISE_FILTER = 20;
+const SPECIES_NAME = /^[A-Za-z][A-Za-z -]{1,30}$/;
+// Two wrong cases of one egg show the same quiz image when their silhouettes are this close
+// (measured: retries repeat the image and its six options exactly).
+const SAME_IMAGE_DISTANCE = 20;
+
+// An owner label is checked against what the game itself said about that quiz image: the answer
+// is one of the six options, never a species the game rejected for it, and never different from
+// the species the game later accepted. Labels of one image that disagree with each other are all
+// dropped. A label made on a newer image of the egg (imageChanged) has no quiz to be checked
+// against. Returns the cases to learn and the labels refused, with the reason.
+function vetCases(raw, hamming) {
+  const labelled = item => SPECIES_NAME.test(String(item.correctSpecies || "").trim());
+  const byOwner = item => item.method === "owner-label" || Boolean(item.ownerLabel);
+  const sameImage = (a, b) => Boolean(a.eggId) && String(a.eggId) === String(b.eggId)
+    && hamming(a.shape, b.shape) <= SAME_IMAGE_DISTANCE;
+  const accepted = [];
+  const refused = [];
+  for (const item of raw.filter(labelled)) {
+    const label = String(item.correctSpecies).trim();
+    if (!byOwner(item) || item.imageChanged) { accepted.push(item); continue; }
+    const peers = raw.filter(other => sameImage(other, item));
+    const gameAnswer = peers.filter(other => !byOwner(other) && labelled(other)).map(other => String(other.correctSpecies).trim())[0];
+    const rejected = new Set(peers.map(other => String(other.wrongSpecies || "").trim()).filter(Boolean));
+    const options = Array.isArray(item.options) ? item.options : [];
+    const otherLabels = peers.filter(other => byOwner(other) && !other.imageChanged && labelled(other))
+      .map(other => String(other.correctSpecies).trim()).filter(name => name !== label);
+    let reason = "";
+    if (gameAnswer && gameAnswer !== label) reason = `the game accepted ${gameAnswer}`;
+    else if (rejected.has(label)) reason = "the game rejected that species for this image";
+    else if (options.length && !options.includes(label)) reason = "not one of the quiz options";
+    else if (otherLabels.length) reason = `another label of the same image says ${[...new Set(otherLabels)].join("/")}`;
+    if (reason) refused.push({ label, reason });
+    else accepted.push(item);
+  }
+  return { accepted, refused };
+}
 
 function loadRuntime() {
   const sandbox = vm.createContext({});
@@ -36,10 +78,10 @@ function loadRuntime() {
 }
 
 function parseArgs(argv) {
-  const args = { source: null, wrongs: [] };
+  const args = { source: null, cases: [] };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--source") args.source = argv[index += 1];
-    else args.wrongs.push(argv[index]);
+    else args.cases.push(argv[index]);
   }
   return args;
 }
@@ -62,13 +104,19 @@ function nearest(matrix, entries, index, count) {
   return order.sort((a, b) => matrix[index][a] - matrix[index][b]).slice(0, count);
 }
 
+const classSizes = entries => entries.reduce((sizes, entry) => {
+  if (!entry.dropped) sizes[entry.species] = (sizes[entry.species] || 0) + 1;
+  return sizes;
+}, {});
+
 // Repeats until stable: removing one mislabeled silhouette can expose its mislabeled neighbour.
 function dropMislabeled(matrix, entries) {
   const dropped = [];
   for (;;) {
+    const sizes = classSizes(entries);
     const victims = [];
     entries.forEach((entry, index) => {
-      if (entry.dropped || entry.confirmed) return;
+      if (entry.dropped || entry.confirmed || sizes[entry.species] < MIN_CLASS_FOR_NOISE_FILTER) return;
       const votes = {};
       for (const other of nearest(matrix, entries, index, NEIGHBOURS)) {
         votes[entries[other].species] = (votes[entries[other].species] || 0) + 1;
@@ -84,15 +132,20 @@ function dropMislabeled(matrix, entries) {
   }
 }
 
-// Leave-one-out nearest-neighbour over all 10 species (harder than the 6 options of a real quiz).
-function leaveOneOutErrors(matrix, entries) {
-  const errors = [];
+// Leave-one-out nearest neighbour over every species (harder than the 6 options of a real
+// quiz), reported separately for well-sampled and thin species.
+function leaveOneOut(matrix, entries) {
+  const sizes = classSizes(entries);
+  const tally = { large: { right: 0, total: 0, errors: {} }, small: { right: 0, total: 0, errors: {} } };
   entries.forEach((entry, index) => {
     if (entry.dropped) return;
+    const bucket = tally[sizes[entry.species] >= MIN_CLASS_FOR_NOISE_FILTER ? "large" : "small"];
     const closest = entries[nearest(matrix, entries, index, 1)[0]];
-    if (closest.species !== entry.species) errors.push(`${entry.species}->${closest.species}`);
+    bucket.total += 1;
+    if (closest?.species === entry.species) bucket.right += 1;
+    else bucket.errors[`${entry.species}->${closest?.species}`] = (bucket.errors[`${entry.species}->${closest?.species}`] || 0) + 1;
   });
-  return errors;
+  return tally;
 }
 
 function build() {
@@ -101,9 +154,10 @@ function build() {
   const entries = [];
   const seen = new Set();
   const add = (species, shape, confirmed) => {
-    if (!QUIZ_SPECIES.includes(species) || !shapeApi.validShape(shape) || seen.has(`${species}|${shape}`)) return false;
-    seen.add(`${species}|${shape}`);
-    entries.push({ species, shape, confirmed, dropped: false });
+    const name = String(species || "").trim();
+    if (!SPECIES_NAME.test(name) || !shapeApi.validShape(shape) || seen.has(`${name}|${shape}`)) return false;
+    seen.add(`${name}|${shape}`);
+    entries.push({ species: name, shape, confirmed, dropped: false });
     return true;
   };
 
@@ -112,8 +166,8 @@ function build() {
     sourceExtensionVersion: current?.meta?.sourceExtensionVersion || null
   };
   const currentConfirmed = [];
-  for (const species of QUIZ_SPECIES) {
-    const examples = current?.library?.[species]?.examples || [];
+  for (const [species, record] of Object.entries(current?.library || {})) {
+    const examples = record?.examples || [];
     const learned = examples.length - Number(current?.meta?.gameConfirmed?.[species] || 0);
     examples.forEach((shape, index) => {
       if (index >= learned) currentConfirmed.push({ species, shape });
@@ -123,65 +177,74 @@ function build() {
   if (args.source) {
     const source = JSON.parse(fs.readFileSync(args.source, "utf8"));
     provenance = { sourceExportedAt: source.exportedAt || null, sourceExtensionVersion: source.extensionVersion || null };
-    for (const species of QUIZ_SPECIES) {
-      for (const shape of source.shapes?.[species]?.examples || []) add(species, shape, false);
+    for (const [species, record] of Object.entries(source.shapes || {})) {
+      for (const shape of record?.examples || []) add(species, shape, false);
     }
   }
   for (const { species, shape } of currentConfirmed) add(species, shape, true);
 
-  const cases = args.wrongs.flatMap(file => JSON.parse(fs.readFileSync(file, "utf8")).cases || [])
-    .filter(item => QUIZ_SPECIES.includes(item.correctSpecies) && shapeApi.validShape(item.shape));
-  // Held-out check first: would the cleaned library have answered these before learning them?
-  let matrix = distanceMatrix(entries, shapeApi.hamming);
-  const dropped = dropMislabeled(matrix, entries);
-  const libraryOf = () => Object.fromEntries(QUIZ_SPECIES.map(species => [species, {
+  const { accepted: cases, refused } = vetCases(
+    args.cases.flatMap(file => JSON.parse(fs.readFileSync(file, "utf8")).cases || [])
+      .filter(item => item && shapeApi.validShape(item.shape)),
+    shapeApi.hamming
+  );
+  const speciesOf = () => [...new Set(entries.filter(entry => !entry.dropped).map(entry => entry.species))].sort();
+  const libraryOf = () => Object.fromEntries(speciesOf().map(species => [species, {
     examples: [false, true].flatMap(confirmed => entries
       .filter(entry => entry.species === species && entry.confirmed === confirmed && !entry.dropped)
       .map(entry => entry.shape))
   }]));
+
+  // Held-out check first: would the cleaned library have answered these before learning them?
+  let matrix = distanceMatrix(entries, shapeApi.hamming);
+  const dropped = dropMislabeled(matrix, entries);
   const cleaned = libraryOf();
+  const heldOut = { right: 0, judged: 0 };
   for (const item of cases) {
-    const heldOut = Object.fromEntries(Object.entries(cleaned)
+    if (!Array.isArray(item.options) || !item.options.length) continue;
+    const without = Object.fromEntries(Object.entries(cleaned)
       .map(([species, record]) => [species, { examples: record.examples.filter(shape => shape !== item.shape) }]));
-    const ranked = shapeApi.rankOptions({ shape: item.shape, options: item.options, library: heldOut });
-    console.log(`wrong case ${item.eggId}: answered ${item.wrongSpecies}, correct ${item.correctSpecies}; ` +
-      `before learning it the rebuilt library says ${ranked.species} (${ranked.distance})`);
+    const ranked = shapeApi.rankOptions({ shape: item.shape, options: item.options, library: without, random: () => 0 });
+    heldOut.judged += 1;
+    if (ranked?.species === item.correctSpecies) heldOut.right += 1;
   }
 
   let appended = 0;
   for (const item of cases) {
-    // The game rejected this exact silhouette for wrongSpecies.
+    const correct = String(item.correctSpecies).trim();
+    // The game (or the owner) rejected this exact silhouette for every other species.
     for (const entry of entries) {
-      if (entry.shape !== item.shape || entry.species === item.correctSpecies || entry.confirmed || entry.dropped) continue;
+      if (entry.shape !== item.shape || entry.species === correct || entry.confirmed || entry.dropped) continue;
       entry.dropped = true;
       dropped.push({ entry });
     }
-    if (add(item.correctSpecies, item.shape, true)) appended += 1;
+    if (add(correct, item.shape, true)) appended += 1;
   }
   matrix = distanceMatrix(entries, shapeApi.hamming);
   dropped.push(...dropMislabeled(matrix, entries));
-  const errors = leaveOneOutErrors(matrix, entries);
+  const loo = leaveOneOut(matrix, entries);
 
   const library = libraryOf();
-  const count = pick => Object.fromEntries(QUIZ_SPECIES.map(species => [species, pick(species)]));
+  const species = Object.keys(library);
+  const count = pick => Object.fromEntries(species.map(name => [name, pick(name)]));
   const kept = entries.filter(entry => !entry.dropped);
   const meta = {
     ...provenance,
-    species: QUIZ_SPECIES.length,
+    species: species.length,
     examples: kept.length,
-    counts: count(species => library[species].examples.length),
-    gameConfirmed: count(species => kept.filter(entry => entry.species === species && entry.confirmed).length),
+    counts: count(name => library[name].examples.length),
+    gameConfirmed: count(name => kept.filter(entry => entry.species === name && entry.confirmed).length),
     droppedMislabeled: Number(args.source ? 0 : current?.meta?.droppedMislabeled || 0) + dropped.length,
-    quizSpecies: QUIZ_SPECIES
+    quizSpecies: species
   };
 
-  const lines = QUIZ_SPECIES.map(species => `    ${JSON.stringify(species)}: Object.freeze(${JSON.stringify(library[species])})`);
+  const lines = species.map(name => `    ${JSON.stringify(name)}: Object.freeze(${JSON.stringify(library[name])})`);
   fs.writeFileSync(TARGET, `"use strict";
 
 // Static production Name-the-Species silhouette database.
 // GENERATED by scripts/build-species-static.js - do not edit by hand.
 // Learned silhouettes come first in each species; the last meta.gameConfirmed[species] entries
-// are corrections OviPets itself confirmed after a rejected answer.
+// were confirmed after a rejected answer (by OviPets on a retry, or by the owner's review).
 // Raw quiz traces, thumbnails, exact-image history and user/page metadata are intentionally
 // NOT embedded. This file contains only color-independent 32x32 alpha-mask silhouettes.
 (() => {
@@ -194,11 +257,17 @@ ${lines.join(",\n")}
 `);
 
   for (const { entry, looksLike } of dropped) {
-    console.log(`dropped ${entry.species} silhouette${looksLike ? ` that looks like ${looksLike}` : " rejected by the game"}`);
+    console.log(`dropped ${entry.species} silhouette${looksLike ? ` that looks like ${looksLike}` : " rejected for that species"}`);
   }
-  console.log(`appended ${appended} game-confirmed silhouette(s)`);
-  console.log(`library: ${kept.length} silhouettes - ${QUIZ_SPECIES.map(species => `${species} ${meta.counts[species]}`).join(", ")}`);
-  console.log(`leave-one-out nearest neighbour, 10 options: ${kept.length - errors.length}/${kept.length} (${errors.join(" ") || "no errors"})`);
+  for (const { label, reason } of refused) console.log(`refused owner label ${label}: ${reason}`);
+  const errorText = errors => Object.entries(errors).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([pair, n]) => `${pair}${n > 1 ? ` x${n}` : ""}`).join(" ") || "no errors";
+  console.log(`cases with a confirmed species: ${cases.length}, appended ${appended}`
+    + (heldOut.judged ? ` — before learning them the library answered ${heldOut.right}/${heldOut.judged} correctly` : ""));
+  console.log(`library: ${kept.length} silhouettes in ${species.length} species`);
+  console.log(species.map(name => `${name} ${meta.counts[name]}${meta.gameConfirmed[name] ? ` (${meta.gameConfirmed[name]} confirmed)` : ""}`).join(", "));
+  console.log(`leave-one-out, species with >=${MIN_CLASS_FOR_NOISE_FILTER} silhouettes: ${loo.large.right}/${loo.large.total} (${errorText(loo.large.errors)})`);
+  console.log(`leave-one-out, thinner species: ${loo.small.right}/${loo.small.total} (${errorText(loo.small.errors)})`);
 }
 
-build();
+if (require.main === module) build();
+module.exports = { vetCases };

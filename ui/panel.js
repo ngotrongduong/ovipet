@@ -135,6 +135,26 @@ OWEH.register("ui-panel", helpers => {
     storageGet("owehSpeciesAlertSound", true).then(value => { speciesSoundInput.checked = value !== false; });
     speciesSoundInput.addEventListener("change", () => storageSet({ owehSpeciesAlertSound: speciesSoundInput.checked }));
 
+    // Self-update switch (bg/self-update.js keeps it and answers with the current state).
+    const autoUpdateInput = panel.querySelector("#oweh-auto-update");
+    autoUpdateInput?.addEventListener("change", async () => {
+      const response = await runtimeRequest({ type: "selfUpdateEnabled", enabled: autoUpdateInput.checked });
+      if (response?.ok) showSelfUpdate(response);
+    });
+
+    // Name-the-Species safety pause limits (kept by the background, bg/species-learned.js).
+    const speciesStreakInput = panel.querySelector("#oweh-species-streak");
+    const speciesHourInput = panel.querySelector("#oweh-species-hour");
+    const saveSpeciesLimits = async () => {
+      const response = await runtimeRequest({
+        type: "speciesGuardLimits",
+        limits: { streak: speciesStreakInput.value, perHour: speciesHourInput.value }
+      });
+      if (response?.ok) showSpeciesGuard(response.guard, null, true);
+    };
+    speciesStreakInput?.addEventListener("change", saveSpeciesLimits);
+    speciesHourInput?.addEventListener("change", saveSpeciesLimits);
+
     const removeEmptyInput = panel.querySelector("#oweh-remove-empty");
     storageGet("owehRemoveEmptyFriends", true).then(value => { removeEmptyInput.checked = value !== false; });
     removeEmptyInput.addEventListener("change", () => storageSet({ owehRemoveEmptyFriends: removeEmptyInput.checked }));
@@ -329,7 +349,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.10.2</span>
+          <span class="oweh-version">v5.12.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -404,8 +424,8 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-discard-breed" class="oweh-secondary" type="button" disabled data-tip="Throw the plan away without breeding anything.">Discard</button>
             </div>
             <button id="oweh-view-breed-plan" class="oweh-primary-wide" type="button" disabled data-tip="Open the side window with every planned pair (or the confirmed campaign and its progress) in a full-size table.">View pairs</button>
-            <div class="oweh-inline-meta" data-tip="A pet is surplus when enough kept pets of its own sex are at least as good in every one of the 15 colour channels (Body 1, Body 2, Scales, Extra 1, Extra 2), where a channel is worth 1/(distance+1) and 5 percentage points of slack are allowed. An egg has no sex yet, so it needs that many males and that many females. Generated pets and pets in a breeding plan are never listed. Pedigree is not considered.">Discard surplus pets &amp; eggs</div>
-            <div class="oweh-row" data-tip="How many kept pets must be at least as good before one counts as surplus. 10 or 20 is cautious; 3 or 5 lists more."><label for="oweh-surplus-keep">Spares needed</label><select id="oweh-surplus-keep"><option value="20">20</option><option value="10" selected>10</option><option value="5">5</option><option value="3">3</option></select><span>pets</span></div>
+            <div class="oweh-inline-meta" data-tip="A pet is surplus when enough kept pets of its own sex are at least as good in every one of the 15 colour channels (Body 1, Body 2, Scales, Extra 1, Extra 2), where a channel is worth 1/(distance+1) and 5 percentage points of slack are allowed. Males follow a fixed rule instead: a male stays only with at least 2 FF pairs in Body 1, or at least one target FF/00 pair in Body 2, Scales, Extra 1 or Extra 2; every other male is listed. An egg has no sex yet, so it must fail the male rule and have enough female replacements. Generated pets and pets in a breeding plan are never listed. Pedigree is not considered.">Discard surplus pets &amp; eggs</div>
+            <div class="oweh-row" data-tip="For females and eggs: how many kept females must be at least as good before one counts as surplus. Males follow the fixed FF/00 pair rule and ignore this. 10 or 20 is cautious; 3 or 5 lists more."><label for="oweh-surplus-keep">Spares needed</label><select id="oweh-surplus-keep"><option value="20">20</option><option value="10" selected>10</option><option value="5">5</option><option value="3">3</option></select><span>pets</span></div>
             <div class="oweh-actions">
               <button id="oweh-surplus-plan" type="button" data-tip="Read the Hatchery egg list and the pet database, then list every surplus pet and egg. Nothing is sent until you press Confirm &amp; discard.">Plan discard</button>
               <button id="oweh-surplus-stop" class="oweh-danger" type="button" data-tip="Stop discarding. What was already sent is gone; Confirm &amp; discard continues with the rest.">Stop</button>
@@ -454,12 +474,20 @@ OWEH.register("ui-panel", helpers => {
           <summary><i class="oweh-ico">✦</i>Species <span>production classifier</span></summary>
           <div class="oweh-module-body">
             <div id="oweh-species-stats" class="oweh-inline-meta">Name the Species: loading totals…</div>
+            <div id="oweh-species-guard" class="oweh-inline-meta">Auto-answer: checking…</div>
+            <div id="oweh-species-shared" class="oweh-inline-meta" data-tip="One database of silhouettes shared by every install (this helper and Friend Sweep Lite, on any PC), checked every hour. Its settings are on the review page.">Shared database: checking…</div>
             <div id="oweh-species-wrong-count" class="oweh-inline-meta">Wrong review: loading…</div>
+            <div class="oweh-actions">
+              <button id="oweh-wrongs-review" type="button" data-tip="Open the review page: every saved wrong answer with its quiz image. Pick the right species and the helper learns it at once.">Review wrongs</button>
+              <button id="oweh-species-resume" type="button" data-tip="After a safety pause: let the helper answer Name the Species again. Then start the friend sweep or the Hatchery run again yourself." disabled>Resume answering</button>
+            </div>
+            <div class="oweh-row" data-tip="Safety pause: stop answering and stop egg turning after this many wrong answers in a row (0 = never)."><label for="oweh-species-streak">Pause after</label><input id="oweh-species-streak" type="number" min="0" max="99" step="1" value="3"><span>wrong in a row</span></div>
+            <div class="oweh-row" data-tip="Safety pause: also stop when more than this many answers were wrong within one hour (0 = never)."><label for="oweh-species-hour">or more than</label><input id="oweh-species-hour" type="number" min="0" max="999" step="1" value="10"><span>wrong in 1 hour</span></div>
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-export-species-wrongs" class="oweh-link-button" type="button" data-tip="Download only the compact Name the Species cases that OviPets explicitly rejected.">Export wrongs</button>
-              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals are not reset.">Clear wrongs</button>
+              <button id="oweh-clear-species-wrongs" class="oweh-link-button" type="button" data-tip="Clear saved wrong-answer review cases. Correct/wrong totals and learned silhouettes are not reset.">Clear wrongs</button>
             </div>
-            <div class="oweh-inline-meta oweh-note">Production classifier: 10 quiz species · built-in silhouette library. Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
+            <div class="oweh-inline-meta oweh-note">Production classifier: built-in silhouette library for every quiz species seen so far, plus the silhouettes confirmed since then (by the game accepting an answer, or by you on the review page). Normal questions are not stored; only explicitly rejected answers are kept for review.</div>
           </div>
         </details>
 
@@ -496,6 +524,11 @@ OWEH.register("ui-panel", helpers => {
             <div class="oweh-row" data-tip="Females with no FF/00 color pair and an average target distance at or below this value are routed to Breeding Stock."><label for="oweh-stock-distance">Stock distance</label><input id="oweh-stock-distance" type="number" min="0" max="765" step="1" value="96"><span>max</span></div>
             <div class="oweh-row" data-tip="Most egg tabs Full sweep and own-Hatchery turning may open at once. Lower it (4–8) to save CPU; 15 lets the adaptive 10 → 12 → 15 speed run uncapped."><label for="oweh-egg-tab-cap">Egg tabs</label><input id="oweh-egg-tab-cap" type="number" min="1" max="15" step="1" value="15"><span>max</span></div>
             <label class="oweh-check" data-tip="Play a sound and focus the exact tab whenever an unknown Name the Species verification needs your answer."><input id="oweh-species-sound" type="checkbox" checked> Species verification alert</label>
+            <label class="oweh-check" data-tip="When a newer version is in the extension's folder, load it automatically as soon as no job is running, then refresh the OviPets tabs. No visit to the browser's extensions page is needed."><input id="oweh-auto-update" type="checkbox" checked> Update the extension by itself</label>
+            <div id="oweh-update-status" class="oweh-inline-meta">Extension version: checking…</div>
+            <div class="oweh-actions oweh-tools-row">
+              <button id="oweh-update-now" class="oweh-link-button" type="button" data-tip="A newer version is waiting for a running job to finish: stop every job and load it now. Start your job again afterwards." disabled>Update now</button>
+            </div>
             <div class="oweh-target-title">Fixed pure target</div>
             <div class="oweh-grid" data-tip="The breeding score is fixed to this project's target colors.">
               <label>Body 1<input id="oweh-body1" value="#FFFFFF" maxlength="7" readonly></label>
@@ -559,6 +592,26 @@ OWEH.register("ui-panel", helpers => {
       await runtimeRequest({ type: "speciesWrongCasesClear" });
       await updateSpeciesWrongCount(true);
       setStatus("Saved wrong Species review cases cleared");
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-wrongs-review", "Opening the wrong-answer review page", async () => {
+      const response = await runtimeRequest({ type: "speciesWrongReviewOpen" });
+      if (!response?.ok) throw new Error(response?.error || "review page unavailable");
+      setStatus("Wrong-answer review page opened in its own tab");
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-species-resume", "Resuming Name the Species answering", async () => {
+      const response = await runtimeRequest({ type: "speciesGuardResume" });
+      if (!response?.ok) throw new Error(response?.error || "pause state unavailable");
+      showSpeciesGuard(response.guard, null, true);
+      setStatus("Name the Species answering resumed — start the friend sweep or the Hatchery run again");
+    }, missingControls);
+    bindPanelAction(panel, "#oweh-update-now", "Updating the extension", async () => {
+      await stopAllAutomation();
+      const response = await runtimeRequest({ type: "selfUpdateNow" });
+      if (!response?.ok) throw new Error(response?.error || "update unavailable");
+      if (response.action === "reloading") setStatus(`Loading v${response.version} — this tab refreshes in a moment; start your job again afterwards`);
+      else if (response.action === "waiting") setStatus(`Not updated: ${response.waitingFor} is still running — stop it and press Update now again`);
+      else setStatus("No newer version is waiting in the extension folder");
+      await updateSelfUpdate(true);
     }, missingControls);
     bindPanelAction(panel, "#oweh-export-diagnostics", "Exporting Diagnostic Log", async () => {
       await exportDiagnosticLog();
@@ -657,6 +710,120 @@ OWEH.register("ui-panel", helpers => {
     }
   }
 
+  let speciesGuardAt = 0;
+  let speciesGuardPending = false;
+  let speciesLearnedCount = 0;
+
+  // The pause line, the Resume button and the two limits. `learned` (species -> count) is only
+  // known from a full status read; a limits/resume reply keeps the last count.
+  function showSpeciesGuard(guard, learned, syncInputs = false) {
+    const label = document.querySelector("#oweh-species-guard");
+    if (!label || !guard) return;
+    if (learned) speciesLearnedCount = Object.values(learned).reduce((sum, count) => sum + Number(count || 0), 0);
+    const paused = guard.paused;
+    const text = paused
+      ? `⚠ Auto-answer PAUSED after ${paused.reason} — review the wrong answers, then press Resume`
+      : `Auto-answer on · ${Number(guard.streak || 0)} wrong in a row · ${(guard.wrongAt || []).length} wrong in the last hour · ${speciesLearnedCount} learned silhouette(s)`;
+    if (label.textContent !== text) label.textContent = text;
+    label.classList?.toggle("oweh-alert", Boolean(paused));
+    const resume = document.querySelector("#oweh-species-resume");
+    if (resume && resume.disabled !== !paused) resume.disabled = !paused;
+    for (const [selector, value] of [["#oweh-species-streak", guard.limits?.streak], ["#oweh-species-hour", guard.limits?.perHour]]) {
+      const input = document.querySelector(selector);
+      if (!input || value == null || (!syncInputs && document.activeElement === input)) continue;
+      if (input.value !== String(value)) input.value = String(value);
+    }
+  }
+
+  async function updateSpeciesGuard(force = false) {
+    const label = document.querySelector("#oweh-species-guard");
+    if (!label) return;
+    const now = Date.now();
+    if (!force && (speciesGuardPending || now - speciesGuardAt < 5000)) return;
+    speciesGuardPending = true;
+    try {
+      const response = await runtimeRequest({ type: "speciesGuardGet" });
+      speciesGuardAt = Date.now();
+      if (!response?.ok) throw new Error(response?.error || "pause state unavailable");
+      showSpeciesGuard(response.guard, response.learned || {});
+    } catch {
+      if (label.textContent !== "Auto-answer: status unavailable") label.textContent = "Auto-answer: status unavailable";
+    } finally {
+      speciesGuardPending = false;
+    }
+  }
+
+  let speciesSharedAt = 0;
+  let speciesSharedPending = false;
+
+  // The shared Name-the-Species database (bg/species-shared.js); settings on the review page.
+  async function updateSpeciesShared(force = false) {
+    const line = document.querySelector("#oweh-species-shared");
+    if (!line) return;
+    const now = Date.now();
+    if (!force && (speciesSharedPending || now - speciesSharedAt < 30000)) return;
+    speciesSharedPending = true;
+    try {
+      const status = await runtimeRequest({ type: "speciesSharedStatus" });
+      speciesSharedAt = Date.now();
+      if (!status?.ok) return;
+      let text;
+      if (status.lastError) text = `Shared database: ⚠ ${status.lastError}`;
+      else if (status.hubExamples) text = `Shared database: ${status.hubExamples} silhouettes · ${status.contributing ? "sending and receiving" : "receiving only (save a token on the review page to send)"}`;
+      else text = status.contributing ? "Shared database: created at the next sync" : "Shared database: none yet — save a token on the review page to start it";
+      if (line.textContent !== text) line.textContent = text;
+      line.classList?.toggle("oweh-alert", Boolean(status.lastError));
+    } catch {
+      // The line keeps its last text.
+    } finally {
+      speciesSharedPending = false;
+    }
+  }
+
+  let selfUpdateAt = 0;
+  let selfUpdatePending = false;
+  let announcedUpdate = "";
+
+  // The version line under Settings. A release that has to wait for a running job is also
+  // announced once on the status line, so it is seen without opening Settings.
+  function showSelfUpdate(status) {
+    const line = document.querySelector("#oweh-update-status");
+    if (!line || !status) return;
+    const enabled = status.enabled !== false;
+    const box = document.querySelector("#oweh-auto-update");
+    if (box && document.activeElement !== box && box.checked !== enabled) box.checked = enabled;
+    const pending = status.supported && enabled ? String(status.pending?.version || "") : "";
+    let text = `Extension v${status.loaded} · up to date`;
+    if (!status.supported) text = `Extension v${status.loaded} · the browser updates this install`;
+    else if (!enabled) text = `Extension v${status.loaded} · self-update is off`;
+    else if (pending) text = `v${pending} is ready — ${status.waitingFor ? `waiting for ${status.waitingFor}` : "loading it shortly"}`;
+    else if (status.applied?.at) text += ` · updated itself ${new Date(status.applied.at).toLocaleString()}`;
+    if (line.textContent !== text) line.textContent = text;
+    line.classList?.toggle("oweh-alert", Boolean(pending));
+    const button = document.querySelector("#oweh-update-now");
+    if (button && button.disabled !== !pending) button.disabled = !pending;
+    if (pending && status.waitingFor && announcedUpdate !== pending) {
+      announcedUpdate = pending;
+      setStatus(`Extension v${pending} is ready — it loads by itself once ${status.waitingFor} is done (or Settings → Update now)`);
+    }
+  }
+
+  async function updateSelfUpdate(force = false) {
+    if (!document.querySelector("#oweh-update-status")) return;
+    const now = Date.now();
+    if (!force && (selfUpdatePending || now - selfUpdateAt < 10000)) return;
+    selfUpdatePending = true;
+    try {
+      const response = await runtimeRequest({ type: "selfUpdateStatus" });
+      selfUpdateAt = Date.now();
+      if (response?.ok) showSelfUpdate(response);
+    } catch {
+      // The line keeps its last text; a dead extension context is reported elsewhere.
+    } finally {
+      selfUpdatePending = false;
+    }
+  }
+
   let diagnosticStatsAt = 0;
   let diagnosticStatsPending = false;
   async function updateDiagnosticStats(force = false) {
@@ -690,6 +857,9 @@ OWEH.register("ui-panel", helpers => {
     panel?.classList.toggle("oweh-hidden", !isVisible(jobCount));
     updatePetNameSuggestion();
     updateSpeciesWrongCount();
+    updateSpeciesGuard();
+    updateSpeciesShared();
+    updateSelfUpdate();
     updateDiagnosticStats();
   }
 

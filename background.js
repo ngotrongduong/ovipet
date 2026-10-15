@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "bg/species-stats.js", "bg/state-health.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/state-health.js", "bg/self-update.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -19,8 +19,10 @@ const workerManager = globalThis.OWEH_BG?.workerManager;
 const speciesAlert = globalThis.OWEH_BG?.speciesAlert;
 const speciesImage = globalThis.OWEH_BG?.speciesImage;
 const speciesStats = globalThis.OWEH_BG?.speciesStats;
+const speciesLearned = globalThis.OWEH_BG?.speciesLearned;
+const speciesShared = globalThis.OWEH_BG?.speciesShared;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !speciesShared || !stateHealthService) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -34,6 +36,34 @@ const { read: readStateHealth } = stateHealthService;
 
 function diagnostic(level, source, event, data = {}) {
   return diagnosticLog.append(level, source, event, data).catch(() => null);
+}
+
+// Name the Species: the totals and the safety pause see the same answers. When the pause trips,
+// the owner gets the review page and (unless muted) the alert sound once.
+async function bumpSpeciesStats(message) {
+  const result = await speciesStats.bump(message);
+  // The totals are already written: a failing pause check must not make the answerer count the
+  // same answer again through its storage fallback.
+  const { guard, tripped } = await speciesLearned.noteAnswers(message)
+    .catch(() => ({ guard: null, tripped: false }));
+  if (tripped) {
+    diagnostic("warning", "species", "species.paused", { reason: guard?.paused?.reason || "", streak: guard?.streak || 0, wrongInHour: guard?.wrongAt?.length || 0 });
+    speciesLearned.openReview().catch(() => {});
+    chrome.storage.local.get({ owehSpeciesAlertSound: true })
+      .then(stored => showSpeciesVerification({}, stored.owehSpeciesAlertSound))
+      .catch(() => {});
+  }
+  return { ...result, guard, tripped };
+}
+
+// A species the game rejected (or overruled) for an image must not stay learned for it.
+async function forgetRefutedSpecies(result, refuted = null) {
+  const targets = [...(Array.isArray(result?.overruled) ? result.overruled : [])];
+  if (refuted) targets.push(refuted);
+  for (const target of targets) {
+    await speciesLearned.forget({ ...target, refuted: true }).catch(() => null);
+  }
+  return result;
 }
 
 diagnostic("info", "runtime", "service-worker.loaded", { version: chrome.runtime.getManifest?.().version || "unknown" });
@@ -58,6 +88,61 @@ function dropRetentionRanking() {
     "owehRetentionRanking", "owehRetentionReview", "owehRetentionSummary", "owehRetentionLastFullScanAt"
   ]).catch(() => {});
 }
+
+// Name the Species database shared with every other install (bg/species-shared.js): read and
+// merged every hour; sent too once the owner has saved a GitHub token on the review page.
+speciesShared.start();
+
+// Self-update (bg/self-update.js): a newer version in the extension's folder is loaded by the
+// extension itself, but never under a running job. What it waits for is shown in the panel.
+const selfUpdate = globalThis.OWEH_BG?.selfUpdate;
+const REVIEW_PAGE_URL = chrome.runtime.getURL("review/species-review.html");
+
+async function automationBusy() {
+  const task = await readSharedWorkerTask();
+  if (isWorkerLeaseLive(task)) return `"${task.owner || "a job"}" running in the background tab`;
+  const state = await chrome.storage.local.get({
+    owehSweep: { active: false }, owehEggRun: { active: false }, owehBreedCampaign: { active: false },
+    owehHatchlingRun: { active: false }, owehFriendRemoval: { active: false }
+  });
+  if (state.owehSweep?.active) return "the friend sweep";
+  if (state.owehEggRun?.active) return "the Hatchery run";
+  if (state.owehBreedCampaign?.active) return "the breeding campaign";
+  if (state.owehHatchlingRun?.active) return "the newborn pass";
+  if (state.owehFriendRemoval?.active) return "a friend removal";
+  // A reload closes extension pages: not while the owner is looking at the review page.
+  const front = await chrome.tabs.query({ active: true }).catch(() => []);
+  if (front.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL))) return "the review page (close it or switch tabs)";
+  return "";
+}
+
+// "Update now": the panel has just asked every job to stop. Those stops finish a moment later
+// (the worker tab is closed on a short timer), and one of them may have failed, so the reload
+// waits until nothing is left running and is refused otherwise.
+async function updateNow() {
+  let waitingFor = "";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    waitingFor = await automationBusy().catch(() => "the automation state could not be read");
+    if (!waitingFor) break;
+  }
+  if (waitingFor) return { ok: true, action: "waiting", waitingFor };
+  return { ok: true, ...(await selfUpdate.check({ force: true })) };
+}
+
+selfUpdate?.start({
+  busy: automationBusy,
+  tabUrls: ["https://ovipets.com/*", "https://app.ovipets.com/*"],
+  // A review page left open in the background is put back afterwards, without taking focus.
+  beforeReload: async () => {
+    const tabs = await chrome.tabs.query({}).catch(() => []);
+    return { review: tabs.some(tab => String(tab.url || "").startsWith(REVIEW_PAGE_URL)) };
+  },
+  onApplied: async ({ from, to, resume }) => {
+    diagnostic("info", "runtime", "self-update.applied", { from, to });
+    if (resume?.review) await speciesLearned.openReview({ focus: false }).catch(() => null);
+  }
+});
 
 chrome.runtime.onInstalled.addListener(dropRetentionRanking);
 chrome.runtime.onInstalled.addListener(disableLegacyDailyAlarm);
@@ -205,17 +290,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message?.type === "speciesStatsBump") {
-    speciesStats.bump(message).then(sendResponse)
+    bumpSpeciesStats(message).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
   if (message?.type === "speciesWrongCaseRecord") {
-    speciesStats.recordWrong(message).then(sendResponse)
+    const rejected = message.case || message.record || {};
+    speciesStats.recordWrong(message)
+      .then(result => forgetRefutedSpecies(result, { species: rejected.wrongSpecies, shape: rejected.shape }))
+      .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
   if (message?.type === "speciesWrongCaseResolve") {
-    speciesStats.resolveWrong(message).then(sendResponse)
+    speciesStats.resolveWrong(message).then(forgetRefutedSpecies).then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
@@ -225,7 +313,72 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "speciesWrongCasesClear") {
-    speciesStats.clearWrongCases().then(sendResponse)
+    speciesStats.clearWrongCases(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesConfirmedShape") {
+    speciesLearned.learn(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesOwnerLabel") {
+    speciesLearned.labelCase(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesLearnedGet") {
+    speciesLearned.readAll().then(library => sendResponse({ ok: true, library }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardGet") {
+    speciesLearned.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardResume") {
+    speciesLearned.resume().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesGuardLimits") {
+    speciesLearned.setLimits(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesWrongReviewOpen") {
+    speciesLearned.openReview().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedStatus") {
+    speciesShared.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedToken") {
+    speciesShared.setToken(message).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "speciesSharedSync") {
+    speciesShared.sync({ force: true }).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateStatus") {
+    selfUpdate.status().then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateEnabled") {
+    selfUpdate.setEnabled(message.enabled).then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "selfUpdateNow") {
+    updateNow().then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }

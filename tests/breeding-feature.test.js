@@ -21,7 +21,8 @@ function setup({
   scanPartial = false,
   claimResult = { ok: true },
   extraStore = {},
-  onProfileRead = null
+  onProfileRead = null,
+  delayMs = 0
 } = {}) {
   const clock = { now: 1_000_000 };
   const scheduled = [];
@@ -39,7 +40,8 @@ function setup({
   let ownUserId = "77";
   const log = {
     status: [], claims: [], releases: [], phases: [], done: 0,
-    navigations: [], breedCalls: [], catalogScans: 0, planOptions: [], profileReads: [], skippedTabs: []
+    navigations: [], breedCalls: [], catalogScans: 0, planOptions: [], profileReads: [], skippedTabs: [],
+    sets: [], sleeps: []
   };
   const worker = { generation: 9 };
   const hooks = {};
@@ -59,13 +61,14 @@ function setup({
         .map(id => [id, clone(store.owehPets[id])])
     ),
     storageSet: async values => {
+      log.sets.push(Object.keys(values));
       for (const [key, value] of Object.entries(values)) {
         if (key === "owehPets") store.owehPets = { ...store.owehPets, ...clone(value) };
         else store[key] = clone(value);
       }
     },
     setStatus: text => log.status.push(text),
-    sleep: async () => {},
+    sleep: async ms => { log.sleeps.push(ms); },
     requestClaimWorker: async (workerOwner, url) => {
       log.claims.push([workerOwner, url]);
       // An array scripts successive claim answers (the last one repeats).
@@ -135,7 +138,7 @@ function setup({
         return clone(value);
       }
     },
-    settings: { getDelayMs: () => 0, DEFAULT_REQUEST_DELAY: 0 },
+    settings: { getDelayMs: () => delayMs, DEFAULT_REQUEST_DELAY: 0 },
     petFetch: {
       collectCatalog: async ({ skipTab }) => {
         log.catalogScans += 1;
@@ -405,15 +408,72 @@ function setup({
         : { ok: true }
     });
     await env.api.process();
-    assert.deepEqual(env.log.breedCalls, [["10", "20", 456]]);
-    assert.equal(env.store.owehBreedQueue[0].maleCandidateIndex, 1);
-    assert.deepEqual(env.store.owehBreedQueue[0].rejectedMaleIds, ["20"]);
-    assert.equal(env.store.owehBreedCampaign.active, true, "female remains active while an alternate male exists");
-    assert.ok(env.scheduled.length);
-    await env.scheduled.shift()();
+    // The same pass goes on to her next male: no page timer sits between the two commands.
     assert.deepEqual(env.log.breedCalls, [["10", "20", 456], ["10", "30", 456]]);
+    assert.equal(env.scheduled.length, 0);
+    assert.equal(env.store.owehBreedQueue[0].maleCandidateIndex, 1);
+    assert.equal(env.store.owehBreedQueue[0].maleId, "30", "the stored row names the male that was really used");
+    assert.deepEqual(env.store.owehBreedQueue[0].rejectedMaleIds, ["20"]);
+    assert.ok(env.log.status.some(text => text.includes("trying 1 alternate male candidate(s)")));
     assert.equal(env.store.owehBreedCampaign.bredCount, 1);
+    assert.equal(env.store.owehBreedCampaign.errors, 1);
     assert.equal(env.store.owehBreedCampaign.active, false);
+  }
+
+  // One pass sends every remaining pair back to back. No page timer between two pairs (a hidden
+  // worker tab's timers fire once a second at best), and the stored queue — every female with
+  // her candidate males — is not rewritten for each pair.
+  const threePairs = extra => {
+    const pure = { distance: 0, body1ReachableChannels: 3, body1NewExactChannels: 1 };
+    const females = ["10", "11", "12"];
+    const males = ["20", "21", "22"];
+    return {
+      campaign: { active: true, mode: "database-direct-v2", strategy: "pure-line", femaleIndex: 0, bredCount: 0, errors: 0, unpaired: 0, startedAt: 900 },
+      queue: females.map((id, index) => ({
+        id, name: `F${id}`, maleId: males[index], maleName: `M${males[index]}`, maleCandidateIndex: 0, rejectedMaleIds: [], pure,
+        maleCandidates: [{ maleId: males[index], maleName: `M${males[index]}`, pure }]
+      })),
+      pets: Object.fromEntries([
+        ...females.map(id => [id, { id, name: `F${id}`, gender: "Female", onCooldown: false, pedigreeVerified: true, ancestors: [`f${id}`] }]),
+        ...males.map(id => [id, { id, name: `M${id}`, gender: "Male", pedigreeVerified: true, ancestors: [`m${id}`] }])
+      ]),
+      ...extra
+    };
+  };
+  {
+    const env = setup(threePairs());
+    await env.api.process();
+    assert.deepEqual(env.log.breedCalls.map(call => call.slice(0, 2)), [["10", "20"], ["11", "21"], ["12", "22"]]);
+    assert.equal(env.scheduled.length, 0, "no page timer between pairs");
+    assert.deepEqual(env.log.sleeps, [], "no wait at all when the Delay setting is 0");
+    assert.equal(env.log.sets.filter(keys => keys.includes("owehBreedQueue")).length, 0, "the queue is not rewritten for every pair");
+    assert.equal(env.store.owehBreedCampaign.bredCount, 3);
+    assert.equal(env.store.owehBreedCampaign.active, false);
+    assert.equal(env.store.owehBreedHistory.length, 3);
+    assert.equal(env.log.done, 1);
+  }
+
+  // The user's Delay setting is still honoured, between pairs only.
+  {
+    const env = setup(threePairs({ delayMs: 1500 }));
+    await env.api.process();
+    assert.equal(env.log.breedCalls.length, 3);
+    assert.deepEqual(env.log.sleeps, [1500, 1500]);
+  }
+
+  // Stop pressed in another tab while a command is in flight ends the pass: nothing more is sent.
+  {
+    const env = setup(threePairs({
+      breedResult: (_female, _male, call) => {
+        if (call === 2) env.store.owehBreedCampaign = { ...env.store.owehBreedCampaign, active: false };
+        return { ok: true };
+      }
+    }));
+    await env.api.process();
+    assert.equal(env.log.breedCalls.length, 2);
+    assert.equal(env.store.owehBreedCampaign.active, false);
+    assert.equal(env.store.owehBreedCampaign.bredCount, 1);
+    assert.equal(env.log.done, 0, "a stopped campaign is not reported as finished");
   }
 
   // A queued male that left the program after planning (moved to Males discard, gone, or no
@@ -535,6 +595,41 @@ function setup({
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(env.log.catalogScans, 0, "a confirmed campaign is executed, not re-planned");
     assert.deepEqual(env.log.breedCalls[0].slice(0, 2), ["10", "20"]);
+  }
+
+  // The planner lists every safe male per female; the saved plan and the running campaign keep
+  // the planned one and a few fallbacks, in the same order, so each step handles a small queue.
+  {
+    const candidates = Array.from({ length: 30 }, (_, index) => ({ maleId: String(100 + index), maleName: `M${100 + index}`, pure: { distance: index } }));
+    const env = setup({
+      catalog: [{ id: "10", name: "F1" }],
+      plan: {
+        femaleCount: 1, maleCount: 30, unpaired: 0, focusSpecies: "Catus", shortlistSize: 30,
+        queue: [{ id: "10", name: "F1", maleId: "100", maleName: "M100", pure: { distance: 0 }, maleCandidateIndex: 0, rejectedMaleIds: [], maleCandidates: candidates }]
+      }
+    });
+    await env.api.startWorker(9, false);
+    assert.deepEqual(env.store.owehBreedPreview.queue[0].maleCandidates.map(item => item.maleId),
+      ["100", "101", "102", "103", "104", "105", "106", "107"]);
+    assert.equal(env.store.owehBreedPreview.pairable, 1);
+  }
+
+  // A plan saved before that (or by an older build) is trimmed when it is confirmed.
+  {
+    const candidates = Array.from({ length: 30 }, (_, index) => ({ maleId: String(100 + index), maleName: `M${100 + index}`, pure: { distance: index } }));
+    const preview = {
+      strategy: "same-ff-target", createdAt: 1_000_000 - 60_000, femaleCount: 2, pairable: 2, maleCount: 30, unpaired: 0,
+      species: "Catus", catalogCount: 32, target: { body1: "#FFFFFF" },
+      queue: [
+        { id: "10", name: "F1", maleId: "100", maleName: "M100", pure: { distance: 0 }, maleCandidateIndex: 0, rejectedMaleIds: [], maleCandidates: candidates },
+        { id: "11", name: "F2", maleId: "100", maleName: "M100", pure: { distance: 0 }, maleCandidateIndex: 0, rejectedMaleIds: [], maleCandidates: candidates.slice(0, 3) }
+      ]
+    };
+    const env = setup({ extraStore: { owehBreedPreview: preview } });
+    await env.api.confirmPreview();
+    assert.deepEqual(env.store.owehBreedQueue[0].maleCandidates.map(item => item.maleId), ["100", "101", "102", "103", "104", "105", "106", "107"]);
+    assert.equal(env.store.owehBreedQueue[0].maleId, "100");
+    assert.equal(env.store.owehBreedQueue[1].maleCandidates.length, 3, "a short list is kept as it is");
   }
 
   // A stale preview, or a busy worker, never starts breeding; busy keeps the plan.

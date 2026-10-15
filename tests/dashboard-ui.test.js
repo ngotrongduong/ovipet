@@ -173,6 +173,23 @@ function setup({ pets = {}, withPlanView = false, withSurplusView = false, getPe
     assert.equal(maleRow.children[7].textContent, "11");
 
     // A run in progress locks Confirm and Dismiss; an expired plan cannot be confirmed.
+    // A review made under the fixed male rule: males and eggs name the rule, not a count.
+    const ruled = setup({ withSurplusView: true });
+    ruled.state.owehSurplusPreview = {
+      createdAt: ruled.clock.now - 60_000,
+      minReplacements: 10,
+      summary: { surplus: { egg: 1, female: 0, male: 1 }, maleRule: { body1Pairs: 2, otherPairs: 1 } },
+      rows: [
+        { id: "10", name: "egg 10", kind: "egg", reason: "male-rule", colors: "808080-808080-808080-808080-808080", replacements: 12, replacementFemales: 12, examples: [{ id: "3", name: "P3" }], status: "queued" },
+        { id: "5", name: "P5", kind: "male", reason: "male-rule", colors: "FF8080-808080-808080-808080-808080", replacements: 0, examples: [], status: "queued" }
+      ]
+    };
+    await ruled.api.update();
+    assert.match(ruled.surplusPreview.textContent, /females and eggs replaced by ≥10 kept females · males by the FF\/00 pair rule/);
+    assert.equal(ruled.surplusRows.children[0].children[7].textContent, "fails the male rule · 12 females · e.g. P3");
+    assert.equal(ruled.surplusRows.children[1].children[7].textContent, "fails the male rule");
+    assert.match(ruled.surplusRows.children[1].children[7].title, /fewer than 2 FF pairs in Body 1/);
+
     // "Running" is the live shared-worker lease, not a stored flag.
     env.state.owehWorker = { owner: "surplus", phase: "discard 1/2", leaseUntil: env.clock.now + 30_000 };
     await env.api.update();
