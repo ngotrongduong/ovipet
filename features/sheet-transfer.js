@@ -152,6 +152,13 @@ OWEH.register("feature-sheet-transfer", helpers => {
     const other = (plan.rows || []).filter(row => row.status !== "queued");
     const expired = Date.now() - Number(plan.createdAt) > PLAN_AGE_MS;
     const detail = queue.slice(0, 12).map(row => row.id + " (" + row.kind + ")").join(", ");
+    const fullList = ui("#oweh-sheet-reviewed-ids");
+    if (fullList) {
+      const value = (plan.rows || []).map(row =>
+        row.id + " | " + row.kind + " | " + (row.species || "?") + " | " +
+        (row.name || "") + " | " + row.status).join("\n");
+      if (fullList.value !== value) fullList.value = value;
+    }
     summary("ID discard list: " + queue.length + " queued, " + other.length + " processed, "
       + Number(plan.missing || 0) + " not currently owned/visible. Source: " + plan.source
       + (expired ? " · EXPIRED, load again" : "")
