@@ -461,6 +461,8 @@ OWEH.register("ui-panel", helpers => {
               <button id="oweh-sheet-preview-button" class="oweh-secondary" type="button" data-tip="Read selected source, check all IDs against your live game inventory and freeze an exact review plan. Sends no commands.">1 · Load &amp; review IDs</button>
             </div>
             <div id="oweh-sheet-preview" class="oweh-inline-meta" role="status">No ID discard list loaded</div>
+            <label class="oweh-subtitle" for="oweh-sheet-reviewed-ids">Full reviewed list (read-only)</label>
+            <textarea id="oweh-sheet-reviewed-ids" readonly rows="5" aria-label="All verified IDs selected for permanent discard"></textarea>
             <div class="oweh-row"><label for="oweh-sheet-limit">Max IDs per run</label><input id="oweh-sheet-limit" type="number" min="1" max="200" value="25"><span>IDs</span></div>
             <div class="oweh-actions">
               <button id="oweh-sheet-confirm-button" class="oweh-danger" type="button" data-tip="PERMANENT: after reviewing the list, send Discard commands automatically for each currently owned ID (up to the run limit), then verify OviPets no longer lists them.">2 · Confirm &amp; discard IDs</button>
