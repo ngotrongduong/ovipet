@@ -1,0 +1,40 @@
+name: Package Full Spreadsheet RC
+
+on:
+  push:
+    branches:
+      - feature/spreadsheet-inventory-discard-2026-10-16
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify complete extension sources
+        run: |
+          node scripts/verify-js.js
+          node scripts/verify-release.js
+          node --test tests/*.test.js
+      - name: Package clean Edge extension
+        run: |
+          mkdir -p dist/extension
+          cp manifest.json background.js offscreen.html offscreen.js page-bridge.js content.js content.css dist/extension/
+          for directory in bg core data dom domain features jobs services ui review; do
+            cp -R "$directory" dist/extension/
+          done
+          (cd dist/extension && zip -rq ../../OviPets-Hatchery-Helper-v5.13.0-RC.zip .)
+          unzip -p OviPets-Hatchery-Helper-v5.13.0-RC.zip manifest.json | grep '"version": "5.13.0"'
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: OviPets-Hatchery-Helper-v5.13.0-RC
+          path: OviPets-Hatchery-Helper-v5.13.0-RC.zip
+          if-no-files-found: error
+          retention-days: 14

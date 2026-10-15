@@ -810,3 +810,24 @@
     max-height: 45vh;
   }
 }
+
+/* CSV/Google Sheets integration controls: limited height so the compact panel stays usable. */
+#ovipets-hatchery-helper #oweh-sheet-url,
+#ovipets-hatchery-helper #oweh-sheet-file,
+#ovipets-hatchery-helper #oweh-sheet-ids {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 4px 0 10px;
+  padding: 6px;
+  border: 1px solid rgba(150, 150, 150, .45);
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+}
+#ovipets-hatchery-helper #oweh-sheet-ids { min-height: 60px; resize: vertical; }
+#ovipets-hatchery-helper #oweh-sheet-preview { max-height: 125px; overflow: auto; overflow-wrap: anywhere; }
+
+#ovipets-hatchery-helper #oweh-sheet-reviewed-ids { box-sizing: border-box; width: 100%; max-width: 100%; height: 110px; resize: vertical; font-family: monospace; font-size: 11px; background: transparent; color: inherit; overflow: auto; }

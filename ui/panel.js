@@ -349,7 +349,7 @@ OWEH.register("ui-panel", helpers => {
       <header class="oweh-header">
         <div class="oweh-brand">
           <span class="oweh-title">OviPets Helper</span>
-          <span class="oweh-version">v5.12.0</span>
+          <span class="oweh-version">v5.13.0</span>
           <span id="oweh-header-state" class="oweh-header-state">Idle</span>
         </div>
         <button id="oweh-collapse" class="oweh-icon-button" type="button" aria-expanded="true" data-tip="Collapse or expand the whole control panel.">−</button>
@@ -440,6 +440,35 @@ OWEH.register("ui-panel", helpers => {
             <div class="oweh-actions oweh-tools-row">
               <button id="oweh-rank" class="oweh-link-button" type="button" data-tip="Rank the currently visible breeding candidates against the fixed FF/00 pure target.">Rank visible partners</button>
             </div>
+          </div>
+        </details>
+
+        <details class="oweh-module" name="oweh-modules" data-accent="db">
+          <summary><i class="oweh-ico">▤</i>Pet / Egg Spreadsheet <span>export CSV · ID discard</span></summary>
+          <div class="oweh-module-body">
+            <div class="oweh-inline-meta">Export all currently owned pets and Hatchery eggs with five color slots (Body1, Body2, Scales, Extra1, Extra2). Open the CSV in Google Sheets, preserve ID as text, then mark Discard=YES for desired rows.</div>
+            <div class="oweh-actions">
+              <button id="oweh-export-inventory" class="oweh-secondary" type="button" data-tip="Read every live owned enclosure and Hatchery; fetch missing color profiles and download CSV. Never discards anything.">Export all pets + eggs CSV</button>
+            </div>
+            <div class="oweh-inline-meta">Choose ONE input: published Google Sheets CSV URL, downloaded CSV file, or IDs pasted below. Only marked YES rows in a multi-column CSV are discarded.</div>
+            <label for="oweh-sheet-url" class="oweh-subtitle">Published Google Sheets CSV link (read-only, public)</label>
+            <input id="oweh-sheet-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" autocomplete="off">
+            <label for="oweh-sheet-file" class="oweh-subtitle">Or private CSV file exported from Google Sheets</label>
+            <input id="oweh-sheet-file" type="file" accept=".csv,text/csv">
+            <label for="oweh-sheet-ids" class="oweh-subtitle">Or paste one numeric ID per line</label>
+            <textarea id="oweh-sheet-ids" rows="3" placeholder="12345&#10;67890"></textarea>
+            <div class="oweh-actions">
+              <button id="oweh-sheet-preview-button" class="oweh-secondary" type="button" data-tip="Read selected source, check all IDs against your live game inventory and freeze an exact review plan. Sends no commands.">1 · Load &amp; review IDs</button>
+            </div>
+            <div id="oweh-sheet-preview" class="oweh-inline-meta" role="status">No ID discard list loaded</div>
+            <label class="oweh-subtitle" for="oweh-sheet-reviewed-ids">Full reviewed list (read-only)</label>
+            <textarea id="oweh-sheet-reviewed-ids" readonly rows="5" aria-label="All verified IDs selected for permanent discard"></textarea>
+            <div class="oweh-row"><label for="oweh-sheet-limit">Max IDs per run</label><input id="oweh-sheet-limit" type="number" min="1" max="200" value="25"><span>IDs</span></div>
+            <div class="oweh-actions">
+              <button id="oweh-sheet-confirm-button" class="oweh-danger" type="button" data-tip="PERMANENT: after reviewing the list, send Discard commands automatically for each currently owned ID (up to the run limit), then verify OviPets no longer lists them.">2 · Confirm &amp; discard IDs</button>
+              <button id="oweh-sheet-stop-button" class="oweh-secondary" type="button" data-tip="Stop explicit-ID Discard; already-sent requests are never automatically repeated.">Stop</button>
+            </div>
+            <div class="oweh-inline-meta">Discard is permanent. Loading a Sheet is manual (not a recurring background watcher). Keep the full inventory sheet private: published CSV links can be read by anyone with the URL.</div>
           </div>
         </details>
 

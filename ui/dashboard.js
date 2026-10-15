@@ -11,7 +11,7 @@ OWEH.register("ui-dashboard", helpers => {
   const STRATEGY_NAMES = { "same-ff-target": "Same-FF target", "newborn-outcross": "Newborn outcross" };
   const strategyDisplayName = (value, fallback = "Pure-line") => STRATEGY_NAMES[value] || fallback;
   const STRAIGHT_JOB_LABELS = {
-    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", surplus: "Discard surplus"
+    maintain: "Update database", ninja: "Scan Ninja", requests: "Send requests", surplus: "Discard surplus", "sheet-discard": "Discard ID list"
   };
   let updating = false;
   let timer = null;

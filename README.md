@@ -2,7 +2,7 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.12.0**
+Current release: **v5.13.0**
 
 This is the current **source/manifest version** on `main`; no GitHub Release object has been published yet.
 
@@ -27,6 +27,14 @@ Key goals:
 - efficient handling of large pet/friend sets;
 - small modules with regression coverage;
 - explicit live-DOM contracts.
+
+## v5.13.0 candidate — Spreadsheet inventory and explicit-ID Discard (2026-10-16)
+
+- **Export all pets + eggs CSV:** reads the live owned Overview and Hatchery, fetches missing five-slot color profiles, and downloads one Google Sheets-compatible CSV with ID, kind, species, name, enclosure, five color slots, parent IDs, completeness indicator and a blank **Discard** column.
+- **Import a reviewed ID list:** mark `Discard=YES` in a private Google Sheet and download CSV; alternatively paste IDs (one per line), import a one-column CSV, or provide an explicitly published read-only Sheets CSV URL.
+- **Confirm & discard IDs:** checks requested IDs against your current owned pet/egg lists, shows a plan, then uses the existing permanent-discard command through a bounded shared worker with post-send verification. Other Discard Surplus rules are unchanged.
+- **Safety:** preview and explicit confirmation are required. Default maximum **25 IDs per run**, configurable 1–200. Invalid/missing/changed IDs are skipped; timeout-uncertain commands are never automatically resent.
+- This is a **source candidate**, not a published GitHub Release; live Edge acceptance of the new feature remains pending. See [Spreadsheet guide](docs/GOOGLE_SHEETS_DISCARD.md). Published Sheet links expose at least the ID list to link holders; private Sheets should use downloaded CSV instead.
 
 ## v5.12.0 — One Name-the-Species database for every install (2026-10-14)
 

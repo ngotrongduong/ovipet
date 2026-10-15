@@ -5,7 +5,7 @@
 // orchestration.
 if (typeof importScripts === "function") {
   try {
-    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/state-health.js", "bg/self-update.js");
+    importScripts("bg/state-db.js", "bg/diagnostic-log.js", "bg/lightweight-tabs.js", "bg/command-journal.js", "bg/egg-tabs.js", "bg/worker-manager.js", "bg/species-alert.js", "bg/species-image.js", "domain/species-shape.js", "bg/species-stats.js", "bg/species-learned.js", "bg/species-shared.js", "bg/state-health.js", "bg/self-update.js", "bg/sheet-csv.js");
   } catch (error) {
     console.error("[OviPets Helper] background service import failed", error);
   }
@@ -22,7 +22,8 @@ const speciesStats = globalThis.OWEH_BG?.speciesStats;
 const speciesLearned = globalThis.OWEH_BG?.speciesLearned;
 const speciesShared = globalThis.OWEH_BG?.speciesShared;
 const stateHealthService = globalThis.OWEH_BG?.stateHealth;
-if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !speciesShared || !stateHealthService) throw new Error("OviPets background services failed to initialize");
+const sheetCsv = globalThis.OWEH_BG?.sheetCsv;
+if (!stateDb || !diagnosticLog || !lightweightTabs || !commandJournal || !workerManager || !speciesAlert || !speciesImage || !speciesStats || !speciesLearned || !speciesShared || !stateHealthService || !sheetCsv) throw new Error("OviPets background services failed to initialize");
 const { migrateLegacyPetsOnce, getAllRows, getAllPets, getPetFields, getPetsByIds, mergePets, putTaskLease, heartbeatTasks, releaseTask } = stateDb;
 const { journalBegin, journalUpdate, reconcileBreedCommands } = commandJournal;
 const {
@@ -164,6 +165,16 @@ chrome.alarms.onAlarm.addListener(alarm => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "sheetCsvFetch") {
+    const origin = String(sender.tab?.url || "");
+    if (!/^https:\/\/(?:app\.)?ovipets\.com\//.test(origin)) {
+      sendResponse({ ok: false, error: "OviPets tab required" }); return;
+    }
+    sheetCsv.load(message.url)
+      .then(body => sendResponse({ ok: true, text: body }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
   if (message?.type === "diagnosticLogAppend") {
     const entry = message.entry || {};
     diagnosticLog.append(entry.level, entry.source, entry.event, { ...(entry.data || {}), senderTabId: sender.tab?.id ?? null })

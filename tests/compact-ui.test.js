@@ -9,7 +9,7 @@ const uiSource = `${panel}\n${dashboard}`;
 const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
 
 const modules = [...panel.matchAll(/<details class="oweh-module" name="oweh-modules"/g)];
-if (modules.length !== 8) throw new Error(`Expected 8 compact modules, found ${modules.length}`);
+if (modules.length !== 9) throw new Error(`Expected 8 compact modules, found ${modules.length}`);
 
 for (const required of [
   "oweh-active-summary", "oweh-active-jobs", "oweh-header-state", "oweh-collapse",
