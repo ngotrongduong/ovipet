@@ -48,7 +48,8 @@ jobs:
           $status = Get-Content -LiteralPath (Join-Path $dir 'auto-update-last-check.txt') -Raw
           if ($status -notmatch 'No previous-version backup') { throw 'Safe rollback failure not reported' }
           $m = Get-Content -LiteralPath (Join-Path $dir 'manifest.json') -Raw | ConvertFrom-Json
-          if ($m.version -ne '5.12.0') { throw 'Failed rollback altered manifest' }
+          $original = Get-Content -LiteralPath 'manifest.json' -Raw | ConvertFrom-Json
+          if ($m.version -ne $original.version) { throw 'Failed rollback altered manifest' }
           Write-Output 'Rollback guard smoke PASS'
       - name: Build install-once ZIP
         shell: powershell
