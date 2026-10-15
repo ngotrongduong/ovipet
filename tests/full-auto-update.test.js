@@ -62,6 +62,8 @@ test("Windows task installer uses separate task name and system tools with CRLF"
   assert.match(disable, /OviPets Full Extension update/);
   assert.match(runNow, /auto-update\.ps1/);
   assert.match(restore, /auto-update\.ps1" -Rollback/);
+  assert.match(runNow, /auto-update\.ps1" -Resume/);
+  assert.match(updater, /auto-update-hold\.txt/);
 });
 
 test("updater is external; current extension code remains at stable main version", () => {
