@@ -1,9 +1,9 @@
 # OviPets Extension — Working State
 
-Last updated: 2026-10-14
-Current release baseline: v5.12.0
-Current repository phase: Phase 0 — baseline import/CI bootstrap
-Current local implementation status: Phases 1–5 and Phase 6 automated gates validated locally; v5.4.0 adds the silhouette Name-the-Species solver and the rolling-window Full Sweep; v5.3.17 fixed the real content-script dependency wiring for the v5.3.16 pedigree guard and adds integration regression coverage so breeding can proceed immediately after indexing completes. Manual/live release gates remain.
+Last updated: 2026-10-15
+Current release baseline: v5.12.0 (source on main; merged PR #36; no GitHub Release published yet)
+Current repository phase: maintenance, live-QA consolidation and release hardening; Phase 0 is complete
+Current status: Full v5.12.0 is on `main`; the owner reported successful multi-hour Full Sweep plus working Discard surplus and shared Species DB (2026-10-15). GitHub Actions succeeded on merge `e5c751d`. See [REPOSITORY_STATUS.md](REPOSITORY_STATUS.md) for the authoritative current checklist; historical milestones below remain as a chronological record.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Original supplied v5.3.0 snapshot:
 - Node test files: 23/23 PASS;
 - content.js was approximately 3,360 lines.
 
-Current managed release-candidate baseline:
+Historical managed release-candidate checkpoint (not a fresh v5.12.0 test count):
 
 - JavaScript syntax: PASS;
 - Node test files: 72/72 PASS;
@@ -32,9 +32,9 @@ Current managed release-candidate baseline:
 - content-side orchestration moved out of content.js lives under services/ as explicit-dependency factories;
 - background state/database/worker/journal/alert/health responsibilities live under bg/.
 
-Issue #2 remains the repository gate: the complete runtime/test tree is not yet mirrored into GitHub, so GitHub is not yet the authoritative runtime source.
+Issue #2 is closed and the runtime/test tree is available in GitHub. Full v5.12.0 was merged into `main` in PR #36. Older test counts below reflect the refactor checkpoint, not the exact 2026-10-15 total.
 
-## Local implementation already validated
+## Historical implementation milestones
 
 ### Phase 1 — stability
 
