@@ -288,9 +288,11 @@ OWEH.register("feature-sheet-transfer", helpers => {
       const node = ui("#oweh-sheet-preview");
       if (node && node.textContent.startsWith("No ID")) showPlan(plan);
     }).catch(() => {});
+    const loadingControl = ui("#oweh-sheet-limit");
+    if (loadingControl && !loadingControl.dataset.initialized) loadingControl.dataset.initialized = "loading";
     storageGet(LIMIT_KEY, 25).then(value => {
       const control = ui("#oweh-sheet-limit");
-      if (control && !control.dataset.initialized) {
+      if (control && control.dataset.initialized === "loading") {
         control.value = String(Math.min(MAX_IN_RUN, Math.max(1, Number(value) || 25)));
         control.dataset.initialized = "1";
         control.addEventListener("change", async () => {
