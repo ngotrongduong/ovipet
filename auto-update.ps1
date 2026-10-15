@@ -1,7 +1,7 @@
 # OviPets Full Extension updater for Windows PowerShell 5.1.
 # Stable main only. Apply only when Edge/Chrome/Brave is completely closed.
 # Verifies exact main commit has passed Extension CI. Backs up, installs manifest last.
-param([switch]$CheckOnly, [switch]$Rollback)
+param([switch]$CheckOnly, [switch]$Rollback, [switch]$Resume)
 $ErrorActionPreference = "Stop"
 $Repo = "ngotrongduong/ovipet"
 $Branch = "main"
@@ -11,6 +11,7 @@ $logFile = Join-Path $target "auto-update.log"
 $checkFile = Join-Path $target "auto-update-last-check.txt"
 $backupDir = Join-Path $target ".oweh-full-update-backup"
 $lockPath = Join-Path $target "auto-update.lock"
+$holdFile = Join-Path $target "auto-update-hold.txt"
 $allowedDirs = @("bg","core","data","dom","domain","features","jobs","services","ui","review")
 $allowedFiles = @("background.js","content.js","content.css","offscreen.html","offscreen.js","page-bridge.js")
 $allowedExt = @(".js",".json",".css",".html",".png",".jpg",".jpeg",".svg",".ico",".webp")
@@ -110,9 +111,12 @@ try {
     if (-not (Test-Path -LiteralPath $backupDir)) { throw "No previous-version backup exists" }
     Restore-Backup $backupDir
     $after = Read-Manifest $target
-    $outcome = "restored v$($local.version) -> v$($after.version); restart Edge"
+    # Never install this same bad version again unattended after owner rollback.
+    Set-Content -LiteralPath $holdFile -Value ([string]$local.version) -Encoding UTF8
+    $outcome = "restored v$($local.version) -> v$($after.version); v$($local.version) held until next release or manual Resume"
     Write-Log $outcome
   } else {
+    if ($Resume -and (Test-Path -LiteralPath $holdFile)) { Remove-Item -LiteralPath $holdFile -Force }
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $client = New-Object Net.WebClient
     $client.Headers["User-Agent"] = "OviPets-Full-AutoUpdater/1.0"
@@ -121,8 +125,109 @@ try {
     if ($remote.name -ne $ExpectedName -or "$($remote.version)" -notmatch '^\d+\.\d+\.\d+$') {
       throw "Untrusted remote manifest"
     }
+    $held = ""
+    if (Test-Path -LiteralPath $holdFile) { $held = (Get-Content -LiteralPath $holdFile -Raw -Encoding UTF8).Trim() }
     if ([version]$remote.version -le [version]$local.version) {
       $outcome = "up to date (v$($local.version))"
+    } elseif ($held -match '^\d+\.\d+\.\d+
+      $head = $client.DownloadString("https://api.github.com/repos/$Repo/commits/$Branch") | ConvertFrom-Json
+      $sha = [string]$head.sha
+      if ($sha -notmatch '^[a-f0-9]{40}$') { throw "Invalid main commit SHA" }
+      $runs = $client.DownloadString("https://api.github.com/repos/$Repo/actions/workflows/ci.yml/runs?branch=main&per_page=25") | ConvertFrom-Json
+      $green = @($runs.workflow_runs | Where-Object {
+        $_.head_sha -eq $sha -and $_.event -eq "push" -and
+        $_.status -eq "completed" -and $_.conclusion -eq "success"
+      })
+      if ($green.Count -eq 0) {
+        $outcome = "waiting for green Extension CI on main $($sha.Substring(0,12))"
+      } elseif (Browser-Running) {
+        $outcome = "v$($remote.version) available; waiting for Edge/Chrome to close"
+      } elseif ($CheckOnly) {
+        $outcome = "verified update available: v$($remote.version) at $($sha.Substring(0,12)) (dry run)"
+      } else {
+        $work = Join-Path ([IO.Path]::GetTempPath()) ("oweh-full-update-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $work | Out-Null
+        $zip = Join-Path $work "source.zip"
+        $client.DownloadFile("https://codeload.github.com/$Repo/zip/$sha", $zip)
+        if ((Get-Item -LiteralPath $zip).Length -gt 75000000) { throw "Archive larger than 75MB" }
+        $unpacked = Join-Path $work "unpacked"
+        Expand-Archive -LiteralPath $zip -DestinationPath $unpacked
+        $candidateRoot = Get-ChildItem -LiteralPath $unpacked -Directory | Where-Object {
+          Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json")
+        } | Select-Object -First 1
+        if (-not $candidateRoot) { throw "Pinned commit lacks extension manifest" }
+        $new = Read-Manifest $candidateRoot.FullName
+        if ([version]$new.version -le [version]$local.version) { throw "Pinned commit is not newer" }
+        Assert-Candidate $candidateRoot.FullName $new
+        if (Browser-Running) { throw "Browser reopened during staging; run deferred" }
+
+        $root = (Resolve-Path -LiteralPath $candidateRoot.FullName).Path.TrimEnd('\')
+        $copyList = @()
+        foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File) {
+          $relative = $file.FullName.Substring($root.Length).TrimStart('\')
+          if (Allowed-Runtime $relative) { $copyList += $relative }
+        }
+        if ($copyList.Count -lt 20) { throw "Too few files in staged runtime" }
+        $snapshot = Join-Path $work "snapshot"
+        New-Item -ItemType Directory -Path $snapshot | Out-Null
+        $newFiles = @()
+        foreach ($relative in @($copyList + "manifest.json")) {
+          $current = Join-Path $target $relative
+          $saved = Join-Path $snapshot $relative
+          if (Test-Path -LiteralPath $current) {
+            $dir = Split-Path -Parent $saved
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath $current -Destination $saved -Force
+          } else { $newFiles += $relative }
+        }
+        Set-Content -LiteralPath (Join-Path $snapshot "new-files.txt") -Value $newFiles -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $snapshot "snapshot-info.txt") -Value ("before=v{0}; after=v{1}; commit={2}" -f $local.version,$new.version,$sha) -Encoding UTF8
+        if (-not (Test-Path -LiteralPath (Join-Path $snapshot "manifest.json"))) { throw "Cannot back up manifest" }
+        $olderBackup = "$backupDir.previous"
+        if (Test-Path -LiteralPath $olderBackup) { Remove-Item -LiteralPath $olderBackup -Recurse -Force }
+        if (Test-Path -LiteralPath $backupDir) { Move-Item -LiteralPath $backupDir -Destination $olderBackup }
+        Move-Item -LiteralPath $snapshot -Destination $backupDir
+        try {
+          foreach ($relative in $copyList) {
+            if (Browser-Running) { throw "Browser started during installation; rolling back" }
+            $dest = Join-Path $target $relative
+            $dir = Split-Path -Parent $dest
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $dest -Force
+          }
+          if (Browser-Running) { throw "Browser started before manifest switch; rolling back" }
+          Copy-Item -LiteralPath (Join-Path $root "manifest.json") -Destination (Join-Path $target "manifest.json") -Force
+          if ((Read-Manifest $target).version -ne $new.version) { throw "Final manifest validation failed" }
+          if (Test-Path -LiteralPath $holdFile) { Remove-Item -LiteralPath $holdFile -Force }
+          $outcome = "updated v$($local.version) -> v$($new.version) from green main $($sha.Substring(0,12)); reopen Edge"
+          Write-Log $outcome
+          if (Test-Path -LiteralPath $olderBackup) { Remove-Item -LiteralPath $olderBackup -Recurse -Force }
+        } catch {
+          Restore-Backup $backupDir
+          Set-Content -LiteralPath $holdFile -Value ([string]$new.version) -Encoding UTF8
+          Write-Log "Failed update restored old v$($local.version); blocked v$($new.version) from automatic retry"
+          throw
+        }
+      }
+    }
+  }
+} catch {
+  $outcome = "failed: $($_.Exception.Message)"
+  Write-Log $outcome
+  $failed = $true
+} finally {
+  if ($work -and (Test-Path -LiteralPath $work)) {
+    try { Remove-Item -LiteralPath $work -Recurse -Force } catch {}
+  }
+  if ($handle) { $handle.Dispose() }
+  try {
+    Set-Content -LiteralPath $checkFile -Value ("{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),$outcome) -Encoding UTF8
+  } catch {}
+}
+Write-Output $outcome
+if ($failed) { exit 1 }
+ -and [version]$remote.version -le [version]$held) {
+      $outcome = "paused after rollback of v$held; waiting for a newer release (or manual Update now)"
     } else {
       $head = $client.DownloadString("https://api.github.com/repos/$Repo/commits/$Branch") | ConvertFrom-Json
       $sha = [string]$head.sha
