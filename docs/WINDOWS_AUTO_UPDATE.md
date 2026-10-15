@@ -17,7 +17,7 @@ This is the Windows updater for the Full OviPets Hatchery Helper, not Friend Swe
 - A higher manifest version is required, plus a completed successful **Extension CI** push run for the EXACT current main commit SHA. This prevents a pending/failed build from being auto-installed.
 - The archive is fetched by that immutable commit SHA; the updater validates extension identity, Manifest V3, imported scripts, content scripts, required assets and release-version markers before installing.
 - Only allowlisted runtime files under known directories are copied. BAT/PowerShell scripts are **never** installed from downloaded source.
-- Existing extension runtime files and manifest are backed up into **.oweh-full-update-backup**. Manifest is installed last; on a copy error the updater attempts rollback.
+- After a manual rollback (or a failed partial installation), the attempted version is recorded in **auto-update-hold.txt** and will not automatically reinstall. The hold clears on a later higher-version release or an explicit manual **Update now.bat**. Existing extension runtime files and manifest are backed up into **.oweh-full-update-backup**. Manifest is installed last; on a copy error the updater attempts rollback.
 - The script uses an exclusive file lock to prevent simultaneous manual and scheduled updates. A failed network request leaves the previous extension intact.
 - No personal data, pet database or Species records are uploaded to GitHub. Browser local storage and IndexedDB remain unchanged.
 
