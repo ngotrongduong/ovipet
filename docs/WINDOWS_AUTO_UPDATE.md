@@ -9,7 +9,7 @@ This is the Windows updater for the Full OviPets Hatchery Helper, not Friend Swe
 3. Double-click **Enable auto-update.bat** once. Windows Task Scheduler creates **OviPets Full Extension update**, checking every **30 minutes**. No admin privileges should be required when the unpacked folder belongs to your Windows account.
 4. Review **auto-update-last-check.txt** (last status) and **auto-update.log** (last 150 log entries).
 
-**Update now.bat** manually checks and applies when Edge is closed. **Disable auto-update.bat** removes the scheduled task without deleting extension data. **Restore previous version.bat** restores the most recent backup, but only with the browsers fully closed.
+**Update now.bat** manually checks and applies when Edge is closed. It explicitly clears any hold recorded after rollback, so use it only when you intend to retry a blocked version. **Disable auto-update.bat** removes the scheduled task without deleting extension data. **Restore previous version.bat** restores the most recent backup, but only with the browsers fully closed.
 
 ## Verified-update security model
 
