@@ -2,7 +2,16 @@
 
 Chromium Manifest V3 extension for OviPets automation and breeding workflows, with Microsoft Edge as the primary Windows target.
 
-Current release: **v5.12.0**
+**Source on `main`: v5.12.0** (not yet a published GitHub Release).
+
+## Repository status and release verification
+
+- [Current repository status](docs/REPOSITORY_STATUS.md) — which branch contains Full vs Lite, CI status and owner-reported live OviPets validation.
+- [Release checklist](docs/RELEASE_CHECKLIST.md) — current sign-off evidence and separate remaining live gates.
+- [Release process](docs/RELEASE_PROCESS.md) — PRs, versions, stable updater source, packaging and release publication.
+- [Security policy](SECURITY.md) — credential hygiene and safe vulnerability reporting.
+- [Friend Sweep Lite PR #37](https://github.com/ngotrongduong/ovipet/pull/37) remains a separate draft as of 2026-10-15; it is **not** installed by loading the root `manifest.json`.
+
 
 ## Engineering objective
 
