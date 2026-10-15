@@ -44,7 +44,8 @@
         "domain/breeding-score.js",
         "domain/breeding-plan.js",
         "domain/surplus.js",
-        "domain/egg-rank.js",
+        ""domain/egg-rank.js",
+        "domain/sheet-transfer.js"",
         "data/species-static.js",
         "domain/species-shape.js",
         "core/game-actions.js",
@@ -59,7 +60,8 @@
         "features/friend-sweep.js",
         "features/hatchlings.js",
         "features/breeding.js",
-        "features/surplus.js",
+        ""features/surplus.js",
+        "features/sheet-transfer.js"",
         "features/best-eggs.js",
         "ui/dashboard.js",
         "ui/panel.js",
@@ -92,6 +94,8 @@
     "https://ovipets.com/*",
     "https://app.ovipets.com/*",
     "https://api.github.com/*",
-    "https://gist.githubusercontent.com/*"
+    "https://gist.githubusercontent.com/*",
+    "https://docs.google.com/*",
+    "https://*.googleusercontent.com/*"
   ]
 }
