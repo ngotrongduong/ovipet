@@ -15,6 +15,13 @@
 4. Merge to `main`, then confirm `Extension CI` passes for the merge commit.
 5. Publish a GitHub Release with release notes, exact commit/tag and artifact(s) **only when explicitly approved**. Do not claim a Release was created merely because a manifest version exists.
 
+## Full Extension automatic Windows updates
+
+- The optional [Windows installer](WINDOWS_AUTO_UPDATE.md) polls `main` and checks a successful `Extension CI` run for the **exact commit SHA** before downloading a source archive pinned to that SHA.
+- It updates the currently loaded **unpacked** extension folder only when Edge/Chrome/Brave processes have exited; never force an in-flight Full Sweep to update. `manifest.json` is written last after preparing the backup.
+- The updater scripts themselves are **not** downloaded and replaced by the unattended task. The owner installs the ZIP kit once, and can disable the task or restore the previous version locally.
+- Since the updater selects the HEAD of `main`, do not treat a draft PR, failed CI build, manifest version text alone or a successful PR check as an eligible automatic release. Confirm **main push CI** after merging.
+
 ## Friend Sweep Lite
 
 1. Keep `friend-sweep-lite/` as a self-contained extension with its own `manifest.json` version and README.

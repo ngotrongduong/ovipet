@@ -1,0 +1,73 @@
+name: Package Full GitHub AutoUpdater
+
+on:
+  push:
+    branches:
+      - main
+      - feature/full-github-auto-update-2026-10-16
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify updater source contracts
+        shell: pwsh
+        run: node --test tests/full-auto-update.test.js
+      - name: Validate Windows PowerShell 5.1 syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $env:GITHUB_WORKSPACE 'auto-update.ps1'), [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Output 'Windows PowerShell 5.1 syntax PASS'
+      - name: Exercise safe failed-rollback path in test folder
+        shell: powershell
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'oweh-updater-smoke'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item auto-update.ps1 (Join-Path $dir 'auto-update.ps1')
+          Copy-Item manifest.json (Join-Path $dir 'manifest.json')
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $dir 'auto-update.ps1') -Rollback
+          if ($LASTEXITCODE -ne 1) { throw 'Missing backup should fail safely' }
+          $global:LASTEXITCODE = 0 # Expected negative-path exit; GitHub powershell wrapper checks it.
+          $status = Get-Content -LiteralPath (Join-Path $dir 'auto-update-last-check.txt') -Raw
+          if ($status -notmatch 'No previous-version backup') { throw 'Safe rollback failure not reported' }
+          $m = Get-Content -LiteralPath (Join-Path $dir 'manifest.json') -Raw | ConvertFrom-Json
+          $original = Get-Content -LiteralPath 'manifest.json' -Raw | ConvertFrom-Json
+          if ($m.version -ne $original.version) { throw 'Failed rollback altered manifest' }
+          Write-Output 'Rollback guard smoke PASS'
+      - name: Build install-once ZIP
+        shell: powershell
+        run: |
+          $kit = Join-Path $env:RUNNER_TEMP 'OviPets-Full-GitHub-AutoUpdater'
+          New-Item -ItemType Directory -Force -Path $kit | Out-Null
+          foreach ($file in @(
+            'auto-update.ps1',
+            'Enable auto-update.bat',
+            'Disable auto-update.bat',
+            'Update now.bat',
+            'Restore previous version.bat'
+          )) { Copy-Item -LiteralPath $file -Destination $kit -Force }
+          Copy-Item -LiteralPath 'docs/WINDOWS_AUTO_UPDATE.md' -Destination (Join-Path $kit 'README-SETUP.md')
+          Compress-Archive -Path (Join-Path $kit '*') -DestinationPath 'OviPets-Full-GitHub-AutoUpdater.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OviPets-Full-GitHub-AutoUpdater
+          path: OviPets-Full-GitHub-AutoUpdater.zip
+          if-no-files-found: error
+          retention-days: 30
