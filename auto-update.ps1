@@ -129,7 +129,9 @@ try {
     if (Test-Path -LiteralPath $holdFile) { $held = (Get-Content -LiteralPath $holdFile -Raw -Encoding UTF8).Trim() }
     if ([version]$remote.version -le [version]$local.version) {
       $outcome = "up to date (v$($local.version))"
-    } elseif ($held -match '^\d+\.\d+\.\d+
+    } elseif ($held -match '^\d+\.\d+\.\d+$' -and [version]$remote.version -le [version]$held) {
+      $outcome = "paused after rollback of v$held; waiting for a newer release (or manual Update now)"
+    } else {
       $head = $client.DownloadString("https://api.github.com/repos/$Repo/commits/$Branch") | ConvertFrom-Json
       $sha = [string]$head.sha
       if ($sha -notmatch '^[a-f0-9]{40}$') { throw "Invalid main commit SHA" }
