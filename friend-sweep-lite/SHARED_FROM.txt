@@ -1,0 +1,11 @@
+Files shared with the full extension, copied unchanged from its commit 0ecdc5b:
+- domain/species-shape.js
+- data/species-static.js
+- bg/species-stats.js
+- bg/species-learned.js
+- bg/species-shared.js
+- bg/self-update.js
+- review/species-review.html
+- review/species-review.js
+- review/species-review.css
+Refresh them with: node scripts/sync-lite-species.js <full-extension-checkout>
