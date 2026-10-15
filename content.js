@@ -377,7 +377,8 @@
       breedingScore: OWEH.domain.breedingScore,
       breedingPlan: OWEH.domain.breedingPlan,
       surplus: OWEH.domain.surplus,
-      eggRank: OWEH.domain.eggRank
+      eggRank: OWEH.domain.eggRank,
+      sheetTransfer: OWEH.domain.sheetTransfer
     },
     gameActions: OWEH.core.gameActions,
     petFetch,
