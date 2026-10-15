@@ -91,7 +91,7 @@ assert.match(background, /ensureResumeAlarm\(\)/);
 const updater = read("auto-update.ps1");
 const enable = fs.readFileSync(path.join(root, "Enable auto-update.bat"), "utf8");
 const disable = fs.readFileSync(path.join(root, "Disable auto-update.bat"), "utf8");
-assert.ok(updater.includes('[string]$Branch = "feat/friend-sweep-lite"') && updater.includes('[string]$ExpectedName = "OviPets Friend Sweep Lite"'));
+assert.ok(updater.includes('[string]$Branch = "main"') && updater.includes('[string]$ExpectedName = "OviPets Friend Sweep Lite"'));
 assert.deepEqual([...updater.matchAll(/Remove-Item[^\n]*/g)].map(match => match[0]), ["Remove-Item -LiteralPath $work -Recurse -Force } catch {}"],
   "the updater removes only its own temporary download");
 assert.equal(/robocopy|\/MIR|Clear-Content|rmdir|rd \/s/i.test(updater), false, "the updater must never purge the extension folder");
