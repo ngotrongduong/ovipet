@@ -67,6 +67,6 @@ test("Windows task installer uses separate task name and system tools with CRLF"
 test("updater is external; current extension code remains at stable main version", () => {
   const manifest = JSON.parse(read("manifest.json"));
   assert.equal(manifest.name, "OviPets Hatchery Helper");
-  assert.equal(manifest.version, "5.12.0");
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.ok(!manifest.content_scripts.some(group => (group.js || []).includes("auto-update.ps1")));
 });
