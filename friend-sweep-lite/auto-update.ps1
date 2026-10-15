@@ -18,7 +18,7 @@
 # last 200 updates and failures.
 param(
   [string]$Repo = "ngotrongduong/ovipet",
-  [string]$Branch = "feat/friend-sweep-lite",
+  [string]$Branch = "main",
   [string]$Subfolder = "friend-sweep-lite",
   [string]$ExpectedName = "OviPets Friend Sweep Lite"
 )
