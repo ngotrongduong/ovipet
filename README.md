@@ -28,6 +28,18 @@ Key goals:
 - small modules with regression coverage;
 - explicit live-DOM contracts.
 
+## Automatic Full Extension updates from GitHub (Windows / Edge)
+
+The unpacked Full extension can now use a one-time Windows scheduled updater: install the [Full GitHub AutoUpdater kit](https://github.com/ngotrongduong/ovipet/actions/workflows/package-full-updater.yml), extract the 5 updater scripts **into your existing unpacked extension folder** (next to `manifest.json`), then double-click `Enable auto-update.bat` once.
+
+- Checks stable GitHub **main** every **30 minutes** and requires green CI for the exact main commit.
+- Never replaces live JavaScript while Edge, Chrome or Brave is open; waits until browsers are closed, then installs the new build, leaving active jobs undisturbed.
+- Saves a local previous-version backup and provides `Restore previous version.bat` if the next build does not work.
+- `Update now.bat` checks immediately (close Edge first). `Disable auto-update.bat` removes the scheduled task.
+- This is **separate** from the existing built-in `bg/self-update.js` reload logic. It does not automatically install itself merely because GitHub has new scripts.
+
+[Complete setup and safety instructions](docs/WINDOWS_AUTO_UPDATE.md). The updater only applies main versions with a **higher manifest version**; draft PRs such as #39 are not deployed.
+
 ## v5.12.0 — One Name-the-Species database for every install (2026-10-14)
 
 The helper and Friend Sweep Lite, on any PC, now share what they learn:
