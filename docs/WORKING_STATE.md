@@ -1,7 +1,7 @@
 # OviPets Extension — Working State
 
 Last updated: 2026-10-15
-Current main version: v5.12.0 (merged PR #36; no GitHub Release published yet)
+Current release baseline: v5.12.0 (source on main; merged PR #36; no GitHub Release published yet)
 Current repository phase: maintenance, live-QA consolidation and release hardening; Phase 0 is complete
 Current status: Full v5.12.0 is on `main`; the owner reported successful multi-hour Full Sweep plus working Discard surplus and shared Species DB (2026-10-15). GitHub Actions succeeded on merge `e5c751d`. See [REPOSITORY_STATUS.md](REPOSITORY_STATUS.md) for the authoritative current checklist; historical milestones below remain as a chronological record.
 
